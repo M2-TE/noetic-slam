@@ -16,5 +16,6 @@ RUN apt install -y pcl-tools
 
 FROM init AS setup
 WORKDIR /root/repo/
+ENTRYPOINT scripts/docker-entrypoint.sh
 RUN echo 'source /opt/ros/noetic/setup.bash' >> /root/.bashrc
 RUN echo 'source /root/repo/devel/setup.bash' >> /root/.bashrc
