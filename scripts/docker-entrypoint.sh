@@ -1,2 +1,2 @@
 #!/bin/sh
-roscore &
+. /opt/ros/noetic/setup.sh && roscore
