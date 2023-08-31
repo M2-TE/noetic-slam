@@ -1,3 +1,6 @@
 [submodule "src/dlio"]
 	path = src/dlio
 	url = https://github.com/vectr-ucla/direct_lidar_inertial_odometry.git
+[submodule "src/ouster"]
+	path = src/ouster
+	url = https://github.com/ouster-lidar/ouster-ros.git
