@@ -12,7 +12,7 @@ RUN apt install -y python3-catkin-tools
 # DLIO dependencies
 RUN apt install -y libomp-dev libpcl-dev libeigen3-dev ros-noetic-pcl-ros
 # extras
-RUN apt install -y pcl-tools
+RUN apt install -y pcl-tools rviz
 
 FROM init AS setup
 WORKDIR /root/repo/
