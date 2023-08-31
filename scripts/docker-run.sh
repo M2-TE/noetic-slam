@@ -9,4 +9,4 @@ docker run -it \
     --env DISPLAY=$DISPLAY \
     --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
     noeticslam:latest \
-    bash -c "roscore > /dev/null & disown roscore && bash"
+    sh scripts/compound-launch.sh
