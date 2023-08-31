@@ -8,5 +8,4 @@ docker run -it \
     --mount type=bind,source="$(pwd)/$(dirname "$0")"/..,target=/root/repo \
     --env DISPLAY=$DISPLAY \
     --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
-    noeticslam:latest \
-    sh scripts/compound-launch.sh
+    noeticslam:latest
