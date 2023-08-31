@@ -17,5 +17,13 @@ RUN apt install -y pcl-tools
 FROM init AS setup
 WORKDIR /root/repo/
 RUN echo 'source /opt/ros/noetic/setup.bash' >> /root/.bashrc
+
+# configure entry point
 COPY ./scripts/docker-entrypoint.sh /
 ENTRYPOINT /docker-entrypoint.sh
+
+# set build/runtime environment vars
+ARG PCL_TOPIC=/ouster/points
+ENV PCL_TOPIC_ENV=${PCL_TOPIC}
+ARG IMU_TOPIC=/ouster/imu
+ENV IMU_TOPIC_ENV=${IMU_TOPIC}
