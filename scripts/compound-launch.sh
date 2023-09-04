@@ -1,7 +1,12 @@
 #!/bin/sh
 
 # launch roscore in the background
-roscore > /dev/null &
+rostopic list &> /dev/null
+roscore_status=$?
+if [ $roscore_status -ne 0 ]
+then
+    roscore > /dev/null &
+fi
 
 # build entire catkin workspace
 catkin build
