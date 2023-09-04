@@ -1,15 +1,16 @@
 // ROS
 #include <ros/ros.h>
-#include <message_filters/time_synchronizer.h>
-#include <message_filters/subscriber.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseArray.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
 
-// CPP std
-#include <queue>
+// PCL
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl/filters/voxel_grid.h>
 
 void map_callback(const sensor_msgs::PointCloud2::ConstPtr& msg) {
     ROS_INFO("map callback");
@@ -33,27 +34,56 @@ std::pair<sensor_msgs::PointCloud2ConstPtr, double> bufferedPcl;
 // configure this
 double syncThreshhold = 0.01;
 
+// temporary solution
+struct Point {
+    Point(): data{0.f, 0.f, 0.f, 1.f} {}
+
+    PCL_ADD_POINT4D;
+    float intensity; // intensity
+    union {
+      std::uint32_t t; // time since beginning of scan in nanoseconds
+      float time; // time since beginning of scan in seconds
+      double timestamp; // absolute timestamp in seconds
+    };
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+} EIGEN_ALIGN16;
+POINT_CLOUD_REGISTER_POINT_STRUCT(Point,
+                                 (float, x, x)
+                                 (float, y, y)
+                                 (float, z, z)
+                                 (float, intensity, intensity)
+                                 (std::uint32_t, t, t)
+                                 (float, time, time)
+                                 (double, timestamp, timestamp))
+
+void combined_callback() {
+    ROS_INFO("combined callback");
+
+    // extract pose
+    auto pose = bufferedPath.first->poses.back().pose;
+    // extract pcl
+    pcl::PointCloud<Point> pcl = {};
+    pcl::fromROSMsg(*bufferedPcl.first, pcl);
+
+    for (int i = 0; i < 100; i++) {
+        ROS_INFO("Point: %f, %f, %f, %f", pcl[i].data[0], pcl[i].data[1], pcl[i].data[2], pcl[i].data[3]);
+    }
+}
 void path_callback(const nav_msgs::PathConstPtr& msg) {
     double now = ros::Time::now().toSec();
-    ROS_INFO("path callback");
-    bufferedPath = {msg, now};
+    bufferedPath = { msg, now };
 
     if (now - bufferedPcl.second < syncThreshhold) {
-        ROS_INFO("combined callback with diff: %f", now - bufferedPcl.second);
+        combined_callback();
     }
-    
 }
 void pcl_deskewed_callback(const sensor_msgs::PointCloud2ConstPtr& msg) {
     double now = ros::Time::now().toSec();
-    ROS_INFO("pcl callback");
-    bufferedPcl = {msg, now};
+    bufferedPcl = { msg, now };
 
     if (now - bufferedPath.second < syncThreshhold) {
-        ROS_INFO("combined callback with diff: %f", now - bufferedPath.second);
+        combined_callback();
     }
-}
-void combined_callback(nav_msgs::PathConstPtr msgPath, sensor_msgs::PointCloud2ConstPtr msgPcl) {
-    ROS_INFO("combined callback");
 }
 
 int main(int argc, char **argv) {

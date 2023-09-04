@@ -8,7 +8,7 @@ find_package(catkin REQUIRED COMPONENTS
     geometry_msgs
     nav_msgs
     pcl_ros
-    message_filters)
+    pcl_conversions)
 
 ## Declare a catkin package
 catkin_package()
