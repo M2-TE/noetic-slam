@@ -7,7 +7,8 @@ find_package(catkin REQUIRED COMPONENTS
     sensor_msgs
     geometry_msgs
     nav_msgs
-    pcl_ros)
+    pcl_ros
+    message_filters)
 
 ## Declare a catkin package
 catkin_package()
