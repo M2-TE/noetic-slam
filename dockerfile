@@ -4,10 +4,8 @@ FROM ros:noetic AS init
 ARG DEBIAN_FRONTEND=noninteractive
 # INSTALL DEPENDENCIES
 RUN apt update && apt upgrade -y
-# general purpose
-RUN apt install -y git
 # catkin_tools
-RUN apt install -y python3-catkin-tools
+RUN apt install -y python3-catkin-tools catkin-lint
 # Ouster-ros dependencies
 RUN apt install -y ros-noetic-pcl-ros ros-noetic-rviz build-essential libeigen3-dev libjsoncpp-dev libspdlog-dev libcurl4-openssl-dev cmake
 # DLIO dependencies
