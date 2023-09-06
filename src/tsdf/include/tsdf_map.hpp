@@ -1,7 +1,7 @@
 #pragma once
 
 struct TSDF_Point {
-
+    float signedDistance;
 };
 
 class TSDF_Map {
@@ -16,8 +16,11 @@ public:
         pcl::fromROSMsg(*pMsgPointcloud, pointcloud);
 
         // TODO: add points into tsdf map
+        ROS_INFO("point count: %d", pointcloud.size());
     }
 private:
+    float maxSignedDistance = 3.0f;
+
     std::vector<geometry_msgs::Pose> poses;
     std::vector<TSDF_Point> points;
 };
