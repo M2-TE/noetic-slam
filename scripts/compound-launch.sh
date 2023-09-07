@@ -21,7 +21,12 @@ do
 done
 
 # replay the bagfile and sic dlio on it
+trap 'kill $DLIO_PID; exit' SIGINT
 scripts/dlio-launch.sh &
+DLIO_PID=$!
 scripts/rosbag-play.sh
 # give dlio some time to fully process the trauma
 sleep 2 && scripts/map-save.sh
+
+# since dlio was started in background, stop it manually
+kill -SIGINT $DLIO_PID
