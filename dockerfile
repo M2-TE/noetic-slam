@@ -11,7 +11,7 @@ RUN apt install -y ros-noetic-pcl-ros ros-noetic-rviz build-essential libeigen3-
 # DLIO dependencies
 RUN apt install -y libomp-dev libpcl-dev libeigen3-dev ros-noetic-pcl-ros
 # extras
-RUN apt install -y pcl-tools ros-noetic-rviz
+RUN apt install -y git pcl-tools ros-noetic-rviz 
 
 FROM init AS setup
 WORKDIR /root/repo/
