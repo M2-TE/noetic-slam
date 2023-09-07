@@ -16,6 +16,7 @@ RUN apt install -y git pcl-tools ros-noetic-rviz
 FROM init AS setup
 WORKDIR /root/repo/
 RUN echo 'source /opt/ros/noetic/setup.bash' >> /root/.bashrc
+ENV ROSCONSOLE_FORMAT='[${severity}]: ${message}'
 ENV NOETICSLAM_DOCKER=1
 
 # config env vars
