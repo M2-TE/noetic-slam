@@ -25,7 +25,5 @@ target_link_libraries(tsdf_node ${catkin_LIBRARIES})
 target_include_directories(tsdf_node 
     PRIVATE ${catkin_INCLUDE_DIRS}
     PRIVATE include)
-install(TARGETS tsdf_node
-        DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION} )
-# install(DIRECTORY cfg launch
-#         DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+install(TARGETS tsdf_node DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION} )
+# install(DIRECTORY cfg launch DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
