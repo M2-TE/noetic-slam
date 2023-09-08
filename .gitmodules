@@ -4,3 +4,6 @@
 [submodule "src/ouster"]
 	path = src/ouster
 	url = https://github.com/ouster-lidar/ouster-ros.git
+[submodule "src/tsdf/ext/phmap"]
+	path = src/tsdf/ext/phmap
+	url = https://github.com/greg7mdp/parallel-hashmap.git
