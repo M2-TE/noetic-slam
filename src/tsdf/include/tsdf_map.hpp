@@ -2,6 +2,8 @@
 
 #include <cstdint>
 #include <limits>
+#include <parallel_hashmap/phmap.h>
+#include "hash_spec.hpp"
 
 struct TSDF_Point {
     TSDF_Point(int8_t val) : signedDistance(val) {}
@@ -10,11 +12,9 @@ struct TSDF_Point {
     inline float get() {
         static constexpr float div = 1.0f / 127.0f;
         float f = static_cast<float>(signedDistance) * div;
-        // f = f*f*f; // higher accuracy in lower value ranges
         return f;
     }
     inline void set(float val) {
-        // val = std::cbrt(val);
         signedDistance = static_cast<int8_t>(val * 127.0f);
     }
 
@@ -37,7 +37,39 @@ public:
         // TODO: add points into tsdf map
         ROS_INFO("point count: %ld", pointcloud.size());
     }
+
 private:
     float maxSignedDistance = 3.0f;
 
+    // typedef uint32_t DAG_Pointer;
+    // struct DAG_Leaf {
+    //     std::array<TSDF_Point, 8> leaves;
+    // };
+    // struct DAG_Node {
+    //     uint8_t childMask;
+    //     uint8_t padding; // blank
+    //     uint16_t refcount; // number of parents
+    //     std::array<DAG_Pointer, 8> childPointers;
+    // };
+    // struct DAG_Level {
+    //     phmap::parallel_flat_hash_map<std::array<DAG_Pointer, 8>, DAG_Pointer> hashmap;
+    //     std::vector<DAG_Node> nodes;
+    // };
+    // std::vector<DAG_Level> dagLevels;
+
+    typedef uint32_t DAG_Pointer;
+    struct DAG_Leaf {
+        std::array<TSDF_Point, 8> leaves;
+    };
+    struct DAG_Node {
+        uint8_t childMask;
+        uint8_t padding; // blank
+        uint16_t refcount; // number of parents
+        std::array<DAG_Pointer, 8> childPointers;
+    };
+    struct DAG_Level {
+        phmap::parallel_flat_hash_map<std::array<DAG_Pointer, 8>, DAG_Pointer> hashmap;
+        std::vector<DAG_Node> nodes;
+    };
+    std::vector<DAG_Level> dagLevels;
 };

@@ -62,14 +62,14 @@ int main(int argc, char **argv) {
     ros::init(argc, argv, "tsdf_node");
     ros::NodeHandle nh;
 
-    for (int8_t i = -127; i < 127; i++) {
-        TSDF_Point point(i);
-        ROS_INFO("%f", point.get());
-    }
-    TSDF_Point point(127);
-    ROS_INFO("%f", point.get());
+    // for (int8_t i = -127; i < 127; i++) {
+    //     TSDF_Point point(i);
+    //     ROS_INFO("%f", point.get());
+    // }
+    // TSDF_Point point(127);
+    // ROS_INFO("%f", point.get());
 
     TSDF_Node tsdfNode(nh);
-    // ros::spin();
+    ros::spin();
     return 0;
 }
