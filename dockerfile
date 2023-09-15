@@ -25,9 +25,9 @@ ENV NOETICSLAM_DOCKER=1
 FROM setup AS config
 ENV PCL_TOPIC=/ouster/points
 ENV IMU_TOPIC=/ouster/imu
-ENV AUTOSTART=true
 ENV OUSTER_RVIZ=true
 ENV DLIO_RVIZ=true
+ENV AUTOSTART=false
 
 # MODE=replay, record, sensor
 ENV MODE=sensor
