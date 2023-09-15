@@ -1,4 +1,4 @@
-#/bin/bash
+#!/bin/bash
 
 if [ $NOETICSLAM_DOCKER ]
 then
