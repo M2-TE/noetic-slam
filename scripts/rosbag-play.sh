@@ -1,10 +1,8 @@
-#!/bin/sh
+#!/bin/bash
+
 if [ $NOETICSLAM_DOCKER ]
 then
-    sh -c "\
-    rosbag play \$BAG_PATH"
+    rosbag play $BAG_PATH
 else
-    docker exec -it noeticslam sh -c "\
-    . /opt/ros/noetic/setup.sh &&\
-    rosbag play $1"
+    docker exec -it noeticslam bash -c "source /opt/ros/noetic/setup.bash && /root/repo/scripts/rosbag-play.sh"
 fi

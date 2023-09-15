@@ -1,4 +1,11 @@
-#!/bin/sh
+#!/bin/bash
+
+if [ $NOETICSLAM_DOCKER ]
+then
+    echo "Use this script from the host, not the container!"
+    exit 1
+fi
+
 docker build -t noeticslam:latest $(dirname "$0")/..
 xhost +local:docker
 docker run -it \
