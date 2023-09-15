@@ -5,7 +5,9 @@ then
     source /root/repo/devel/setup.bash
     roslaunch ouster_ros driver.launch\
         sensor_hostname:=$LIDAR_ADDR\
-        viz:=$RVIZ_ON
+        viz:=$OUSTER_RVIZ\
+        imu_port:=7008\
+        lidar_port:=7009
         # point_cloud_frame:=lidar_frame
         # else can use sensor_frame
 else

@@ -6,7 +6,9 @@ then
     roslaunch ouster_ros record.launch\
         sensor_hostname:=$LIDAR_ADDR\
         bag_file:=/root/repo/bags/$FILENAME.bag\
-        viz:=$RVIZ_ON
+        viz:=$OUSTER_RVIZ\
+        imu_port:=7008\
+        lidar_port:=7009
         # point_cloud_frame:=lidar_frame
         # else can use sensor_frame
 else
