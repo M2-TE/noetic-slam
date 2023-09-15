@@ -23,6 +23,18 @@ ENV NOETICSLAM_DOCKER=1
 ENV PCL_TOPIC=/ouster/points
 ENV IMU_TOPIC=/ouster/imu
 ENV RVIZ_ON=false
+ENV MODE=replay
+# TODO: implement record mode properly
+# TODO: implement sensor mode properly
+
+# Requirements
+# MODE=replay: BAG_PATH, MAP_PATH
+# MODE=record: LIDAR_ADDR, BAG_PATH
+# MODE=sensor: LIDAR_ADDR, MAP_PATH
+# paths are relative to workspace root
 ENV BAG_PATH=bags/hsfulda33.bag
+ENV MAP_PATH=maps/hsfulda33
+ENV LIDAR_ADDR=192.168.168.128
+
+# DLIO specific setting to save maps
 ENV LEAF_SIZE=0.01
-ENV OUT_NAME=hsfulda33
