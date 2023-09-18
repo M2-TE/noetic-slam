@@ -2,6 +2,7 @@
 
 if [ $NOETICSLAM_DOCKER ]
 then
+    source /root/repo/devel/setup.bash
     rosservice call /robot/dlio_map/save_pcd $LEAF_SIZE /root/repo/maps/
     mv /root/repo/maps/dlio_map.pcd /root/repo/maps/$FILENAME.pcd
     pcl_pcd2ply /root/repo/maps/$FILENAME.pcd /root/repo/maps/$FILENAME.ply

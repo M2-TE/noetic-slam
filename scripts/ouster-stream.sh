@@ -11,5 +11,5 @@ then
         # point_cloud_frame:=lidar_frame
         # else can use sensor_frame
 else
-    docker exec -it noeticslam bash -c "source /opt/ros/noetic/setup.bash && /root/repo/scripts/ouster-sensor.sh"
+    docker exec -it noeticslam bash -c "source /opt/ros/noetic/setup.bash && /root/repo/scripts/ouster-stream.sh"
 fi

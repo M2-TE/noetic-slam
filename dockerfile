@@ -27,10 +27,10 @@ ENV PCL_TOPIC=/ouster/points
 ENV IMU_TOPIC=/ouster/imu
 ENV OUSTER_RVIZ=true
 ENV DLIO_RVIZ=true
-ENV AUTOSTART=false
+ENV AUTOSTART=true
 
-# MODE=replay, record, sensor
-ENV MODE=sensor
+# MODE=replay, record, stream
+ENV MODE=record
 ENV FILENAME=testbag
 ENV LIDAR_ADDR=192.168.168.128
 
