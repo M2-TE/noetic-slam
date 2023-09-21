@@ -27,11 +27,11 @@ ENV PCL_TOPIC=/ouster/points
 ENV IMU_TOPIC=/ouster/imu
 ENV OUSTER_RVIZ=true
 ENV DLIO_RVIZ=true
-ENV AUTOSTART=true
+ENV AUTOSTART=false
 
 # MODE=replay, record, stream
-ENV MODE=record
-ENV FILENAME=testbag
+ENV MODE=replay
+ENV FILENAME=hsfulda33_aug2023
 ENV LIDAR_ADDR=192.168.168.128
 
 # DLIO specific setting for saving maps
