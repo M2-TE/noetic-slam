@@ -26,8 +26,8 @@ ENV NVIDIA_DRIVER_CAPABILITIES compute,utility,display
 
 ## configurable env vars
 FROM setup AS config
-ENV AUTOSTART=true
 # MODE=replay, record, stream
+ENV AUTOSTART=false
 ENV MODE=replay
 ENV FILENAME=hsfulda33_sep2023
 ENV LIDAR_ADDR=192.168.168.128
