@@ -4,7 +4,7 @@ if [ $NOETICSLAM_DOCKER ]
 then
     roslaunch ouster_ros driver.launch\
         sensor_hostname:=$LIDAR_ADDR\
-        viz:=$OUSTER_RVIZ\
+        viz:=$RVIZ_OUSTER\
         imu_port:=7008\
         lidar_port:=7009
         # point_cloud_frame:=lidar_frame

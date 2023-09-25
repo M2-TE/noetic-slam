@@ -37,8 +37,8 @@ ENV PCL_TOPIC=/ouster/points
 ENV IMU_TOPIC=/ouster/imu
 
 # RVIZ
-ENV OUSTER_RVIZ=true
-ENV DLIO_RVIZ=true
+ENV RVIZ_OUSTER=true
+ENV RVIZ_DLIO=true
 
 # DLIO specific setting for saving maps
 ENV LEAF_SIZE=0.01
