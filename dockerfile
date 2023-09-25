@@ -19,7 +19,7 @@ RUN echo 'source /opt/ros/noetic/setup.bash' >> /root/.bashrc
 RUN echo 'source /root/repo/devel/setup.bash' >> /root/.bashrc
 RUN echo 'PATH="$PATH:/root/repo/scripts"' >> /root/.bashrc
 ENTRYPOINT [ "/bin/bash", "/root/repo/scripts/entrypoint.sh" ]
-ENV ROSCONSOLE_FORMAT='[${severity}]: ${message}'
+ENV ROSCONSOLE_FORMAT='[ROS${severity}]: ${message}'
 ENV NOETICSLAM_DOCKER=1
 
 
