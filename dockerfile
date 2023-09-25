@@ -21,10 +21,17 @@ RUN echo 'PATH="$PATH:/root/repo/scripts"' >> /root/.bashrc
 ENTRYPOINT [ "/bin/bash", "/root/repo/scripts/entrypoint.sh" ]
 ENV ROSCONSOLE_FORMAT='[ROS${severity}]: ${message}'
 ENV NOETICSLAM_DOCKER=1
-
+ENV NVIDIA_VISIBLE_DEVICES all
+ENV NVIDIA_DRIVER_CAPABILITIES compute,utility,display
 
 ## configurable env vars
 FROM setup AS config
+ENV AUTOSTART=true
+# MODE=replay, record, stream
+ENV MODE=replay
+ENV FILENAME=hsfulda33_sep2023
+ENV LIDAR_ADDR=192.168.168.128
+
 # Topics (Pointcloud and IMU)
 ENV PCL_TOPIC=/ouster/points
 ENV IMU_TOPIC=/ouster/imu
@@ -32,12 +39,6 @@ ENV IMU_TOPIC=/ouster/imu
 # RVIZ
 ENV OUSTER_RVIZ=true
 ENV DLIO_RVIZ=true
-
-# MODE=replay, record, stream
-ENV AUTOSTART=false
-ENV MODE=replay
-ENV FILENAME=hsfulda33_sep2023
-ENV LIDAR_ADDR=192.168.168.128
 
 # DLIO specific setting for saving maps
 ENV LEAF_SIZE=0.01

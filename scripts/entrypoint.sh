@@ -8,6 +8,7 @@ then
     
     if [ $AUTOSTART = "true" ]
     then
+        source /root/repo/devel/setup.bash
         scripts/compound-launch.sh
     else
         bash

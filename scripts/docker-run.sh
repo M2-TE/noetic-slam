@@ -11,10 +11,10 @@ xhost +local:docker
 docker run -it \
     --name noeticslam \
     --rm \
-    --privileged \
     --publish 7008:7008/udp \
     --publish 7009:7009/udp \
     --mount type=bind,source="$(pwd)/$(dirname "$0")"/..,target=/root/repo \
+    --gpus all \
     --env DISPLAY=$DISPLAY \
     --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
     noeticslam:latest
