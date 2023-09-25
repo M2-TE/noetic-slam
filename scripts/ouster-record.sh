@@ -2,7 +2,6 @@
 
 if [ $NOETICSLAM_DOCKER ]
 then
-    source /root/repo/devel/setup.bash
     roslaunch ouster_ros record.launch\
         sensor_hostname:=$LIDAR_ADDR\
         bag_file:=/root/repo/bags/$FILENAME.bag\
@@ -12,5 +11,5 @@ then
         # point_cloud_frame:=lidar_frame
         # else can use sensor_frame
 else
-    docker exec -it noeticslam bash -c "source /opt/ros/noetic/setup.bash && /root/repo/scripts/ouster-record.sh"
+    docker exec -it noeticslam bash -c "source /opt/ros/noetic/setup.bash && source /root/repo/devel/setup.bash && /root/repo/scripts/ouster-record.sh"
 fi
