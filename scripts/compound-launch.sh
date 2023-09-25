@@ -2,9 +2,6 @@
 
 if [ $NOETICSLAM_DOCKER ]
 then
-    # build entire catkin workspace
-    catkin build
-
     # ensure roscore is up and running
     rostopic list &> /dev/null
     roscore_status=$?

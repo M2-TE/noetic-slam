@@ -4,6 +4,8 @@ if [ $NOETICSLAM_DOCKER ]
 then
     source /opt/ros/noetic/setup.bash
     roscore > /dev/null &
+    catkin build
+    
     if [ $AUTOSTART = "true" ]
     then
         scripts/compound-launch.sh

@@ -11,27 +11,32 @@ RUN apt install -y ros-noetic-pcl-ros ros-noetic-rviz build-essential libeigen3-
 # DLIO dependencies
 RUN apt install -y libomp-dev libpcl-dev libeigen3-dev ros-noetic-pcl-ros
 # extras
-RUN apt install -y git pcl-tools ros-noetic-rviz
+RUN apt install -y git iputils-ping pcl-tools
 
 FROM init AS setup
 WORKDIR /root/repo/
 RUN echo 'source /opt/ros/noetic/setup.bash' >> /root/.bashrc
+RUN echo 'source /root/repo/devel/setup.bash' >> /root/.bashrc
 RUN echo 'PATH="$PATH:/root/repo/scripts"' >> /root/.bashrc
 ENTRYPOINT [ "/bin/bash", "/root/repo/scripts/entrypoint.sh" ]
 ENV ROSCONSOLE_FORMAT='[${severity}]: ${message}'
 ENV NOETICSLAM_DOCKER=1
 
-# configurable env vars
+
+## configurable env vars
 FROM setup AS config
+# Topics (Pointcloud and IMU)
 ENV PCL_TOPIC=/ouster/points
 ENV IMU_TOPIC=/ouster/imu
+
+# RVIZ
 ENV OUSTER_RVIZ=true
 ENV DLIO_RVIZ=true
-ENV AUTOSTART=false
 
 # MODE=replay, record, stream
+ENV AUTOSTART=false
 ENV MODE=replay
-ENV FILENAME=hsfulda33_aug2023
+ENV FILENAME=hsfulda33_sep2023
 ENV LIDAR_ADDR=192.168.168.128
 
 # DLIO specific setting for saving maps
