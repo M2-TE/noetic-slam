@@ -8,7 +8,6 @@ namespace std {
             return phmap::HashState().combine(0, 
                 key[0], key[1], key[2], key[3],
                 key[4], key[5], key[6], key[7]);
-            // return phmap::HashState().combine();// TODO: chain states?
         }
     };
 }

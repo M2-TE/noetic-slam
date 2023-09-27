@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.0)
+cmake_minimum_required(VERSION 3.0)
 project(tsdf LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 
@@ -12,8 +12,13 @@ set(CATKIN_PACKAGES
 find_package(catkin REQUIRED COMPONENTS ${CATKIN_PACKAGES})
 catkin_package(CATKIN_DEPENDS ${CATKIN_PACKAGES})
 
+## Find Eigen
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+
 add_executable(tsdf_node "src/tsdf_node.cpp")
-target_link_libraries(tsdf_node ${catkin_LIBRARIES})
+target_link_libraries(tsdf_node 
+    ${catkin_LIBRARIES}
+    Eigen3::Eigen)
 target_include_directories(tsdf_node 
     PRIVATE ${catkin_INCLUDE_DIRS}
     PRIVATE include
