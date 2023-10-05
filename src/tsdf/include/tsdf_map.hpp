@@ -42,17 +42,11 @@ private:
         rootPos |= (DAG_RootPos)rootParentPos.y() << xBits;
         rootPos |= (DAG_RootPos)rootParentPos.z() << (xBits + yBits);
 
-        // look up root and set up iteration
+        // look up root and set up iteration (creates new node if not already present)
         DAG_Node& currentNode = dagRoots[rootPos];
 
-
-        /// SCRAP THE STUFF BELOW
-        // instead, first check if the localPos is present?
-        // nah idk, that doesnt seem like a good idea..
-        // -> back to the drawing board
-
         // iterate through DAG levels to reach the correct leaf
-        for (int i = 0; i < dagLevelCount - 1; i++) {
+        for (int i = 0; i < dagLevelCount; i++) {
             DAG_Level& level = dagLevels[i];
 
             // check which octant the voxel falls into (check each dimension individually)
@@ -63,27 +57,32 @@ private:
             maskBitOffset |= (localPos.z() < curDimThreshhold) << 2;
 
             // 1 bit for each octant
+            // max value of maskBitOffset here is 7
             uint8_t maskBit = 1 << maskBitOffset;
 
             // check if this child is already present in current node
             if (currentNode.childMask & maskBit) {
                 // go one level deeper
-                // might just be able to negate if condition and leave this out
+                DAG_Pointer childPointer = currentNode.childPointers[maskBitOffset];
+                currentNode = level.nodes[childPointer];
             }
             else {
                 // create child node
-                // check hash of child node to see if it already exists
+                
             }
         }
+
+        // TODO: access correct leaf node of currentNode
     }
 
 private:
     // compile time constants
     static constexpr float voxelToCoordRatio = 0.01f; // every voxel unit represents this distance
-    static constexpr float coordToVoxelRatio = 1.0f / voxelToCoordRatio; // reciprocal
-    static constexpr int32_t dagLevelCount = 3; // number of levels including DAG_Root and DAG_Leaves
+    static constexpr float coordToVoxelRatio = 1.0f / voxelToCoordRatio; // simple reciprocal
+    static constexpr int32_t totalDagLevelCount = 3; // number of levels including DAG_Root and DAG_Leaves
+    static constexpr int32_t dagLevelCount = totalDagLevelCount - 2; // number of levels excluding DAG_Root and DAG_Leaves
     static constexpr int32_t leafDimSize = 1; // leaves are cubic 1x1x1 voxels
-    static constexpr int32_t rootDimSize = leafDimSize << dagLevelCount; // roots are cubic voxels with dim size depending on the number of DAG levels
+    static constexpr int32_t rootDimSize = leafDimSize << totalDagLevelCount; // roots are cubic voxels with dim size depending on the number of DAG levels
     static constexpr float rootDimSizeReal = (float)rootDimSize * voxelToCoordRatio;
 
     // some renaming for readability
@@ -95,7 +94,7 @@ private:
     static constexpr uint8_t zBits = 16;
 
     // prototype structures
-    struct DAG_Leaves {
+    struct DAG_LeavesNode {
         std::array<TSDF_Point, 8> leaves;
     };
     struct DAG_Node {
@@ -110,6 +109,6 @@ private:
     };
 
     // storage
-    std::array<DAG_Level, dagLevelCount - 2> dagLevels;
+    std::array<DAG_Level, dagLevelCount> dagLevels;
     phmap::btree_map<DAG_RootPos, DAG_Node> dagRoots;
 };
