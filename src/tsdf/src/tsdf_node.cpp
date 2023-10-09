@@ -24,6 +24,7 @@ public:
     TSDF_Node(ros::NodeHandle nh) {
         subPath = nh.subscribe("robot/dlio/odom_node/path", queueSize, &TSDF_Node::callback_path, this);
         subPcl = nh.subscribe("robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
+        tsdfMap.DEBUGGING_INSERT();
     }
 
 public:
