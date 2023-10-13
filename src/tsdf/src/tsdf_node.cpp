@@ -22,6 +22,7 @@
 class TSDF_Node {
 public:
     TSDF_Node(ros::NodeHandle nh) {
+        static_assert(sizeof(uint64_t) == sizeof(size_t));
         subPath = nh.subscribe("robot/dlio/odom_node/path", queueSize, &TSDF_Node::callback_path, this);
         subPcl = nh.subscribe("robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
         tsdfMap.DEBUGGING_INSERT();
