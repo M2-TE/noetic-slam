@@ -4,6 +4,7 @@
 #include <limits>
 #include <vector>
 #include <bit>
+#include <optional>
 
 #include <parallel_hashmap/phmap.h>
 #include <parallel_hashmap/btree.h>
@@ -47,17 +48,42 @@ public:
         Eigen::Vector3i localPos = voxelPos.unaryExpr([](const int x){ return x & (rootDimSize - 1); }); // modulo
         print_vec3i(localPos, "Local position of inserted point is");
 
-        // this is just a glorified for-loop, calling insert_point_internal each iteration
-        [&]<size_t... indices>(std::index_sequence<indices...>){
-            ((insert_point_internal<indices>(localPos)), ...);
-        }(std::make_index_sequence<nDagLevels>{});
+        // shenanigans
+        auto currentNode = try_get_root(voxelRootPos);
+        if (currentNode.has_value()) {
+            // go and get all the child nodes recursively until a node doesnt exist
+            for (uint32_t i = 0; i < nDagLevels; i++) {
+                // try_get_node();
+            }
+        }
+        else {
+            // create nodes starting from leaf
+        }
+
+        // for later
+        // this is just a glorified for-loop, calling try_get_node each iteration
+        // [&]<size_t... indices>(std::index_sequence<indices...>){
+        //     (try_get_node<indices>(localPos), ...);
+        // }(std::make_index_sequence<nDagLevels>{});
     }
 
 private:
-    template<size_t i> // iteration with compile-time constant i
-    inline void insert_point_internal(Eigen::Vector3i localPos) {
+    // template<size_t i> // iteration with compile-time constant i
+    inline std::optional<DAG::Pointer> try_get_node(Eigen::Vector3i localPos) {
         // TODO
     }
+
+    // returns pointer to root node, else returns nothing
+    inline std::optional<DAG::Pointer> try_get_root(Eigen::Vector3i voxelRootPos) {
+        DAG::RootPos rootPos;
+        rootPos |= (DAG::RootPos)voxelRootPos.x();
+        rootPos |= (DAG::RootPos)voxelRootPos.y() << (DAG::xRootBits);
+        rootPos |= (DAG::RootPos)voxelRootPos.z() << (DAG::xRootBits + DAG::yRootBits);
+
+        if (dagRootMap.contains(rootPos)) return dagRootMap[rootPos];
+        return {};
+    }
+
 
     inline void insert_point_old(Eigen::Vector3f realPos) {
         // // convert from 1 to voxel position
@@ -161,5 +187,6 @@ private:
     static constexpr int32_t rootDimSize = 2 << nDagLevels; // voxel size of each root node dimension
 
     // storage
+    phmap::flat_hash_map<DAG::RootPos, DAG::Pointer> dagRootMap;
     std::array<DAG::Level, nDagLevels> dagLevels;
 };
