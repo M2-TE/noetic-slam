@@ -30,6 +30,7 @@ then
         --publish 7008:7008/udp \
         --publish 7009:7009/udp \
         --mount type=bind,source="$(pwd)/$(dirname "$0")"/..,target=/root/repo \
+        --device=/dev/dri:/dev/dri \
         --env DISPLAY=$DISPLAY \
         --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
         noeticslam:latest
