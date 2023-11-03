@@ -19,7 +19,7 @@ then
         scripts/rosbag-replay.sh
 
         # give dlio some time to fully process the trauma
-        sleep 2 && scripts/map-save.sh
+        sleep 2 && scripts/dlio-save.sh
 
     elif [ $MODE = "record" ]
     then
