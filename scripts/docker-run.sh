@@ -1,7 +1,6 @@
 #!/bin/bash
 
-if [ $NOETICSLAM_DOCKER ]
-then
+if [ $NOETICSLAM_DOCKER ]; then
     echo "Use this script from the host, not the container!"
     exit 1
 fi
@@ -21,8 +20,7 @@ docker run -it \
 docker_status=$?
 
 # dont mount gpus when none can be found
-if [ $docker_status -ne 0 ]
-then
+if [ $docker_status -ne 0 ]; then
     echo "GPU passthrough failed, falling back to default"
     docker run -it \
         --name noeticslam \
