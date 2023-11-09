@@ -12,8 +12,6 @@ RUN apt-get install -y ros-noetic-pcl-ros ros-noetic-rviz build-essential libeig
 RUN apt-get install -y libomp-dev libpcl-dev
 # extra utils
 RUN apt-get install -y git iputils-ping pcl-tools
-# enable rendering
-RUN apt-get install -y libgl1-mesa-glx libgl1-mesa-dri
 
 FROM init AS setup
 WORKDIR /root/repo/
@@ -24,7 +22,8 @@ ENTRYPOINT [ "/bin/bash", "/root/repo/scripts/.entrypoint.sh" ]
 ENV ROSCONSOLE_FORMAT='[ROS${severity}]: ${message}'
 ENV NOETICSLAM_DOCKER=1
 ENV NVIDIA_VISIBLE_DEVICES all
-ENV NVIDIA_DRIVER_CAPABILITIES compute,utility,display
+ENV NVIDIA_DRIVER_CAPABILITIES all
+ENV QT_X11_NO_MITSHM=1
 
 ## configurable env vars
 FROM setup AS config

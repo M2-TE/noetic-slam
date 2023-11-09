@@ -23,7 +23,8 @@ then
         # replay the bagfile and sic dlio on it
         scripts/dlio-launch.sh &
         DLIO_PID=$!
-        scripts/rosbag-replay.sh
+        # scripts/rosbag-replay.sh
+        scripts/ouster-replay.sh
 
         # give dlio some time to fully process the trauma
         sleep 2 && scripts/dlio-save.sh
