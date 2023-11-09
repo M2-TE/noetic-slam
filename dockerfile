@@ -12,6 +12,8 @@ RUN apt-get install -y ros-noetic-pcl-ros ros-noetic-rviz build-essential libeig
 RUN apt-get install -y libomp-dev libpcl-dev
 # extra utils
 RUN apt-get install -y git iputils-ping pcl-tools
+# for mesa rendering
+# RUN apt-get install -y mesa-utils libgl1-mesa-glx libgl1-mesa-dri
 
 FROM init AS setup
 WORKDIR /root/repo/
