@@ -30,10 +30,15 @@ ENV QT_X11_NO_MITSHM=1
 ## configurable env vars
 FROM setup AS config
 # MODE=replay, record, stream
-ENV AUTOSTART=false
 ENV MODE=replay
+ENV AUTOSTART=false
 ENV FILENAME=hsfd_nov2023
 ENV LIDAR_ADDR=192.168.168.128
+
+# Hardware
+ENV LIDAR=ouster
+# GPU=integrated, nvidia, amd
+ENV GPU=integrated
 
 # Topics (Pointcloud and IMU)
 ENV PCL_TOPIC=/ouster/points
@@ -41,7 +46,7 @@ ENV IMU_TOPIC=/ouster/imu
 
 # RVIZ
 ENV RVIZ_OUSTER=false
-ENV RVIZ_DLIO=false
+ENV RVIZ_DLIO=true
 
 # DLIO specific setting for saving maps
 ENV LEAF_SIZE=0.01

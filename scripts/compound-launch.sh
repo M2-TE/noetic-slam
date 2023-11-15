@@ -15,14 +15,14 @@ then
     if [ -n "$1" ]; then
         selected_mode=$1
     else
-        selected_mode=$MODE
+        selected_mode=${MODE}
     fi
 
     # handle selected mode
     if [ $selected_mode = "replay" ]; then
         # replay the bagfile and sic dlio on it
         scripts/dlio-launch.sh &
-        DLIO_PID=$!
+        # DLIO_PID=$!
         # scripts/rosbag-replay.sh
         scripts/ouster-replay.sh
 
@@ -30,12 +30,14 @@ then
         sleep 2 && scripts/dlio-save.sh
 
     elif [ $selected_mode = "record" ]; then
+        rosbag record -O bags/${FILENAME}_generic.bag ${PCL_TOPIC} ${IMU_TOPIC} &
+        # ROSBAG_PID=$!
         scripts/ouster-record.sh
 
     elif [ $selected_mode = "stream" ]; then
         # stream the data and sic dlio on it
         scripts/dlio-launch.sh &
-        DLIO_PID=$!
+        # DLIO_PID=$!
         scripts/ouster-stream.sh
 
     else

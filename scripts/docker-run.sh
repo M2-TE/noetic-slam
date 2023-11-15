@@ -6,36 +6,41 @@ if [ $NOETICSLAM_DOCKER ]; then
 fi
 
 docker build -t noeticslam:latest $(dirname "$0")/..
-xhost +local:docker
 
-# with nvidia gpu
-docker run -it \
-    --name noeticslam \
-    --rm \
-    --privileged \
-    --publish 7008:7008/udp \
-    --publish 7009:7009/udp \
-    --mount type=bind,source="$(pwd)/$(dirname "$0")"/..,target=/root/repo \
-    --gpus all \
-    --env DISPLAY=$DISPLAY \
-    --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
-    --runtime nvidia \
-    noeticslam:latest
-docker_status=$?
+selected_mode="integrated"
+if [ -n "$1" ]; then
+    selected_mode=$1
+fi
 
-# dont mount gpus when none can be found
-if [ $docker_status -ne 0 ]; then
-    echo "GPU passthrough failed, falling back to default"
+if [ $selected_mode = "integrated" ]; then
     # with intel integrated gpu
+    xhost +local:docker
     docker run -it \
         --name noeticslam \
         --rm \
-        --privileged \
         --publish 7008:7008/udp \
         --publish 7009:7009/udp \
         --mount type=bind,source="$(pwd)/$(dirname "$0")"/..,target=/root/repo \
         --device=/dev/dri:/dev/dri \
-        --env DISPLAY=$DISPLAY \
+        --env DISPLAY=${DISPLAY} \
         --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
         noeticslam:latest
+elif [ $selected_mode = "nvidia" ]; then
+    # with nvidia gpu
+    # xhost +local:docker
+    docker run -it \
+        --name noeticslam \
+        --rm \
+        --publish 7008:7008/udp \
+        --publish 7009:7009/udp \
+        --mount type=bind,source="$(pwd)/$(dirname "$0")"/..,target=/root/repo \
+        --gpus all \
+        --env DISPLAY=${DISPLAY} \
+        --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
+        --runtime nvidia \
+        noeticslam:latest
+elif [ $selected_mode = "amd" ]; then
+    # with amd gpu
+    # xhost +local:docker
+    echo "amd implementation not tested yet (need an amd gpu first)"
 fi
