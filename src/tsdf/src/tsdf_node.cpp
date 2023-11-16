@@ -19,6 +19,9 @@
 // OTHER
 #include "tsdf_map.hpp"
 
+
+// TODO: only reallyt need deskewed pointcloud, points are already transformed
+
 class TSDF_Node {
 public:
     TSDF_Node(ros::NodeHandle nh) {

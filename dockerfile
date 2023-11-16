@@ -46,7 +46,10 @@ ENV IMU_TOPIC=/ouster/imu
 
 # RVIZ
 ENV RVIZ_OUSTER=false
-ENV RVIZ_DLIO=true
+ENV RVIZ_DLIO=false
 
 # DLIO specific setting for saving maps
 ENV LEAF_SIZE=0.01
+
+# pcl_concatenate_points_pcd maps/*.pcd
+# rosrun pcl_ros pointcloud_to_pcd input:=/my_cloud _prefix:=/tmp/pcd/vel_ TODO EDIT THIS
