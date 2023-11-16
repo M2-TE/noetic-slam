@@ -29,6 +29,17 @@ public:
         subPcl = nh.subscribe("robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
         // tsdfMap.DEBUGGING_INSERT();
     }
+    ~TSDF_Node() {
+        std::cout << "saving temporary map as ply..." << std::endl;
+        int res = pcl::io::savePLYFile("/root/repo/maps/full.ply", rawGlobalMap);
+        if (res) std::cout << "failed saving ply file: " << res << std::endl;
+        else std::cout << "success" << std::endl;
+
+        std::cout << "saving temporary map as pcd..." << std::endl;
+        res = pcl::io::savePCDFile("/root/repo/maps/full.pcd", rawGlobalMap);
+        if (res) std::cout << "failed saving ply file: " << res << std::endl;
+        else std::cout << "success" << std::endl;
+    }
 
 public:
     void callback_pcl_deskewed(const sensor_msgs::PointCloud2ConstPtr& msg) {
@@ -39,23 +50,27 @@ public:
         // tsdfMap.DEBUGGING_INSERT();
 
         rawGlobalMap += pointcloud;
-        if (iClouds >= nMaxCloudsPerPly - 1) {
-            std::string path = "/root/repo/maps/testoutput" + std::to_string(iPly++) + ".ply";
-            std::cout << "saving temporary map to" << path << std::endl;
-            int res = pcl::io::savePLYFile(path, rawGlobalMap);
-            if (!res) std::cout << "failed saving ply file" << std::endl;
-        }
+        // iClouds++;
+        // if (iClouds >= nMaxCloudsPerPly - 1) {
+        //     std::string path = "/root/repo/maps/testoutput" + std::to_string(iPly++) + ".ply";
+        //     std::cout << "saving temporary map to" << path << "..." << std::endl;
+        //     int res = pcl::io::savePLYFile(path, rawGlobalMap); // pcd instead??
+        //     // int res = pcl::io::savePCDFile(path, rawGlobalMap);
+        //     rawGlobalMap = {};
+        //     iClouds = 0;
+        //     if (res) std::cout << "failed saving ply file: " << res << std::endl;
+        // }
     }
 
 private:
     TSDF_Map tsdfMap;
-    uint32_t queueSize = 10;
+    uint32_t queueSize = 100;
     ros::Subscriber subPath;
     ros::Subscriber subPcl;
 
     // temporary stuff for saving raw maps:
     pcl::PointCloud<Point> rawGlobalMap;
-    size_t nMaxCloudsPerPly = 500;
+    size_t nMaxCloudsPerPly = 100;
     size_t iClouds = 0;
     size_t iPly = 0;
 };
