@@ -14,12 +14,9 @@
 
 class TSDF_Map {
 public:
-    void add_pointcloud(nav_msgs::PathConstPtr& pMsgPath, sensor_msgs::PointCloud2ConstPtr& pMsgPointcloud) {
+    void add_pointcloud(sensor_msgs::PointCloud2ConstPtr& pMsgPointcloud) {
         ROS_INFO("adding pointcloud to tsdf");
 
-        // extract pose
-        geometry_msgs::Pose pose = {};
-        pose = pMsgPath->poses.back().pose;
         // extract pcl
         pcl::PointCloud<Point> pointcloud = {};
         pcl::fromROSMsg(*pMsgPointcloud, pointcloud);

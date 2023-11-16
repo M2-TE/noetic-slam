@@ -11,6 +11,7 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/io/ply_io.h>
 
 // DLIO
 // #include "dlio/dlio.h"
@@ -25,28 +26,24 @@
 class TSDF_Node {
 public:
     TSDF_Node(ros::NodeHandle nh) {
-        static_assert(sizeof(uint64_t) == sizeof(size_t));
-        subPath = nh.subscribe("robot/dlio/odom_node/path", queueSize, &TSDF_Node::callback_path, this);
         subPcl = nh.subscribe("robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
-        tsdfMap.DEBUGGING_INSERT();
         // tsdfMap.DEBUGGING_INSERT();
     }
 
 public:
-    void callback_path(const nav_msgs::PathConstPtr& msg) {
-        double now = ros::Time::now().toSec();
-        bufferedPath = { msg, now };
-
-        if (now - bufferedPcl.second < syncThreshhold) {
-            tsdfMap.add_pointcloud(bufferedPath.first, bufferedPcl.first);
-        }
-    }
     void callback_pcl_deskewed(const sensor_msgs::PointCloud2ConstPtr& msg) {
-        double now = ros::Time::now().toSec();
-        bufferedPcl = { msg, now };
+        // extract pcl
+        pcl::PointCloud<Point> pointcloud = {};
+        pcl::fromROSMsg(*msg, pointcloud);
 
-        if (now - bufferedPath.second < syncThreshhold) {
-            tsdfMap.add_pointcloud(bufferedPath.first, bufferedPcl.first);
+        // tsdfMap.DEBUGGING_INSERT();
+
+        rawGlobalMap += pointcloud;
+        if (iClouds >= nMaxCloudsPerPly - 1) {
+            std::string path = "/root/repo/maps/testoutput" + std::to_string(iPly++) + ".ply";
+            std::cout << "saving temporary map to" << path << std::endl;
+            int res = pcl::io::savePLYFile(path, rawGlobalMap);
+            if (!res) std::cout << "failed saving ply file" << std::endl;
         }
     }
 
@@ -56,25 +53,16 @@ private:
     ros::Subscriber subPath;
     ros::Subscriber subPcl;
 
-    // buffer with timestamp
-    std::pair<nav_msgs::PathConstPtr, double> bufferedPath;
-    std::pair<sensor_msgs::PointCloud2ConstPtr, double> bufferedPcl;
-
-    // configure this
-    double syncThreshhold = 0.01;
+    // temporary stuff for saving raw maps:
+    pcl::PointCloud<Point> rawGlobalMap;
+    size_t nMaxCloudsPerPly = 500;
+    size_t iClouds = 0;
+    size_t iPly = 0;
 };
 
 int main(int argc, char **argv) {
     ros::init(argc, argv, "tsdf_node");
     ros::NodeHandle nh;
-
-    // for (int8_t i = -127; i < 127; i++) {
-    //     TSDF_Point point(i);
-    //     ROS_INFO("%f", point.get());
-    // }
-    // TSDF_Point point(127);
-    // ROS_INFO("%f", point.get());
-
     TSDF_Node tsdfNode(nh);
     ros::spin();
     return 0;
