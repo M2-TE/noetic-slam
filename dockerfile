@@ -12,8 +12,10 @@ RUN apt-get install -y ros-noetic-pcl-ros ros-noetic-rviz build-essential libeig
 RUN apt-get install -y libomp-dev libpcl-dev
 # extra utils
 RUN apt-get install -y git iputils-ping pcl-tools
-# for mesa rendering
-# RUN apt-get install -y mesa-utils libgl1-mesa-glx libgl1-mesa-dri
+# testing stuff
+# RUN apt-get install -y ninja-build gettext cmake unzip curl
+# RUN git clone https://github.com/neovim/neovim /root/neovim
+# RUN cd /root/neovim && git checkout stable && make CMAKE_BUILD_TYPE=Release && make install
 
 FROM init AS setup
 WORKDIR /root/repo/
@@ -32,7 +34,7 @@ FROM setup AS config
 # MODE=replay, record, stream
 ENV MODE=replay
 ENV AUTOSTART=false
-ENV FILENAME=hsfd_nov2023
+ENV FILENAME=hsfd_nov2023_20hz
 ENV LIDAR_ADDR=192.168.168.128
 
 # Hardware
@@ -45,7 +47,7 @@ ENV PCL_TOPIC=/ouster/points
 ENV IMU_TOPIC=/ouster/imu
 
 # RVIZ
-ENV RVIZ_OUSTER=false
+ENV RVIZ_OUSTER=true
 ENV RVIZ_DLIO=false
 
 # DLIO specific setting for saving maps

@@ -20,25 +20,26 @@
 // OTHER
 #include "tsdf_map.hpp"
 
-
-// TODO: only reallyt need deskewed pointcloud, points are already transformed
-
 class TSDF_Node {
 public:
     TSDF_Node(ros::NodeHandle nh) {
         subPcl = nh.subscribe("robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
-        // tsdfMap.DEBUGGING_INSERT();
+
+
+        // for debug purposes
+        tsdfMap.insert_point({ 5.70f, 2.50f, 8.60f });
+        tsdfMap.insert_point({ 5.70f, 2.51f, 8.60f });
     }
     ~TSDF_Node() {
-        std::cout << "saving temporary map as ply..." << std::endl;
-        int res = pcl::io::savePLYFile("/root/repo/maps/full.ply", rawGlobalMap);
-        if (res) std::cout << "failed saving ply file: " << res << std::endl;
-        else std::cout << "success" << std::endl;
+        // std::cout << "saving temporary map as ply..." << std::endl;
+        // int res = pcl::io::savePLYFile("/root/repo/maps/full.ply", rawGlobalMap);
+        // if (res) std::cout << "failed saving ply file: " << res << std::endl;
+        // else std::cout << "success" << std::endl; 
 
-        std::cout << "saving temporary map as pcd..." << std::endl;
-        res = pcl::io::savePCDFile("/root/repo/maps/full.pcd", rawGlobalMap);
-        if (res) std::cout << "failed saving ply file: " << res << std::endl;
-        else std::cout << "success" << std::endl;
+        // std::cout << "saving temporary map as pcd..." << std::endl;
+        // res = pcl::io::savePCDFile("/root/repo/maps/full.pcd", rawGlobalMap);
+        // if (res) std::cout << "failed saving ply file: " << res << std::endl;
+        // else std::cout << "success" << std::endl;
     }
 
 public:
@@ -47,9 +48,7 @@ public:
         pcl::PointCloud<Point> pointcloud = {};
         pcl::fromROSMsg(*msg, pointcloud);
 
-        // tsdfMap.DEBUGGING_INSERT();
-
-        rawGlobalMap += pointcloud;
+        // rawGlobalMap += pointcloud;
         // iClouds++;
         // if (iClouds >= nMaxCloudsPerPly - 1) {
         //     std::string path = "/root/repo/maps/testoutput" + std::to_string(iPly++) + ".ply";

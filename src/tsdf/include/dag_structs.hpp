@@ -1,8 +1,8 @@
 #pragma once
 
 namespace DAG {
-    typedef uint32_t* PointerRaw; // raw pointer to the actual memory location of a node
-    typedef uint32_t Pointer; // position of node in a level's node vector
+    typedef uint32_t* PointerRaw; // raw pointer to the actual memory location of a node (dangerous, might face invalidation!)
+    typedef uint32_t Pointer; // position of node in a level's data vector
     typedef uint32_t LeafMask; // contains 8 leaves, each of which are 4 bits
     typedef uint8_t ChildMask; // contains 8 children
 

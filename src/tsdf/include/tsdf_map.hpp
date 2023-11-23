@@ -21,66 +21,84 @@ public:
         pcl::PointCloud<Point> pointcloud = {};
         pcl::fromROSMsg(*pMsgPointcloud, pointcloud);
 
-        ROS_INFO("point count: %ld", pointcloud.size());
+        // ROS_INFO("point count: %ld", pointcloud.size());
         for (auto cur = pointcloud.begin(); cur != pointcloud.end(); cur++) {
             // TODO: transform points with pose
             insert_point(cur->getVector3fMap());
         }
     }
-    
-    void DEBUGGING_INSERT() {
-        insert_point({ 5.7f, 2.5f, 8.6f });
-    }
 
     // insert single point into DAG
     inline void insert_point(Eigen::Vector3f realPos){
 
-        print_vec3f(realPos, "> Inserting new point with position");
-        Eigen::Vector3i voxelPos = (realPos * coordToVoxelRatio).cast<int>();
-        print_vec3i(voxelPos, "Voxel position of inserted point is");
-
         // figure out which root the voxel will be in, as well as its position local to that root
+        Eigen::Vector3i voxelPos = (realPos * coordToVoxelRatio).cast<int32_t>();
         Eigen::Vector3i voxelRootPos = voxelPos / rootDimSize;
+        Eigen::Vector3i localPos = voxelPos.unaryExpr([](const int32_t x){ return x % rootDimSize; });
+
+        // some debugging output for now
+        print_vec3f(realPos, "> Inserting new point with position");
+        print_vec3i(voxelPos, "Voxel position of inserted point is");
         print_vec3i(voxelRootPos, "Root  position of inserted point is");
-        Eigen::Vector3i localPos = voxelPos.unaryExpr([](const int x){ return x & (rootDimSize - 1); }); // modulo
         print_vec3i(localPos, "Local position of inserted point is");
 
-        // shenanigans
-        auto currentNode = try_get_root(voxelRootPos);
-        if (currentNode.has_value()) {
+        // main insertion
+        DAG::RootPos rootPos = pack_root_pos(voxelRootPos);
+        if (dagRootMap.contains(rootPos)) {
             // go and get all the child nodes recursively until a node doesnt exist
             for (uint32_t i = 0; i < nDagLevels; i++) {
                 // try_get_node();
             }
         }
         else {
-            // create nodes starting from leaf
-        }
+            ROS_INFO("root didnt exist, adding new root and all subsequent nodes");
 
-        // for later
-        // this is just a glorified for-loop, calling try_get_node each iteration
-        // [&]<size_t... indices>(std::index_sequence<indices...>){
-        //     (try_get_node<indices>(localPos), ...);
-        // }(std::make_index_sequence<nDagLevels>{});
+            // structure of the tree so far:
+            DAG::Level& rootLevel = dagLevels[0]; // 32x32x32
+            DAG::Level& levelA = dagLevels[1]; // 16x16x16
+            DAG::Level& levelB = dagLevels[2]; // 8x8x8
+            DAG::Level& levelC = dagLevels[3]; // 4x4x4
+            DAG::Level& leafLevel = dagLevels.back(); // 2x2x2
+
+            // create nodes starting from leaf
+            {
+                // packs all leaves into 32 bits
+                DAG::LeafMask leaves;
+
+                // calc pos within leaf node
+                static constexpr int32_t leafDimSize = 2; // 2x2x2
+                localPos = voxelPos.unaryExpr([](const int32_t x){ return x % leafDimSize; });
+                print_vec3i(localPos, "Leaf subbpos");
+
+                uint32_t mask = 0;
+                mask |= localPos.x() << 0;
+                mask |= localPos.y() << 1;
+                mask |= localPos.z() << 2;
+                ROS_INFO_STREAM(mask);
+            }
+        }
     }
 
 private:
+    // int main() {
+    //     // this is just a glorified for-loop, calling get_node each iteration
+    //     [&]<size_t... indices>(std::index_sequence<indices...>) {
+    //         (get_node<indices>(), ...);
+    //     } (std::make_index_sequence<nDagLevels>{});
+    // }
     // template<size_t i> // iteration with compile-time constant i
-    inline std::optional<DAG::Pointer> try_get_node(Eigen::Vector3i localPos) {
-        // TODO
-    }
+    // inline DAG::Pointer get_node() {
+    //     // TODO
+    // }
 
-    // returns pointer to root node, else returns nothing
-    inline std::optional<DAG::Pointer> try_get_root(Eigen::Vector3i voxelRootPos) {
+    // pack 3D position of root into 64 bits
+    inline DAG::RootPos pack_root_pos(Eigen::Vector3i voxelRootPos) {
         DAG::RootPos rootPos;
         rootPos |= (DAG::RootPos)voxelRootPos.x();
         rootPos |= (DAG::RootPos)voxelRootPos.y() << (DAG::xRootBits);
         rootPos |= (DAG::RootPos)voxelRootPos.z() << (DAG::xRootBits + DAG::yRootBits);
-
-        if (dagRootMap.contains(rootPos)) return dagRootMap[rootPos];
-        return {};
+        return rootPos;
     }
-
 
     inline void insert_point_old(Eigen::Vector3f realPos) {
         // // convert from 1 to voxel position
@@ -180,8 +198,8 @@ private:
     // compile time constants
     static constexpr float voxelToCoordRatio = 0.01f; // every voxel unit represents this distance
     static constexpr float coordToVoxelRatio = 1.0f / voxelToCoordRatio; // simple reciprocal for conversion
-    static constexpr int32_t nDagLevels = 5; // number of DAG levels including roots and leaves
-    static constexpr int32_t rootDimSize = 2 << nDagLevels; // voxel size of each root node dimension
+    static constexpr int32_t nDagLevels = 5; // number of DAG levels including roots and leaf nodes
+    static constexpr int32_t rootDimSize = 1 << nDagLevels; // voxel size of each root node dimension
 
     // storage
     phmap::flat_hash_map<DAG::RootPos, DAG::Pointer> dagRootMap;
