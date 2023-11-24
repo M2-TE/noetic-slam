@@ -9,6 +9,8 @@
 #include <parallel_hashmap/phmap.h>
 #include <parallel_hashmap/btree.h>
 #include <Eigen/Dense>
+#include <cstdint>
+#include "constants.hpp"
 #include "dag_structs.hpp"
 
 
@@ -38,9 +40,9 @@ public:
 
         // some debugging output for now
         print_vec3f(realPos, "> Inserting new point with position");
-        print_vec3i(voxelPos, "Voxel position of inserted point is");
-        print_vec3i(voxelRootPos, "Root  position of inserted point is");
-        print_vec3i(localPos, "Local position of inserted point is");
+        print_vec3i(voxelPos, "Voxel position");
+        print_vec3i(voxelRootPos, "Root  position");
+        print_vec3i(localPos, "Local position within root is");
 
         // main insertion
         DAG::RootPos rootPos = pack_root_pos(voxelRootPos);
@@ -58,38 +60,54 @@ public:
             DAG::Level& levelA = dagLevels[1]; // 16x16x16
             DAG::Level& levelB = dagLevels[2]; // 8x8x8
             DAG::Level& levelC = dagLevels[3]; // 4x4x4
-            DAG::Level& leafLevel = dagLevels.back(); // 2x2x2
+            DAG::Level& leafLevel = dagLevels.back(); // dagLevels[4], 2x2x2
 
-            // create nodes starting from leaf
-            {
-                // packs all leaves into 32 bits
-                DAG::LeafMask leaves;
-
-                // calc pos within leaf node
-                static constexpr int32_t leafDimSize = 2; // 2x2x2
-                localPos = voxelPos.unaryExpr([](const int32_t x){ return x % leafDimSize; });
-                print_vec3i(localPos, "Leaf subbpos");
-
-                uint32_t mask = 0;
-                mask |= localPos.x() << 0;
-                mask |= localPos.y() << 1;
-                mask |= localPos.z() << 2;
-                ROS_INFO_STREAM(mask);
-            }
+            // create all parent nodes (except roots)
+            static constexpr int32_t nNodes = nDagLevels - 1;
+            [&]<size_t... indices>(std::index_sequence<indices...>) {
+                (create_node<nNodes - indices>(voxelPos), ...);
+            } (std::make_index_sequence<nNodes>{});
         }
     }
 
 private:
-    // int main() {
-    //     // this is just a glorified for-loop, calling get_node each iteration
-    //     [&]<size_t... indices>(std::index_sequence<indices...>) {
-    //         (get_node<indices>(), ...);
-    //     } (std::make_index_sequence<nDagLevels>{});
-    // }
-    // template<size_t i> // iteration with compile-time constant i
-    // inline DAG::Pointer get_node() {
-    //     // TODO
-    // }
+    template<int32_t depth> // depth as index into the DAG tree level
+    inline void create_node(Eigen::Vector3i& voxelPos) {
+        static constexpr int32_t reverseDepth = nDagLevels - depth;
+        static constexpr int32_t dimSize = 1 << reverseDepth;
+        std::cout << "Depth: " << depth << " Size: " << dimSize << 'x' << dimSize << 'x' << dimSize << std::endl;
+
+        // calculate local position within current node (each node has 8 children, so 2x2x2)
+        const Eigen::Vector3i localPos = voxelPos.unaryExpr([](const int32_t x){ return x % dimSize / (dimSize / 2); });
+        print_vec3i(localPos, "node subbpos");
+
+        uint32_t mask = 0;
+        mask |= localPos.x() << 0;
+        mask |= localPos.y() << 1;
+        mask |= localPos.z() << 2;
+        ROS_INFO_STREAM("mask value: " << mask);
+        
+
+        // if its a node containing leaves
+        if (depth == nDagLevels - 1) {
+            // TODO: check if this node already exists
+            std::cout << "this is a leaf node" << std::endl;
+            
+            DAG::Level level = dagLevels[depth];
+            
+            DAG::LeafMask = mask;
+            // need to somehow create a key out of the leaf mask
+            // problem is, the generic hash key expects child values with a filled mask
+            // -> most likely need a separate hashmap for leaves using the mask as a key
+
+        }
+        else {
+            // TODO: add previous node as child
+            // TODO: check if this node already exists
+            std::cout << "this is a normal node" << std::endl;
+        }
+
+    }
 
     // pack 3D position of root into 64 bits
     inline DAG::RootPos pack_root_pos(Eigen::Vector3i voxelRootPos) {
@@ -195,13 +213,6 @@ private:
     }
 
 private:
-    // compile time constants
-    static constexpr float voxelToCoordRatio = 0.01f; // every voxel unit represents this distance
-    static constexpr float coordToVoxelRatio = 1.0f / voxelToCoordRatio; // simple reciprocal for conversion
-    static constexpr int32_t nDagLevels = 5; // number of DAG levels including roots and leaf nodes
-    static constexpr int32_t rootDimSize = 1 << nDagLevels; // voxel size of each root node dimension
-
-    // storage
-    phmap::flat_hash_map<DAG::RootPos, DAG::Pointer> dagRootMap;
+    phmap::flat_hash_map<DAG::RootPos, DAG::NodePointer> dagRootMap;
     std::array<DAG::Level, nDagLevels> dagLevels;
 };
