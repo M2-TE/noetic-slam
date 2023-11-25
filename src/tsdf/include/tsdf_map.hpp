@@ -1,17 +1,14 @@
 #pragma once
 
 #include <cstdint>
-#include <limits>
-#include <ostream>
-#include <vector>
-#include <bit>
 #include <array>
+
+#include <Eigen/Dense>
+#include <parallel_hashmap/phmap.h>
 
 #include "constants.hpp"
 #include "dag_structs.hpp"
 
-#include <parallel_hashmap/phmap.h>
-#include <Eigen/Dense>
 
 
 class TSDF_Map {
@@ -80,7 +77,6 @@ private:
         childBit |= localPos.z() << 2;
         ROS_INFO_STREAM("child bit: " << static_cast<uint32_t>(childBit));
         DAG::Level level = dagLevels[depth];
-        
 
         // if its a node containing leaves
         if (depth == nDagLevels - 1) {
@@ -111,6 +107,7 @@ private:
                 level.data.push_back(leaves);
             }
 
+            // TODO: somehow pass this leaf index to next iteration
         }
         else {
             // TODO: add previous node as child
