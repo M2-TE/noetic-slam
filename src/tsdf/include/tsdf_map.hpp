@@ -2,16 +2,16 @@
 
 #include <cstdint>
 #include <limits>
+#include <ostream>
 #include <vector>
 #include <bit>
-#include <optional>
+#include <array>
 
-#include <parallel_hashmap/phmap.h>
-#include <parallel_hashmap/btree.h>
-#include <Eigen/Dense>
-#include <cstdint>
 #include "constants.hpp"
 #include "dag_structs.hpp"
+
+#include <parallel_hashmap/phmap.h>
+#include <Eigen/Dense>
 
 
 class TSDF_Map {
@@ -49,18 +49,11 @@ public:
         if (dagRootMap.contains(rootPos)) {
             // go and get all the child nodes recursively until a node doesnt exist
             for (uint32_t i = 0; i < nDagLevels; i++) {
-                // try_get_node();
+                // TODO
             }
         }
         else {
             ROS_INFO("root didnt exist, adding new root and all subsequent nodes");
-
-            // structure of the tree so far:
-            DAG::Level& rootLevel = dagLevels[0]; // 32x32x32
-            DAG::Level& levelA = dagLevels[1]; // 16x16x16
-            DAG::Level& levelB = dagLevels[2]; // 8x8x8
-            DAG::Level& levelC = dagLevels[3]; // 4x4x4
-            DAG::Level& leafLevel = dagLevels.back(); // dagLevels[4], 2x2x2
 
             // create all parent nodes (except roots)
             static constexpr int32_t nNodes = nDagLevels - 1;
@@ -81,24 +74,42 @@ private:
         const Eigen::Vector3i localPos = voxelPos.unaryExpr([](const int32_t x){ return x % dimSize / (dimSize / 2); });
         print_vec3i(localPos, "node subbpos");
 
-        uint32_t mask = 0;
-        mask |= localPos.x() << 0;
-        mask |= localPos.y() << 1;
-        mask |= localPos.z() << 2;
-        ROS_INFO_STREAM("mask value: " << mask);
+        DAG::ChildMask childBit = 0;
+        childBit |= localPos.x() << 0;
+        childBit |= localPos.y() << 1;
+        childBit |= localPos.z() << 2;
+        ROS_INFO_STREAM("child bit: " << static_cast<uint32_t>(childBit));
+        DAG::Level level = dagLevels[depth];
         
 
         // if its a node containing leaves
         if (depth == nDagLevels - 1) {
-            // TODO: check if this node already exists
             std::cout << "this is a leaf node" << std::endl;
             
-            DAG::Level level = dagLevels[depth];
+            float sd = voxelToCoordRatio / 2.0f; // signed distance (TODO: calc, its some random value rn)
+
+            float sdMaxRecip = 1.0f / voxelToCoordRatio; // voxel resolution as max distance (taking reciprocal)
+            float sdNorm = sd * sdMaxRecip; // normalize signed distance between 0 and 1
+            sd = sdNorm * static_cast<float>(DAG::maxSignedDistance); // scale to n-bit uint
+            std::cout << "scaled sdNorm: " << sd << std::endl;
+
+            // cast to uint and shift into position within leaves node
+            // each leaf will take up DAG::nBitsPerLeaf bits
+            DAG::Leaves leaves = static_cast<DAG::Leaves>(sd) << (childBit * DAG::nBitsPerLeaf);
+            DAG::NodePointer leavesPointer;
             
-            DAG::LeafMask = mask;
-            // need to somehow create a key out of the leaf mask
-            // problem is, the generic hash key expects child values with a filled mask
-            // -> most likely need a separate hashmap for leaves using the mask as a key
+            // check if these leaves already exist
+            if (dagLeafMap.contains(leaves)) {
+                std::cout << "identical leaf found" << std::endl;
+                leavesPointer = dagLeafMap[leaves];
+            }
+            else {
+                std::cout << "creating new leaf" << std::endl;
+                // add leaf node to DAG level
+                leavesPointer = level.data.size();
+                dagLeafMap[leaves] = leavesPointer;
+                level.data.push_back(leaves);
+            }
 
         }
         else {
@@ -116,81 +127,6 @@ private:
         rootPos |= (DAG::RootPos)voxelRootPos.y() << (DAG::xRootBits);
         rootPos |= (DAG::RootPos)voxelRootPos.z() << (DAG::xRootBits + DAG::yRootBits);
         return rootPos;
-    }
-
-    inline void insert_point_old(Eigen::Vector3f realPos) {
-        // // convert from 1 to voxel position
-        // Eigen::Vector3i voxelPos = (realPos * coordToVoxelRatio).cast<int>();
-        // ROS_INFO(" ");
-        // ROS_INFO("-> Inserting new point with position (%.2f, %.2f, %.2f)", 
-        //     realPos.x(), realPos.y(), realPos.z());
-        // ROS_INFO("Voxel position of inserted point is (%d, %d, %d)", 
-        //     voxelPos.x(), voxelPos.y(), voxelPos.z());
-
-        // // figure out which root the voxel will be in, as well as its position local to that root
-        // Eigen::Vector3i voxelRootPos = voxelPos / rootDimSize;
-        // ROS_INFO("Root  position of inserted point is (%d, %d, %d)", 
-        //     voxelRootPos.x(), voxelRootPos.y(), voxelRootPos.z());
-        // Eigen::Vector3i localPos = voxelPos.unaryExpr([](const int x){ return x & (rootDimSize - 1); }); // modulo
-        // ROS_INFO("Local position of inserted point is (%d, %d, %d)\n", 
-        //     localPos.x(), localPos.y(), localPos.z());
-        
-        // // pack root position into 64 bits
-        // DAG_RootPos rootPos = 0;
-        // rootPos |= (DAG_RootPos)voxelRootPos.x();
-        // rootPos |= (DAG_RootPos)voxelRootPos.y() << (xBits);
-        // rootPos |= (DAG_RootPos)voxelRootPos.z() << (xBits + yBits);
-        // DAG_Node& currentNode = dagLevels.get_root_node(rootPos);
-
-        // // iterate through DAG levels to reach the correct leaf
-        // for (uint8_t i = 0; i < dagLevels.size() - 1; i++) {
-
-        //     // 1 bit for each octant
-        //     // max value of childIndex here is 7
-        //     uint8_t childMaskIndex = get_child_mask_index(localPos, i);
-        //     uint8_t maskBit = 1 << childMaskIndex;
-
-        //     // check if this child is already present in current node
-        //     if (static_cast<uint8_t>(currentNode.childMask) & maskBit) {
-        //         ROS_INFO("Found child in depth %d", i + 1);
-        //         DAG_Pointer childPointer = currentNode.childPointers[childMaskIndex];
-        //         currentNode = dagLevels.get_node(i + 1, childPointer);
-        //     }
-        //     else {
-        //         ROS_INFO("Didn't find child in depth %d, finding/creating children..", i + 1);
-        //         // we know that the child node doesnt exist, so we have to create it and all its children
-        //         // starting with the leaves node containing the requested leaf
-        //         // and propagating changes up to the last valid node
-
-        //         // check if leaves node exists
-        //         uint32_t signedDistance = 6; // hardcoded for now
-        //         uint32_t leafIndex = get_child_mask_index(localPos, dagLevels.size() - 1);
-        //         uint32_t nBitsPerLeaf = 4;
-        //         // leavesMask will contain all the signed distances of each leaf
-        //         uint32_t leavesMask = signedDistance << (leafIndex * nBitsPerLeaf);
-        //         DAG_Pointer pLastChild = dagLevels.get_leaves_node_addr(leavesMask);
-
-        //         // create all children, starting from the last node before the leaf
-        //         for (uint k = dagLevels.size() - 2; k > i; k--) {
-
-        //             childMaskIndex = get_child_mask_index(localPos, k);
-                    
-        //             // prepare key for hashtable to look for existing node
-        //             DAG_Node nodeKey;
-        //             nodeKey.childPointers[childMaskIndex] = pLastChild;
-        //             nodeKey.childMask = 1 << childMaskIndex;
-                    
-        //             // look it up
-        //             dagLevels.get_node_addr(nodeKey, k);
-
-        //         }
-
-        //         // // since we know all upcoming levels will not be present, cant just create them all?
-        //         break;
-        //     }
-        // }
-
-        // // TODO: access correct root
     }
 
     // check which child octant the voxel falls into
@@ -214,5 +150,6 @@ private:
 
 private:
     phmap::flat_hash_map<DAG::RootPos, DAG::NodePointer> dagRootMap;
+    phmap::flat_hash_map<DAG::Leaves, DAG::NodePointer> dagLeafMap;
     std::array<DAG::Level, nDagLevels> dagLevels;
 };

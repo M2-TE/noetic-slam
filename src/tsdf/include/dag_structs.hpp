@@ -1,13 +1,21 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
+#include <parallel_hashmap/phmap.h>
 
 namespace DAG {
     typedef uint32_t NodePointer; // position of node in a level's data vector
-    typedef uint32_t LeafMask; // contains 8 leaves, each of which are 4 bits
     typedef uint8_t ChildMask; // contains 8 children
+
+    // contains 8 leaves, each of which are 4 bits
+    typedef uint32_t Leaves;
+    static constexpr uint32_t nBitsPerLeaf = 4;
+    static constexpr uint32_t nLeavesPerNode = 8;
+    static constexpr uint32_t maxSignedDistance = (1 << nBitsPerLeaf) - 1;
+    static_assert(nBitsPerLeaf * nLeavesPerNode <= sizeof(Leaves) * 8);
 
     // 3D position of a root, packed into 64 bits
     typedef uint64_t RootPos;
@@ -16,16 +24,17 @@ namespace DAG {
     static constexpr uint64_t zRootBits = 16;
     static_assert(xRootBits + yRootBits + zRootBits <= sizeof(RootPos) * 8);
 
+
     // allows use of node as hash key
     struct KeyNode {
-        inline size_t operator()(const KeyNode& key) const { // do we really need the parameter variable here?
+        inline size_t operator()() const {
 
             // the header will contain the child mask
             ChildMask childMask = static_cast<ChildMask>(data[p]);
-            uint8_t nSetBits = std::popcount(childMask); // one bit per child
+            size_t hash = childMask;
 
             // include all child pointers in the final hash
-            size_t hash = 0;
+            uint8_t nSetBits = std::popcount(childMask); // one bit per child
             for (uint8_t i = 0; i < nSetBits; i++) {
                 NodePointer iNP = static_cast<NodePointer>(i);
                 hash = phmap::HashState().combine(hash, data[p + iNP + 1]);
@@ -36,15 +45,14 @@ namespace DAG {
             
             // the header will contain the child mask
             ChildMask childMask = static_cast<ChildMask>(data[p]);
-            uint8_t nSetBits = std::popcount(childMask); // one bit per child
 
             // compare header and pointers with other key
-            for (uint8_t i = 0; i <= nSetBits; i++) {
-                NodePointer iNP = static_cast<NodePointer>(i);
-                if (data[p + iNP] != key.data[key.p + iNP]) return false;
-            }
-            // only return true when previous checks were passed
-            return true;
+            size_t nSetBits = std::popcount(childMask); // one bit per child
+            return std::memcmp(
+                data.data() + p,
+                key.data.data() + key.p,
+                sizeof(uint32_t) * (nSetBits + 1)
+            );
         }
 
         std::vector<uint32_t>& data; // array that contains this node
@@ -54,7 +62,8 @@ namespace DAG {
     struct Level {
         // hashmap containing pointer into data vector
         phmap::flat_hash_map<uint64_t, NodePointer> pointerMap;
-        std::vector<uint32_t> data; // could extract data
+        // phmap::flat_hash_set<KeyNode> pointerSet;
+        std::vector<uint32_t> data;
     };
 };
 
