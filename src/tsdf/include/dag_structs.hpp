@@ -26,7 +26,6 @@ namespace DAG {
 
     struct HashFunctor {
         inline size_t operator()(NodePointer key) const noexcept {
-            std::cout << "\tHash functor used: " << key << std::endl;
             std::vector<uint32_t>& data = *pData;
             ChildMask childMask = static_cast<ChildMask>(data[key]);
             uint8_t nChildren = std::popcount(childMask);
@@ -43,7 +42,6 @@ namespace DAG {
     };
     struct CompFunctor {
         inline bool operator()(NodePointer keyA, NodePointer keyB) const noexcept {
-            std::cout << "\tComparison functor used: " << keyA << " " << keyB << std::endl;
             std::vector<uint32_t>& data = *pData;
             // compare all children
             ChildMask childMaskA = static_cast<ChildMask>(data[keyA]);

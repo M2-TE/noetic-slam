@@ -124,11 +124,9 @@ private:
         else return create_node_generic(level, child, childBit);
     }
     inline DAG::NodePointer create_node_leaf(DAG::Level& level, DAG::ChildMask childBit) { // TODO: calc signed distance properly
-        float sd = voxelToCoordRatio / 2.0f; // signed distance TODO: calc
-
-        float sdMaxRecip = 1.0f / voxelToCoordRatio; // voxel resolution as max distance (taking reciprocal)
-        float sdNorm = sd * sdMaxRecip; // normalize signed distance between 0 and 1
-        sd = sdNorm * static_cast<float>(DAG::maxSignedDistance); // scale to n-bit uint
+        float sd = voxelToCoordRatio * 0.2345f; // signed distance TODO: calc
+        float sdNorm = sd * (1.0f / voxelToCoordRatio); // normalize signed distance between 0 and 1
+        sd = sdNorm * static_cast<float>(DAG::maxSignedDistance); // scale up to uint4_t range
 
         // cast to uint and shift into position within leaves node
         // each leaf will take up DAG::nBitsPerLeaf bits
@@ -142,7 +140,6 @@ private:
         // check if a new node is emplaced
         auto [pLeaf, bEmplacedNew] = dagLeafMap.emplace(leaves, key);
         if (bEmplacedNew) level.dataSize += 1;
-        else std::cout << "leaf already exists" << std::endl;
         return pLeaf->second;
     }
     inline DAG::NodePointer create_node_generic(DAG::Level& level, DAG::NodePointer child, DAG::ChildMask childBit) {
@@ -156,7 +153,6 @@ private:
         // check if a new node is emplaced
         auto [pNode, bEmplacedNew] = level.pointerSet.emplace(key);
         if (bEmplacedNew) level.dataSize += 2;
-        else std::cout << "node already exists" << std::endl;
         return *pNode;
     }
 private:
