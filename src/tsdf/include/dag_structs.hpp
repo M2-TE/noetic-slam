@@ -24,54 +24,53 @@ namespace DAG {
     static constexpr uint64_t zRootBits = 16;
     static_assert(xRootBits + yRootBits + zRootBits <= sizeof(RootPos) * 8);
 
-
-    // allows use of node as hash key
-    struct KeyNode {
-        inline size_t operator()() const {
-
-            // the header will contain the child mask
-            ChildMask childMask = static_cast<ChildMask>(data[p]);
-            size_t hash = childMask;
-
-            // include all child pointers in the final hash
-            uint8_t nSetBits = std::popcount(childMask); // one bit per child
-            for (uint8_t i = 0; i < nSetBits; i++) {
-                NodePointer iNP = static_cast<NodePointer>(i);
-                hash = phmap::HashState().combine(hash, data[p + iNP + 1]);
+    struct HashFunctor {
+        inline size_t operator()(NodePointer key) const noexcept {
+            std::cout << "\tHash functor used\n";
+            std::vector<uint32_t>& data = *pData;
+            ChildMask childMask = static_cast<ChildMask>(data[key]);
+            uint8_t nChildren = std::popcount(childMask);
+            // hash child mask
+            size_t hash = phmap::HashState::combine(0, childMask);
+            // hash all children
+            for (uint8_t i = 0; i < nChildren; i++) {
+                hash = phmap::HashState::combine(hash, data[++key]);
             }
             return hash;
         }
-        inline bool operator==(const KeyNode& key) const {
+        std::vector<uint32_t>* pData; // pointer to raw data array
+    };
+    struct CompFunctor {
+        inline bool operator()(NodePointer keyA, NodePointer keyB) const noexcept {
+            std::cout << "\tComparison functor used\n";
+            std::vector<uint32_t>& data = *pData;
+            ChildMask childMaskA = static_cast<ChildMask>(data[keyA]);
+            ChildMask childMaskB = static_cast<ChildMask>(data[keyB]);
+            if (childMaskA != childMaskB) return false;
             
-            // the header will contain the child mask
-            ChildMask childMask = static_cast<ChildMask>(data[p]);
-
-            // compare header and pointers with other key
-            size_t nSetBits = std::popcount(childMask); // one bit per child
-            return std::memcmp(
-                data.data() + p,
-                key.data.data() + key.p,
-                sizeof(uint32_t) * (nSetBits + 1)
-            );
+            // compare all children
+            uint8_t nChildren = std::popcount(childMaskA);
+            for (uint8_t i = 0; i < nChildren; i++) {
+                if (data[++keyA] != data[++keyB]) return false;
+            }
+            return true;
         }
-
-        std::vector<uint32_t>& data; // array that contains this node
-        NodePointer p; // points to node in array
+        std::vector<uint32_t>* pData; // pointer to raw data array
     };
 
     struct Level {
-        // hashmap containing pointer into data vector
-        phmap::flat_hash_map<uint64_t, NodePointer> pointerMap;
-        // phmap::flat_hash_set<KeyNode> pointerSet;
+        // hashmap containing pointer into data vector, key points to cache, value points to data array
+        // phmap::flat_hash_map<TestKey, NodePointer, HashFunctor, CompFunctor> pointerMap;
+        phmap::flat_hash_set<NodePointer, HashFunctor, CompFunctor> pointerSet;
         std::vector<uint32_t> data;
     };
 };
 
-// helper for integer vectors 
-static void print_vec3i(Eigen::Vector3i pos, std::string text) {
+// helper for vectors 
+static void print_vec3(Eigen::Vector3i pos, std::string text) {
     ROS_INFO_STREAM(text << " (" << pos.x() << ", " << pos.y() << ", " << pos.z() << ")");
 }
 // helper for floating vectors
-static void print_vec3f(Eigen::Vector3f pos, std::string text) {
+static void print_vec3(Eigen::Vector3f pos, std::string text) {
     ROS_INFO_STREAM(text << " (" << pos.x() << ", " << pos.y() << ", " << pos.z() << ")");
 }
