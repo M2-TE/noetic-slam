@@ -15,14 +15,12 @@ class TSDF_Map {
 public:
     TSDF_Map() {
         // set up hash and equality functors with proper references
-        // set up cache (first 9 values in data array)
         for (size_t i = 0; i < dagLevels.size(); i++) {
             DAG::Level& level = dagLevels[i];
 
             DAG::HashFunctor hashFnc = { &level.data };
             DAG::CompFunctor compFnc = { &level.data };
             level.pointerSet = decltype(level.pointerSet)(0, hashFnc, compFnc);
-            level.data.resize(9, 0); // cache
         }
     }
     void insert_pointcloud(sensor_msgs::PointCloud2ConstPtr& pMsgPointcloud) {
@@ -114,76 +112,53 @@ private:
         const Eigen::Vector3i localPos = voxelPos.unaryExpr([](const int32_t x){ return x % dimSize / (dimSize / 2); });
         print_vec3(localPos, "node subbpos");
 
-        DAG::ChildMask childBit = 0;
-        childBit |= localPos.x() << 0;
-        childBit |= localPos.y() << 1;
-        childBit |= localPos.z() << 2;
+        DAG::ChildMask childBit = 1;
+        childBit = childBit << (localPos.x() << 0);
+        childBit = childBit << (localPos.y() << 1);
+        childBit = childBit << (localPos.z() << 2);
         // ROS_INFO_STREAM("child bit: " << static_cast<uint32_t>(childBit));
-        DAG::Level level = dagLevels[depth];
+        DAG::Level& level = dagLevels[depth];
 
         // if its a node containing leaves
-        if constexpr (depth == nDagLevels - 1) {
-            float sd = voxelToCoordRatio / 2.0f; // signed distance (TODO: calc, its some random value rn)
-
-            float sdMaxRecip = 1.0f / voxelToCoordRatio; // voxel resolution as max distance (taking reciprocal)
-            float sdNorm = sd * sdMaxRecip; // normalize signed distance between 0 and 1
-            sd = sdNorm * static_cast<float>(DAG::maxSignedDistance); // scale to n-bit uint
-            // std::cout << "scaled sdNorm: " << sd << std::endl;
-
-            // cast to uint and shift into position within leaves node
-            // each leaf will take up DAG::nBitsPerLeaf bits
-            DAG::Leaves leaves = static_cast<DAG::Leaves>(sd) << (childBit * DAG::nBitsPerLeaf);
-            DAG::NodePointer leavesPointer;
-            
-            // check if these leaves already exist
-            if (dagLeafMap.contains(leaves)) {
-                leavesPointer = dagLeafMap[leaves];
-                std::cout << "identical leaf found: " << leavesPointer << std::endl;
-            }
-            else {
-                // add leaf node to DAG level
-                leavesPointer = level.data.size();
-                dagLeafMap[leaves] = leavesPointer;
-                level.data.push_back(leaves);
-                std::cout << "created new leaf: " << leavesPointer << std::endl;
-            }
-
-            return leavesPointer;
-        }
-        else {
-            // figure out which voxel the child occupies
-            DAG::ChildMask childMask = childBit;
-
-            // write current node information to cache
-            // hashes and comparisons are independant of actual node position
-            level.data[0] = childMask;
-            level.data[1] = child;
-
-            // start of data array is the cache
-            size_t hash = level.pointerSet.hash(0);
-            auto pNode = level.pointerSet.find(0, hash);
-
-            // check if this node already exists
-            DAG::NodePointer nodePointer;
-            if (pNode != level.pointerSet.end()) {
-                nodePointer = *pNode;
-                std::cout << "identical node found: " << nodePointer << std::endl;
-            }
-            else {
-                // insert the new node pointer
-                nodePointer = level.data.size();
-                level.pointerSet.emplace_with_hash(nodePointer, hash);
-                // insert the new node data
-                level.data.insert(level.data.end(), {
-                    childMask,
-                    child
-                });
-                std::cout << "created new node: " << nodePointer << std::endl;
-            }
-            return nodePointer;
-        }
+        if constexpr (depth == nDagLevels - 1) return create_node_leaf(level, childBit);
+        else return create_node_generic(level, child, childBit);
     }
+    inline DAG::NodePointer create_node_leaf(DAG::Level& level, DAG::ChildMask childBit) { // TODO: calc signed distance properly
+        float sd = voxelToCoordRatio / 2.0f; // signed distance TODO: calc
 
+        float sdMaxRecip = 1.0f / voxelToCoordRatio; // voxel resolution as max distance (taking reciprocal)
+        float sdNorm = sd * sdMaxRecip; // normalize signed distance between 0 and 1
+        sd = sdNorm * static_cast<float>(DAG::maxSignedDistance); // scale to n-bit uint
+
+        // cast to uint and shift into position within leaves node
+        // each leaf will take up DAG::nBitsPerLeaf bits
+        DAG::Leaves leaves = static_cast<DAG::Leaves>(sd) << (childBit * DAG::nBitsPerLeaf);
+        // create a temporary node and only progress tracker if it was actually inserted
+        DAG::NodePointer key = level.dataSize;
+        level.data.insert(level.data.begin() + key, {
+            leaves
+        });
+
+        // check if a new node is emplaced
+        auto [pLeaf, bEmplacedNew] = dagLeafMap.emplace(leaves, key);
+        if (bEmplacedNew) level.dataSize += 1;
+        else std::cout << "leaf already exists" << std::endl;
+        return pLeaf->second;
+    }
+    inline DAG::NodePointer create_node_generic(DAG::Level& level, DAG::NodePointer child, DAG::ChildMask childBit) {
+        // create a temporary node and only progress tracker if it was actually inserted
+        DAG::NodePointer key = level.dataSize;
+        level.data.insert(level.data.begin() + key, {
+            childBit,   // mask
+            child       // child pointer
+        });
+
+        // check if a new node is emplaced
+        auto [pNode, bEmplacedNew] = level.pointerSet.emplace(key);
+        if (bEmplacedNew) level.dataSize += 2;
+        else std::cout << "node already exists" << std::endl;
+        return *pNode;
+    }
 private:
     phmap::flat_hash_map<DAG::RootPos, DAG::NodePointer> dagRootMap;
     phmap::flat_hash_map<DAG::Leaves, DAG::NodePointer> dagLeafMap;

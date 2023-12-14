@@ -29,6 +29,9 @@ public:
         // for debug purposes
         // tsdfMap.insert_point({ 5.70f, 2.50f, 8.60f });
         tsdfMap.insert_point({ 5.70f, 2.51f, 8.60f });
+        tsdfMap.insert_point({ 5.70f, 2.51f, 8.60f });
+        tsdfMap.insert_point({ 5.70f, 2.50f, 8.60f });
+        tsdfMap.insert_point({ 4.70f, 1.50f, 2.60f });
         // tsdfMap.insert_point({ 5.70f, 2.51f, 8.60f });
     }
     ~TSDF_Node() {

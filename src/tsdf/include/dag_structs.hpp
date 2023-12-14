@@ -26,7 +26,7 @@ namespace DAG {
 
     struct HashFunctor {
         inline size_t operator()(NodePointer key) const noexcept {
-            std::cout << "\tHash functor used\n";
+            std::cout << "\tHash functor used: " << key << std::endl;
             std::vector<uint32_t>& data = *pData;
             ChildMask childMask = static_cast<ChildMask>(data[key]);
             uint8_t nChildren = std::popcount(childMask);
@@ -36,23 +36,18 @@ namespace DAG {
             for (uint8_t i = 0; i < nChildren; i++) {
                 hash = phmap::HashState::combine(hash, data[++key]);
             }
+            // std::cout << hash << std::endl;
             return hash;
         }
         std::vector<uint32_t>* pData; // pointer to raw data array
     };
     struct CompFunctor {
         inline bool operator()(NodePointer keyA, NodePointer keyB) const noexcept {
-            std::cout << "\tComparison functor used\n";
+            std::cout << "\tComparison functor used: " << keyA << " " << keyB << std::endl;
             std::vector<uint32_t>& data = *pData;
-            ChildMask childMaskA = static_cast<ChildMask>(data[keyA]);
-            ChildMask childMaskB = static_cast<ChildMask>(data[keyB]);
-            if (childMaskA != childMaskB) return false;
-            
             // compare all children
-            uint8_t nChildren = std::popcount(childMaskA);
-            for (uint8_t i = 0; i < nChildren; i++) {
-                if (data[++keyA] != data[++keyB]) return false;
-            }
+            ChildMask childMaskA = static_cast<ChildMask>(data[keyA]);
+            std::memcmp(&data[keyA + 1], &data[keyB + 1], std::popcount(childMaskA));
             return true;
         }
         std::vector<uint32_t>* pData; // pointer to raw data array
@@ -63,6 +58,7 @@ namespace DAG {
         // phmap::flat_hash_map<TestKey, NodePointer, HashFunctor, CompFunctor> pointerMap;
         phmap::flat_hash_set<NodePointer, HashFunctor, CompFunctor> pointerSet;
         std::vector<uint32_t> data;
+        size_t dataSize = 0;
     };
 };
 
@@ -70,7 +66,6 @@ namespace DAG {
 static void print_vec3(Eigen::Vector3i pos, std::string text) {
     ROS_INFO_STREAM(text << " (" << pos.x() << ", " << pos.y() << ", " << pos.z() << ")");
 }
-// helper for floating vectors
 static void print_vec3(Eigen::Vector3f pos, std::string text) {
     ROS_INFO_STREAM(text << " (" << pos.x() << ", " << pos.y() << ", " << pos.z() << ")");
 }
