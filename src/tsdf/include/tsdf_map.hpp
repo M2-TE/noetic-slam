@@ -42,14 +42,12 @@ public:
         Eigen::Vector3i voxelPos = (realPos * coordToVoxelRatio).cast<int32_t>();
         Eigen::Vector3f voxelPosF = voxelPos.cast<float>() * voxelToCoordRatio;
         Eigen::Vector3i voxelRootPos = voxelPos / rootDimSize;
-        Eigen::Vector3i localPos = voxelPos.unaryExpr([](const int32_t x){ return x % rootDimSize; });
 
         // some debugging output for now
         print_vec3(realPos, "> Inserting new point with position");
         print_vec3(voxelPos, "Voxel position   (int)");
         print_vec3(voxelPosF, "Voxel position (float)");
         print_vec3(voxelRootPos, "Root  position");
-        print_vec3(localPos, "Local position within root is");
 
         // main insertion
         DAG::RootPos rootPos = pack_root_pos(voxelRootPos);
@@ -79,7 +77,7 @@ public:
 private:
     inline DAG::RootPos pack_root_pos(Eigen::Vector3i voxelRootPos) {
         DAG::RootPos rootPos;
-        rootPos |= (DAG::RootPos)voxelRootPos.x();
+        rootPos  = (DAG::RootPos)voxelRootPos.x();
         rootPos |= (DAG::RootPos)voxelRootPos.y() << (DAG::xRootBits);
         rootPos |= (DAG::RootPos)voxelRootPos.z() << (DAG::xRootBits + DAG::yRootBits);
         return rootPos;
