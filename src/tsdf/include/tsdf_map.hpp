@@ -40,12 +40,14 @@ public:
 
         // figure out which root the voxel will be in, as well as its position local to that root
         Eigen::Vector3i voxelPos = (realPos * coordToVoxelRatio).cast<int32_t>();
+        Eigen::Vector3f voxelPosF = voxelPos.cast<float>() * voxelToCoordRatio;
         Eigen::Vector3i voxelRootPos = voxelPos / rootDimSize;
         Eigen::Vector3i localPos = voxelPos.unaryExpr([](const int32_t x){ return x % rootDimSize; });
 
         // some debugging output for now
         print_vec3(realPos, "> Inserting new point with position");
-        print_vec3(voxelPos, "Voxel position");
+        print_vec3(voxelPos, "Voxel position   (int)");
+        print_vec3(voxelPosF, "Voxel position (float)");
         print_vec3(voxelRootPos, "Root  position");
         print_vec3(localPos, "Local position within root is");
 
@@ -62,15 +64,15 @@ public:
         }
         else {
             std::cout << "Root missing\n";
-            static constexpr int32_t nNodes = nDagLevels - 1;
-            DAG::NodePointer lastNode = 0;
 
-            // create all parent nodes (except roots)
+            // create all nodes starting from the leaves
             [&]<size_t... indices>(std::index_sequence<indices...>) {
-                ((lastNode = create_node<nNodes - indices>(voxelPos, lastNode)), ...);
-            } (std::make_index_sequence<nNodes>{});
-
-            // TODO: create root here
+                // keep track of last node
+                DAG::NodePointer lastNode = 0;
+                // expand create_node() for each level in reverse sequence
+                ((lastNode = create_node<nDagLevels - indices - 1>(voxelPos, lastNode)), ...);
+                // done
+            } (std::make_index_sequence<nDagLevels>{});
         }
     }
 
@@ -81,25 +83,6 @@ private:
         rootPos |= (DAG::RootPos)voxelRootPos.y() << (DAG::xRootBits);
         rootPos |= (DAG::RootPos)voxelRootPos.z() << (DAG::xRootBits + DAG::yRootBits);
         return rootPos;
-    }
-    inline uint8_t get_child_mask_index(Eigen::Vector3i localPos, int32_t parentDepth) {
-        // check which child octant the voxel falls into
-
-        // these should normally be obtainable at compile time! (with constexpr for loop)
-        int32_t nodeDimSize = rootDimSize >> parentDepth;
-        int32_t nodeDimSizeHalf = nodeDimSize >> 1;
-        int32_t moduloMask = nodeDimSize - 1;
-
-        ROS_INFO("nodeDimSize of get_child_mask_index: %d", nodeDimSize);
-        // ROS_INFO("localPos %d modulo nodeDimSize %d (=%d) ge nodeDimSizeHalf %d equals %d", 
-        //     localPos.x(), nodeDimSize, localPos.x() & moduloMask, nodeDimSizeHalf, 
-        //     (localPos.x() & moduloMask) >= nodeDimSizeHalf);
-            
-        uint8_t childIndex = 0;
-        childIndex |= ((localPos.x() & moduloMask) >= nodeDimSizeHalf) << 0;
-        childIndex |= ((localPos.y() & moduloMask) >= nodeDimSizeHalf) << 1;
-        childIndex |= ((localPos.z() & moduloMask) >= nodeDimSizeHalf) << 2;
-        return childIndex;
     }
     
     template<int32_t depth> // depth as index into the DAG tree level
@@ -116,12 +99,15 @@ private:
         childBit = childBit << (localPos.x() << 0);
         childBit = childBit << (localPos.y() << 1);
         childBit = childBit << (localPos.z() << 2);
-        // ROS_INFO_STREAM("child bit: " << static_cast<uint32_t>(childBit));
         DAG::Level& level = dagLevels[depth];
 
         // if its a node containing leaves
         if constexpr (depth == nDagLevels - 1) return create_node_leaf(level, childBit);
+        else if constexpr (depth == 0) return create_node_root(level, child, childBit);
         else return create_node_generic(level, child, childBit);
+    }
+    inline DAG::NodePointer create_node_root(DAG::Level& level, DAG::NodePointer child, DAG::ChildMask childBit) {
+        return 0;
     }
     inline DAG::NodePointer create_node_leaf(DAG::Level& level, DAG::ChildMask childBit) { // TODO: calc signed distance properly
         float sd = voxelToCoordRatio * 0.2345f; // signed distance TODO: calc
