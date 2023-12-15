@@ -71,7 +71,7 @@ public:
                 DAG::NodePointer lastNode = 0;
                 lastNode = create_node_leaf<nDagLevels - 1>(voxelPos);
                 ((lastNode = create_node_generic<nDagLevels - indices - 2>(voxelPos, lastNode)), ...);
-                lastNode = create_node_root<0>(voxelPos, lastNode);
+                lastNode = create_node_root<0>(voxelPos, lastNode, rootPos);
             } (std::make_index_sequence<nDagLevels - 2>{});
         }
     }
@@ -111,21 +111,13 @@ private:
         // cast to uint and shift into position within leaves node
         // each leaf will take up DAG::nBitsPerLeaf bits
         DAG::Leaves leaves = static_cast<DAG::Leaves>(sd) << (childBit * DAG::nBitsPerLeaf);
-        // create a temporary node and only progress tracker if it was actually inserted
-        DAG::NodePointer key = level.dataSize;
-        level.data.insert(level.data.begin() + key, {
-            leaves
-        });
 
         // check if a new node is emplaced
-        auto [pLeaf, bEmplacedNew] = dagLeafMap.emplace(leaves, key);
-        if (bEmplacedNew) level.dataSize += 1;
+        auto [pLeaf, bEmplacedNew] = dagLeafMap.emplace(leaves, level.data.size());
+        if (bEmplacedNew) {
+            level.data.emplace_back(leaves);
+        }
         return pLeaf->second;
-    }
-    template<int32_t depth> inline DAG::NodePointer create_node_root(Eigen::Vector3i& voxelPos, DAG::NodePointer child) {
-        DAG::ChildMask childBit = get_child_bit<depth>(voxelPos);
-        DAG::Level& level = dagLevels[depth];
-        return 0;
     }
     template<int32_t depth> inline DAG::NodePointer create_node_generic(Eigen::Vector3i& voxelPos, DAG::NodePointer child) {
         DAG::ChildMask childBit = get_child_bit<depth>(voxelPos);
@@ -142,6 +134,21 @@ private:
         auto [pNode, bEmplacedNew] = level.pointerSet.emplace(key);
         if (bEmplacedNew) level.dataSize += 2;
         return *pNode;
+    }
+    template<int32_t depth> inline DAG::NodePointer create_node_root(Eigen::Vector3i& voxelPos, DAG::NodePointer child, DAG::RootPos rootPos) {
+        DAG::ChildMask childBit = get_child_bit<depth>(voxelPos);
+        DAG::Level& level = dagLevels[depth];
+
+        // check if a new node is emplaced
+        auto [pRoot, bEmplacedNew] = dagRootMap.emplace(rootPos, level.data.size());
+        if (bEmplacedNew) {
+            // always allocate all 8 children for a root
+            std::array<DAG::NodePointer, DAG::nLeavesPerNode + 1> children;
+            children[0] = childBit;
+            children[1] = child;
+            level.data.insert(level.data.end(), children.begin(), children.end());
+        }
+        return pRoot->second;
     }
 private:
     phmap::flat_hash_map<DAG::RootPos, DAG::NodePointer> dagRootMap;
