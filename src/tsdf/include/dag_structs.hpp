@@ -52,10 +52,11 @@ namespace DAG {
     };
 
     struct Level {
-        // hashmap containing pointer into data vector, key points to cache, value points to data array
-        // phmap::flat_hash_map<TestKey, NodePointer, HashFunctor, CompFunctor> pointerMap;
+        // hash set of pointers to nodes
         phmap::flat_hash_set<NodePointer, HashFunctor, CompFunctor> pointerSet;
+        // storage of raw node data
         std::vector<uint32_t> data;
+        // size tracker for data vector (excluding temp allocations)
         size_t dataSize = 0;
     };
 };
