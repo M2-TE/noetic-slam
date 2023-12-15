@@ -69,10 +69,10 @@ public:
             [&]<size_t... indices>(std::index_sequence<indices...>) {
                 // keep track of last node
                 DAG::NodePointer lastNode = 0;
-                // expand create_node() for each level in reverse sequence
-                ((lastNode = create_node<nDagLevels - indices - 1>(voxelPos, lastNode)), ...);
-                // done
-            } (std::make_index_sequence<nDagLevels>{});
+                lastNode = create_node_leaf<nDagLevels - 1>(voxelPos);
+                ((lastNode = create_node_generic<nDagLevels - indices - 2>(voxelPos, lastNode)), ...);
+                lastNode = create_node_root<0>(voxelPos, lastNode);
+            } (std::make_index_sequence<nDagLevels - 2>{});
         }
     }
 
@@ -85,31 +85,25 @@ private:
         return rootPos;
     }
     
-    template<int32_t depth> // depth as index into the DAG tree level
-    inline DAG::NodePointer create_node(Eigen::Vector3i& voxelPos, DAG::NodePointer child) {
+    template<int32_t depth> inline DAG::ChildMask get_child_bit(Eigen::Vector3i& voxelPos) {
         static constexpr int32_t reverseDepth = nDagLevels - depth;
         static constexpr int32_t dimSize = 1 << reverseDepth;
         std::cout << "Depth: " << depth << " Size: " << dimSize << 'x' << dimSize << 'x' << dimSize << std::endl;
 
         // calculate local position within current node (each node has 8 children, so 2x2x2)
         const Eigen::Vector3i localPos = voxelPos.unaryExpr([](const int32_t x){ return x % dimSize / (dimSize / 2); });
-        print_vec3(localPos, "node subbpos");
+        // print_vec3(localPos, "node subbpos");
 
         DAG::ChildMask childBit = 1;
         childBit = childBit << (localPos.x() << 0);
         childBit = childBit << (localPos.y() << 1);
         childBit = childBit << (localPos.z() << 2);
+        return childBit;
+    }
+    template<int32_t depth> inline DAG::NodePointer create_node_leaf(Eigen::Vector3i& voxelPos) { // TODO: calc signed distance properly. also dont need childBit, fill all leaves at once
+        DAG::ChildMask childBit = get_child_bit<depth>(voxelPos);
         DAG::Level& level = dagLevels[depth];
 
-        // if its a node containing leaves
-        if constexpr (depth == nDagLevels - 1) return create_node_leaf(level, childBit);
-        else if constexpr (depth == 0) return create_node_root(level, child, childBit);
-        else return create_node_generic(level, child, childBit);
-    }
-    inline DAG::NodePointer create_node_root(DAG::Level& level, DAG::NodePointer child, DAG::ChildMask childBit) {
-        return 0;
-    }
-    inline DAG::NodePointer create_node_leaf(DAG::Level& level, DAG::ChildMask childBit) { // TODO: calc signed distance properly
         float sd = voxelToCoordRatio * 0.2345f; // signed distance TODO: calc
         float sdNorm = sd * (1.0f / voxelToCoordRatio); // normalize signed distance between 0 and 1
         sd = sdNorm * static_cast<float>(DAG::maxSignedDistance); // scale up to uint4_t range
@@ -128,7 +122,15 @@ private:
         if (bEmplacedNew) level.dataSize += 1;
         return pLeaf->second;
     }
-    inline DAG::NodePointer create_node_generic(DAG::Level& level, DAG::NodePointer child, DAG::ChildMask childBit) {
+    template<int32_t depth> inline DAG::NodePointer create_node_root(Eigen::Vector3i& voxelPos, DAG::NodePointer child) {
+        DAG::ChildMask childBit = get_child_bit<depth>(voxelPos);
+        DAG::Level& level = dagLevels[depth];
+        return 0;
+    }
+    template<int32_t depth> inline DAG::NodePointer create_node_generic(Eigen::Vector3i& voxelPos, DAG::NodePointer child) {
+        DAG::ChildMask childBit = get_child_bit<depth>(voxelPos);
+        DAG::Level& level = dagLevels[depth];
+
         // create a temporary node and only progress tracker if it was actually inserted
         DAG::NodePointer key = level.dataSize;
         level.data.insert(level.data.begin() + key, {
