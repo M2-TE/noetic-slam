@@ -26,13 +26,15 @@ RUN echo 'PATH=$PATH:/root/repo/scripts' >> /root/.bashrc
 ENTRYPOINT [ "/bin/bash", "/root/repo/scripts/.entrypoint.sh" ]
 ENV ROSCONSOLE_FORMAT='[ROS${severity}]: ${message}'
 ENV NOETICSLAM_DOCKER=1
-# ENV NVIDIA_VISIBLE_DEVICES all
-# ENV NVIDIA_DRIVER_CAPABILITIES all
 # ENV QT_X11_NO_MITSHM=1
+# --env __NV_PRIME_RENDER_OFFLOAD=1 \
+# --env __GLX_VENDOR_LIBRARY_NAME=nvidia \
+# --env NVIDIA_VISIBLE_DEVICES=all \
+# --env NVIDIA_DRIVER_CAPABILITIES=all \
 
 ## configurable env vars
 FROM setup AS config
-# MODE=replay, record, stream
+# options: replay, record, stream
 ENV MODE=replay
 ENV AUTOSTART=false
 ENV FILENAME=hsfd_nov2023_testing
@@ -40,8 +42,8 @@ ENV LIDAR_ADDR=192.168.168.128
 
 # Hardware
 ENV LIDAR=ouster
-# GPU=integrated, nvidia, amd
-ENV GPU=integrated
+# options: integrated, nvidia, amd
+# ENV GPU=nvidia
 
 # Topics (Pointcloud and IMU)
 ENV PCL_TOPIC=/ouster/points
