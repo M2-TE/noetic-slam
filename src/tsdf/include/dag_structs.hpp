@@ -45,7 +45,7 @@ namespace DAG {
             std::vector<uint32_t>& data = *pData;
             // compare all children
             ChildMask childMaskA = static_cast<ChildMask>(data[keyA]);
-            std::memcmp(&data[keyA + 1], &data[keyB + 1], std::popcount(childMaskA));
+            std::memcmp(&data[keyA + 1], &data[keyB + 1], std::popcount(childMaskA) * sizeof(uint32_t));
             return true;
         }
         std::vector<uint32_t>* pData; // pointer to raw data array

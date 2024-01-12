@@ -36,18 +36,17 @@ public:
             insert_point(cur->getVector3fMap());
         }
     }
-    inline void insert_point(Eigen::Vector3f realPos) {
+    inline void insert_point(const Eigen::Vector3f& realPos) {
 
         // figure out which root the voxel will be in, as well as its position local to that root
         Eigen::Vector3i voxelPos = (realPos * coordToVoxelRatio).cast<int32_t>();
-        Eigen::Vector3f voxelPosF = voxelPos.cast<float>() * voxelToCoordRatio;
+        Eigen::Vector3f coordPos = voxelPos.cast<float>() * voxelToCoordRatio;
         Eigen::Vector3i voxelRootPos = voxelPos / rootDimSize;
 
         // some debugging output for now
-        print_vec3(realPos, "> Inserting new point with position");
-        print_vec3(voxelPos, "Voxel position   (int)");
-        print_vec3(voxelPosF, "Voxel position (float)");
-        print_vec3(voxelRootPos, "Root  position");
+        print_vec3(realPos, "Real  position");
+        print_vec3(voxelPos, "Voxel position");
+        print_vec3(coordPos, "Coord position");
 
         // main insertion
         DAG::RootPos rootPos = pack_root_pos(voxelRootPos);
@@ -86,7 +85,7 @@ private:
     template<int32_t depth> inline DAG::ChildMask get_child_bit(Eigen::Vector3i& voxelPos) {
         static constexpr int32_t reverseDepth = nDagLevels - depth;
         static constexpr int32_t dimSize = 1 << reverseDepth;
-        std::cout << "Depth: " << depth << " Size: " << dimSize << 'x' << dimSize << 'x' << dimSize << std::endl;
+        // std::cout << "Depth " << depth << ": " << dimSize << 'x' << dimSize << 'x' << dimSize << std::endl;
 
         // calculate local position within current node (each node has 8 children, so 2x2x2)
         const Eigen::Vector3i localPos = voxelPos.unaryExpr([](const int32_t x){ return x % dimSize / (dimSize / 2); });
