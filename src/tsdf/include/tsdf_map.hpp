@@ -1,15 +1,14 @@
 #pragma once
 
+#include <iostream>
 #include <cstdint>
 #include <array>
-
+//
 #include <Eigen/Dense>
 #include <parallel_hashmap/phmap.h>
-
+//
 #include "constants.hpp"
 #include "dag_structs.hpp"
-
-
 
 class TSDF_Map {
 public:
@@ -52,12 +51,22 @@ public:
         DAG::RootPos rootPos = pack_root_pos(voxelRootPos);
         if (dagRootMap.contains(rootPos)) {
             std::cout << "Root found\n";
-            DAG::NodePointer rootNode = dagRootMap[rootPos];
+
+            // keep track of the last valid node
+            DAG::NodePointer lastNode = dagRootMap[rootPos];
+            uint32_t lastLevel = 0;
 
             // go and get all the child nodes recursively until a node doesnt exist
-            for (uint32_t i = 0; i < nDagLevels; i++) {
-                // TODO
-            }
+            [&]<size_t... indices>(std::index_sequence<indices...>) {
+                bool bContinue = true;
+                ((find_child<indices + 1>(voxelPos, lastNode, bContinue)), ...);
+            } (std::make_index_sequence<nDagLevels - 1>{});
+
+            // create nodes starting from the last valid node
+            // TODO
+            [&]<size_t... indices>(std::index_sequence<indices...>) {
+                
+            } (std::make_index_sequence<nDagLevels - 1>{});
         }
         else {
             std::cout << "Root missing\n";
@@ -82,10 +91,9 @@ private:
         return rootPos;
     }
     
-    template<int32_t depth> inline DAG::ChildMask get_child_bit(Eigen::Vector3i& voxelPos) {
+    template<int32_t depth> inline DAG::ChildMask get_child_bit(const Eigen::Vector3i& voxelPos) {
         static constexpr int32_t reverseDepth = nDagLevels - depth;
         static constexpr int32_t dimSize = 1 << reverseDepth;
-        // std::cout << "Depth " << depth << ": " << dimSize << 'x' << dimSize << 'x' << dimSize << std::endl;
 
         // calculate local position within current node (each node has 8 children, so 2x2x2)
         const Eigen::Vector3i localPos = voxelPos.unaryExpr([](const int32_t x){ return x % dimSize / (dimSize / 2); });
@@ -97,7 +105,22 @@ private:
         childBit = childBit << (localPos.z() << 2);
         return childBit;
     }
-    template<int32_t depth> inline DAG::NodePointer create_node_leaf(Eigen::Vector3i& voxelPos) { // TODO: calc signed distance properly. also dont need childBit, fill all leaves at once
+    template<int32_t depth> inline std::pair<DAG::NodePointer, uint32_t> find_child(const Eigen::Vector3i& voxelPos, const DAG::NodePointer parent, bool& bContinue) {
+        if (bContinue) return std::pair(parent, depth - 1);
+        
+        DAG::ChildMask childBit = get_child_bit<depth>(voxelPos);
+        DAG::Level& level = dagLevels[depth];
+        uint32_t parentNode = level.data[parent];
+
+        // TODO: find child in parent node
+        bContinue = false;
+        return {};
+    }
+    template<int32_t depth> inline void create_child() {
+
+    }
+
+    template<int32_t depth> inline DAG::NodePointer create_node_leaf(const Eigen::Vector3i& voxelPos) { // TODO: calc signed distance properly. also dont need childBit, fill all leaves at once
         DAG::ChildMask childBit = get_child_bit<depth>(voxelPos);
         DAG::Level& level = dagLevels[depth];
 
@@ -116,7 +139,7 @@ private:
         }
         return pLeaf->second;
     }
-    template<int32_t depth> inline DAG::NodePointer create_node_generic(Eigen::Vector3i& voxelPos, DAG::NodePointer child) {
+    template<int32_t depth> inline DAG::NodePointer create_node_generic(const Eigen::Vector3i& voxelPos, const DAG::NodePointer child) {
         DAG::ChildMask childBit = get_child_bit<depth>(voxelPos);
         DAG::Level& level = dagLevels[depth];
 
@@ -132,7 +155,7 @@ private:
         if (bEmplacedNew) level.dataSize += 2;
         return *pNode;
     }
-    template<int32_t depth> inline DAG::NodePointer create_node_root(Eigen::Vector3i& voxelPos, DAG::NodePointer child, DAG::RootPos rootPos) {
+    template<int32_t depth> inline DAG::NodePointer create_node_root(const Eigen::Vector3i& voxelPos, const DAG::NodePointer child, const DAG::RootPos rootPos) {
         DAG::ChildMask childBit = get_child_bit<depth>(voxelPos);
         DAG::Level& level = dagLevels[depth];
 
