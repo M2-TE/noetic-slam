@@ -52,20 +52,15 @@ public:
         if (dagRootMap.contains(rootPos)) {
             std::cout << "Root found\n";
 
-            // keep track of the last valid node
-            DAG::NodePointer lastNode = dagRootMap[rootPos];
-            uint32_t lastLevel = 0;
-
             // go and get all the child nodes recursively until a node doesnt exist
             [&]<size_t... indices>(std::index_sequence<indices...>) {
-                bool bContinue = true;
-                ((find_child<indices + 1>(voxelPos, lastNode, bContinue)), ...);
-            } (std::make_index_sequence<nDagLevels - 1>{});
 
-            // create nodes starting from the last valid node
-            // TODO
-            [&]<size_t... indices>(std::index_sequence<indices...>) {
-                
+                // keep track of last node and its layer
+                DAG::NodePointer parentNode = dagRootMap[rootPos];
+                // branch between finding and creating child
+                bool bCreateNode = false;
+
+                ((std::tie(parentNode, bCreateNode) = try_find_child<indices + 1>(voxelPos, parentNode, bCreateNode)), ...);
             } (std::make_index_sequence<nDagLevels - 1>{});
         }
         else {
@@ -105,16 +100,21 @@ private:
         childBit = childBit << (localPos.z() << 2);
         return childBit;
     }
-    template<int32_t depth> inline std::pair<DAG::NodePointer, uint32_t> find_child(const Eigen::Vector3i& voxelPos, const DAG::NodePointer parent, bool& bContinue) {
-        if (bContinue) return std::pair(parent, depth - 1);
+    template<int32_t depth> inline std::pair<DAG::NodePointer, bool> try_find_child(const Eigen::Vector3i& voxelPos, const DAG::NodePointer parent, const bool bCreateNode) {
+        if (!bCreateNode) {
+            // find child
+
+            // TODO
+            if (true) return std::pair(parent, false);
+        }
+        // create new child
         
         DAG::ChildMask childBit = get_child_bit<depth>(voxelPos);
         DAG::Level& level = dagLevels[depth];
         uint32_t parentNode = level.data[parent];
 
-        // TODO: find child in parent node
-        bContinue = false;
-        return {};
+        // TODO
+        return std::pair(parent, true);
     }
     template<int32_t depth> inline void create_child() {
 
