@@ -63,8 +63,8 @@ namespace DAG {
 
 // helper for vectors 
 static void print_vec3(Eigen::Vector3i pos, std::string text) {
-    ROS_INFO_STREAM(text << " (" << pos.x() << ", " << pos.y() << ", " << pos.z() << ")");
+    std::cout << text << " (" << pos.x() << ", " << pos.y() << ", " << pos.z() << ")\n";
 }
 static void print_vec3(Eigen::Vector3f pos, std::string text) {
-    ROS_INFO_STREAM(text << " (" << pos.x() << ", " << pos.y() << ", " << pos.z() << ")");
+    std::cout << text << " (" << pos.x() << ", " << pos.y() << ", " << pos.z() << ")\n";
 }
