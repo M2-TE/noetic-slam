@@ -47,15 +47,14 @@ public:
         print_vec3(voxelPos, "Voxel position");
         // print_vec3(coordPos, "Coord position");
 
-        DAG::NodePointer root = get_root_node(voxelRootPos);
+        DAG::NodePointer lastNode = get_root_node(voxelRootPos);
         [&]<size_t... indices>(std::index_sequence<indices...>) {
             
-            DAG::NodePointer lastNode = root;
             bool bContinue = true;
             // find nodes recursively until one no longer exists
             ((lastNode = get_child_node<indices + 1>(voxelPos, lastNode, bContinue)), ...);
 
-        } (std::make_index_sequence<nDagLevels - 2>{});
+        } (std::make_index_sequence<nDagLevels - 1>{});
     }
 
 private:
@@ -131,7 +130,12 @@ private:
             }
             parentLevel.data[parent + childOffset] = childNode;
         }
+        else if (depth == nDagLevels - 1) {
+            // this will create a leaf node only, which should be relatively simple
+            std::cout << "NOT YET IMPLEMENTED\n";
+        }
         else {
+            std::cout << "NOT YET IMPLEMENTED\n";
             // at all other depths, the parent's parent needs to be accessed
         }
         return 0; // todo: remove the need for return val
