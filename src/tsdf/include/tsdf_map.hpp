@@ -71,7 +71,7 @@ private:
             std::array<DAG::NodePointer, DAG::nLeavesPerNode + 1> children;
             for (auto& child : children) child = 0;
             dagLevels[depth].data.insert(dagLevels[depth].data.end(), children.begin(), children.end());
-            std::cout << "created new root node\n";
+            std::cout << "created new root node with mask:\n";
         }
         return pRoot->second;
     }
@@ -91,32 +91,44 @@ private:
     }
     template<int32_t depth> inline DAG::NodePointer get_child_node(Eigen::Vector3i& voxelPos, DAG::NodePointer parent, bool& bContinue) {
         if (!bContinue) return 0;
-        std::cout << depth << '\n';
 
         // try to find child in parent
         DAG::Level& parentLevel = dagLevels[depth - 1];
         DAG::ChildMask childMask = (DAG::ChildMask)parentLevel.data[parent];
         DAG::ChildMask childBit = get_child_bit<depth>(voxelPos);
         DAG::ChildMask result = childMask & childBit;
+        std::cout << depth << " depth. mask: " << (uint32_t)childMask << " bit: " << (uint32_t)childBit << '\n';
         if (result) {
-            std::cout << "found child at depth " << depth << '\n';
             // we need to know how many bits were set in front this child node (children are in order)
             // instead of looping over each bit, it is faster to count bits via popcount()
             // after applying a mask that only goes up to the childBit bit
             DAG::ChildMask submask = (childBit << 1) - 1;
             DAG::NodePointer childIndex = std::popcount<DAG::ChildMask>(result & submask);
-            return parent + childIndex; // move pointer forward via child index
+            // for (uint32_t i = 0; i < nDagLevels; i++) {
+            // std::cout << "result: " << dagLevels[i].data[0] << '\n';
+            // }
+            return parentLevel.data[parent + childIndex]; // return pointer to child
         }
         else bContinue = false;
 
         DAG::NodePointer childNode = create_children<depth>(voxelPos);
         if (depth == 1) {
-            // at this depth its easy, because the parent (root) depth always has all 8 children allocated
-            
+            // at this depth its easy, because the parent (root) always has all 8 children allocated
+
             // add new child to mask
             parentLevel.data[parent] = (uint32_t)(childMask | childBit);
             // add child to corresponding position
-            uint32_t childOffset = 0; // TODO: calc
+            uint32_t childOffset = 0;
+            switch (childBit) { // surely theres a way to easily calc this..
+                case   1: childOffset = 1; break;
+                case   2: childOffset = 2; break;
+                case   4: childOffset = 3; break;
+                case   8: childOffset = 4; break;
+                case  16: childOffset = 5; break;
+                case  32: childOffset = 6; break;
+                case  64: childOffset = 7; break;
+                case 128: childOffset = 8; break;
+            }
             parentLevel.data[parent + childOffset] = childNode;
         }
         else {
@@ -125,7 +137,7 @@ private:
         return 0; // todo: remove the need for return val
     }
     template<int32_t depth> inline DAG::NodePointer create_children(const Eigen::Vector3i& voxelPos) {
-        std::cout << "creating new children starting from depth " << depth << '\n';
+        std::cout << "creating children from leaf to depth " << depth << '\n';
 
         // create children all the way from leaves up until the <depth> given via template
         DAG::NodePointer lastNode = 0;
@@ -133,7 +145,7 @@ private:
             // keep track of last node
             lastNode = create_node_leaf<nDagLevels - 1>(voxelPos);
             ((lastNode = create_node_generic<nDagLevels - indices - 2>(voxelPos, lastNode)), ...);
-        } (std::make_index_sequence<nDagLevels - depth>{});
+        } (std::make_index_sequence<nDagLevels - depth - 1>{});
         return lastNode;
     }
     template<int32_t depth> inline DAG::NodePointer create_node_leaf(const Eigen::Vector3i& voxelPos) { // TODO: calc signed distance properly. also dont need childBit, fill all leaves at once
@@ -156,15 +168,18 @@ private:
         return pLeaf->second;
     }
     template<int32_t depth> inline DAG::NodePointer create_node_generic(const Eigen::Vector3i& voxelPos, const DAG::NodePointer child) {
-        DAG::ChildMask childBit = get_child_bit<depth>(voxelPos);
         DAG::Level& level = dagLevels[depth];
+        // get mask bit for the child at one depth below
+        DAG::ChildMask childBit = get_child_bit<depth + 1>(voxelPos);
 
         // create a temporary node and only progress tracker if it was actually inserted
         DAG::NodePointer key = level.dataSize;
         level.data.insert(level.data.begin() + key, {
-            childBit,   // mask
-            child       // child pointer
+            (uint32_t)childBit, // mask
+            (uint32_t)child     // child pointer
         });
+
+        // std::cout << depth << " depth. bit: " << (uint32_t)childBit << '\n';
 
         // check if a new node is emplaced
         auto [pNode, bEmplacedNew] = level.pointerSet.emplace(key);

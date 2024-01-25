@@ -28,7 +28,7 @@ namespace DAG {
         inline size_t operator()(NodePointer key) const noexcept {
             std::vector<uint32_t>& data = *pData;
             ChildMask childMask = static_cast<ChildMask>(data[key]);
-            uint8_t nChildren = std::popcount(childMask);
+            uint8_t nChildren = std::popcount<ChildMask>(childMask);
             // hash child mask
             size_t hash = phmap::HashState::combine(0, childMask);
             // hash all children
