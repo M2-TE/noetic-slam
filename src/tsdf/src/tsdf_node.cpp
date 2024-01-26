@@ -34,6 +34,7 @@ public:
         tsdfMap.insert_point({ 5.70f, 2.52f, 8.60f });
         // tsdfMap.insert_point({ 4.70152345f, 1.50356f, 2.60234f });
         // tsdfMap.insert_point({ 4.70152345f, 1.50356f, 2.60234f });
+        // nh.shutdown();
     }
     ~TSDF_Node() {
         // std::cout << "saving temporary map as ply..." << std::endl;

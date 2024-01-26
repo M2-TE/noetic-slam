@@ -39,17 +39,11 @@ public:
 
         // figure out which root the voxel will be in, as well as its position local to that root
         Eigen::Vector3i voxelPos = (realPos * coordToVoxelRatio).cast<int32_t>();
-        Eigen::Vector3f coordPos = voxelPos.cast<float>() * voxelToCoordRatio;
-        Eigen::Vector3i voxelRootPos = voxelPos / rootDimSize;
-
-        // some debugging output for now
-        // print_vec3(realPos,  "Real  position");
         print_vec3(voxelPos, "Voxel position");
-        // print_vec3(coordPos, "Coord position");
 
         // retrieve leaf node from tree 
         // (parent will contain leaf, as multiple leaves are packed into single node)
-        DAG::NodePointer parent = get_root_node(voxelRootPos);
+        DAG::NodePointer parent = get_root_node(voxelPos / rootDimSize);
         DAG::NodePointer parentParent = 0;
         [&]<size_t... indices>(std::index_sequence<indices...>) {
             
@@ -58,7 +52,8 @@ public:
             ((get_child_node<indices + 1>(voxelPos, parent, parentParent, bContinue)), ...);
 
         } (std::make_index_sequence<nDagLevels - 1>{});
-
+        
+        Eigen::Vector3f normal = realPos; // todo
         // overwrite leaf node contents based on value to be inserted
         // for tsdf: compare each leaflet!
         // if any changes need to be made, make leaf node copy and change as needed
@@ -69,7 +64,28 @@ public:
     }
 
 private:
-    inline DAG::NodePointer get_root_node(Eigen::Vector3i& voxelRootPos) {
+    inline DAG::ChildMask get_child_index(DAG::ChildMask childMask, DAG::ChildMask childBit) {
+        // mask that contains all bits before current childBit
+        DAG::ChildMask submask = (childBit << 1) - 1;
+        // by counting set bits before childBit, we get the index of the child
+        return std::popcount<DAG::ChildMask>(childMask & submask);
+    }
+    template<int32_t depth> inline DAG::ChildMask get_child_bit(Eigen::Vector3i& voxelPos) { // position of <depth-1> child within <depth> childMask
+        static constexpr int32_t reverseDepth = nDagLevels - depth;
+        static constexpr int32_t dimSize = 1 << reverseDepth;
+
+        // calculate local position within current node
+        // localPos will describe a 2x2x2 grid
+        const Eigen::Vector3i localPos = voxelPos.unaryExpr([](const int32_t x){ return x % dimSize / (dimSize / 2); });
+
+        DAG::ChildMask childBit = 1;
+        childBit = childBit << (localPos.x() << 0);
+        childBit = childBit << (localPos.y() << 1);
+        childBit = childBit << (localPos.z() << 2);
+        return childBit;
+    }
+
+    inline DAG::NodePointer get_root_node(Eigen::Vector3i voxelRootPos) {
         DAG::RootPos rootPos = (DAG::RootPos)voxelRootPos.x();
         rootPos |= (DAG::RootPos)voxelRootPos.y() << (DAG::xRootBits);
         rootPos |= (DAG::RootPos)voxelRootPos.z() << (DAG::xRootBits + DAG::yRootBits);
@@ -85,7 +101,7 @@ private:
         }
         return pRoot->second;
     }
-    inline DAG::NodePointer create_node_leaf(Eigen::Vector3i& voxelPos) {
+    inline DAG::NodePointer create_node_leaf(Eigen::Vector3i voxelPos) {
         DAG::ChildMask childBit = get_child_bit<nDagLevels - 1>(voxelPos);
         DAG::Level& level = dagLevels[nDagLevels - 1];
         
@@ -99,7 +115,7 @@ private:
         }
         return pLeaf->second;
     }
-    inline DAG::Leaves calculate_leaves(Eigen::Vector3i& voxelPos, Eigen::Vector3f& realPos) {
+    inline DAG::Leaves calculate_leaves(Eigen::Vector3i voxelPos, Eigen::Vector3f realPos) {
         DAG::ChildMask childBit = 1; // temporary
         
         float sd = voxelToCoordRatio * 0.2345f; // signed distance TODO: calc
@@ -122,20 +138,6 @@ private:
         return 0;
     }
 
-    template<int32_t depth> inline DAG::ChildMask get_child_bit(Eigen::Vector3i& voxelPos) { // position of <depth-1> child within <depth> childMask
-        static constexpr int32_t reverseDepth = nDagLevels - depth;
-        static constexpr int32_t dimSize = 1 << reverseDepth;
-
-        // calculate local position within current node
-        // localPos will describe a 2x2x2 grid
-        const Eigen::Vector3i localPos = voxelPos.unaryExpr([](const int32_t x){ return x % dimSize / (dimSize / 2); });
-
-        DAG::ChildMask childBit = 1;
-        childBit = childBit << (localPos.x() << 0);
-        childBit = childBit << (localPos.y() << 1);
-        childBit = childBit << (localPos.z() << 2);
-        return childBit;
-    }
     template<int32_t depth> inline void get_child_node(Eigen::Vector3i& voxelPos, DAG::NodePointer& parent, DAG::NodePointer& parentParent, bool& bContinue) {
         if (!bContinue) return;
 
@@ -144,14 +146,9 @@ private:
         DAG::ChildMask childMask = (DAG::ChildMask)parentLevel.data[parent];
         DAG::ChildMask childBit = get_child_bit<depth - 1>(voxelPos);
         DAG::ChildMask result = childMask & childBit;
-
-        // std::cout << depth << " depth. mask: " << (uint32_t)childMask << " bit: " << (uint32_t)childBit << '\n';
         if (result) {
-            // mask that contains all bits before current childBit
-            DAG::ChildMask submask = (childBit << 1) - 1;
-            DAG::NodePointer childIndex = std::popcount<DAG::ChildMask>(result & submask);
             parentParent = parent; // save for later
-            parent = parentLevel.data[parent + childIndex]; // return pointer to child
+            parent = parentLevel.data[parent + get_child_index(result, childBit)]; // return pointer to child
             return;
         }
         else bContinue = false;
@@ -183,6 +180,9 @@ private:
         else {
             // at all other depths, the parent's parent (parentParent) needs to be accessed
             std::cout << "NOT YET IMPLEMENTED\n";
+
+            // 1. create new node with parent's content + childNode
+            // 2. in parentParent children: replace pointer to parent with new parent
         }
         return;
     }
