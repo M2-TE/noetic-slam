@@ -143,12 +143,13 @@ private:
 
         // try to find child in parent
         DAG::Level& parentLevel = dagLevels[depth - 1];
-        DAG::ChildMask childMask = (DAG::ChildMask)parentLevel.data[parent];
+        std::vector<uint32_t>& parentData = parentLevel.data;
+        DAG::ChildMask childMask = (DAG::ChildMask)parentData[parent];
         DAG::ChildMask childBit = get_child_bit<depth - 1>(voxelPos);
-        DAG::ChildMask result = childMask & childBit;
-        if (result) {
+        DAG::ChildMask resultMask = childMask & childBit;
+        if (resultMask) {
             parentParent = parent; // save for later
-            parent = parentLevel.data[parent + get_child_index(result, childBit)]; // return pointer to child
+            parent = parentData[parent + get_child_index(resultMask, childBit)]; // return pointer to child
             return;
         }
         else bContinue = false;
@@ -159,7 +160,7 @@ private:
             // at root depth its easy, because the root always has all 8 children allocated
 
             // add new child to mask
-            parentLevel.data[parent] = (uint32_t)(childMask | childBit);
+            parentData[parent] = (uint32_t)(childMask | childBit);
             // add child to corresponding position
             uint32_t childOffset = 0;
             // there are some cpu-/compiler-specific intrinsics for this
@@ -175,17 +176,43 @@ private:
                 case  64: childOffset = 7; break;
                 case 128: childOffset = 8; break;
             }
-            parentLevel.data[parent + childOffset] = childNode;
+            parentData[parent + childOffset] = childNode;
         }
         else {
             // at all other depths, the parent's parent (parentParent) needs to be accessed
             std::cout << "NOT YET IMPLEMENTED\n";
 
-            // 1. create new node with parent's content + childNode
-            // 2. in parentParent children: replace pointer to parent with new parent
+            // get the child pointer of parentParent
+            DAG::NodePointer* pParentParentChild = &(dagLevels[depth - 2].data[parentParent]); // will point to the correct child entry of parentParent
+            for (uint32_t i = 0; i < 8; i++) { // go through children to find the "parent" child
+                pParentParentChild++;
+                if (parent == *pParentParentChild) break;
+            }
+
+            // add new child mask
+            parentData.emplace_back(resultMask);
+            // iterator for new parent node
+            auto parentIter = parentData.begin() + parent + 1;
+            parent = parentLevel.dataSize;
+            // copy children into new node
+            auto nChildren = std::popcount(childMask);
+            parentData.resize(parentLevel.dataSize);
+            parentData.insert(
+                parentData.end(), // destination
+                parentIter, // source begin
+                std::next(parentIter, nChildren)); // source end
+            // insert new child into new node
+            DAG::ChildMask newChildIndex = get_child_index(resultMask, childBit);
+            parentData.insert(parentIter + newChildIndex, childNode);
+            // check if this node already existed, increase dataSize if it did not
+            auto [pNode, bEmplacedNew] = parentLevel.pointerSet.emplace(parent);
+            if (bEmplacedNew) parentLevel.dataSize += nChildren + 1;
+            // update child of parentParent
+            *pParentParentChild = *pNode;
         }
         return;
     }
+    
     template<int32_t depth> inline DAG::NodePointer create_children(Eigen::Vector3i& voxelPos) {
         std::cout << "creating children from leaf to depth " << depth << '\n';
 
