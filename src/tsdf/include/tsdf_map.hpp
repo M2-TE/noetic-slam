@@ -196,8 +196,9 @@ private:
             // calc number of children the parent node has
             auto nChildren = std::popcount(childMask);
             parentData.resize(key + nChildren);
-            // resultMask will be the new node's childMask
-            parentData[key] = resultMask;
+            // newMask will be the new node's childMask
+            DAG::ChildMask newMask = childMask | childBit;
+            parentData[key] = newMask;
 
             // copy child pointers
             for (uint32_t i = 1; i <= nChildren; i++) {
@@ -205,16 +206,17 @@ private:
             }
 
             // insert new child pointer
-            DAG::ChildMask newChildIndex = get_child_index(resultMask, childBit);
-            parentData.insert(parentData.begin() + key + newChildIndex, childNode);
+            DAG::ChildMask newChildIndex = get_child_index(newMask, childBit);
+            parentData.insert(parentData.begin() + key + newChildIndex - 1, childNode);
 
             // check if this node already existed, increase dataSize if it did not
             auto [pNode, bEmplacedNew] = parentLevel.pointerSet.emplace(key);
             if (bEmplacedNew) parentLevel.dataSize += nChildren + 1;
             // else std::cout << "no new emplacement\n";
-            
+
             // update child of parentParent
             *pParentParentChild = *pNode;
+            std::cout << *pNode << "\n";
         }
         return;
     }
