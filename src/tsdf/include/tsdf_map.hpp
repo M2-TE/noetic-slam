@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <cstdint>
+#include <cstring>
 #include <array>
 //
 #include <Eigen/Dense>
@@ -189,24 +190,29 @@ private:
                 if (parent == *pParentParentChild) break;
             }
 
-            // add new child mask
-            parentData.emplace_back(resultMask);
-            // iterator for new parent node
-            auto parentIter = parentData.begin() + parent + 1;
-            parent = parentLevel.dataSize;
-            // copy children into new node
+            // key/index of new node
+            uint32_t key = parentLevel.dataSize;
+
+            // calc number of children the parent node has
             auto nChildren = std::popcount(childMask);
-            parentData.resize(parentLevel.dataSize);
-            parentData.insert(
-                parentData.end(), // destination
-                parentIter, // source begin
-                std::next(parentIter, nChildren)); // source end
-            // insert new child into new node
+            parentData.resize(key + nChildren);
+            // resultMask will be the new node's childMask
+            parentData[key] = resultMask;
+
+            // copy child pointers
+            for (uint32_t i = 1; i <= nChildren; i++) {
+                parentData[key + i] = parentData[parent + i];
+            }
+
+            // insert new child pointer
             DAG::ChildMask newChildIndex = get_child_index(resultMask, childBit);
-            parentData.insert(parentIter + newChildIndex, childNode);
+            parentData.insert(parentData.begin() + key + newChildIndex, childNode);
+
             // check if this node already existed, increase dataSize if it did not
-            auto [pNode, bEmplacedNew] = parentLevel.pointerSet.emplace(parent);
+            auto [pNode, bEmplacedNew] = parentLevel.pointerSet.emplace(key);
             if (bEmplacedNew) parentLevel.dataSize += nChildren + 1;
+            // else std::cout << "no new emplacement\n";
+            
             // update child of parentParent
             *pParentParentChild = *pNode;
         }
@@ -232,10 +238,10 @@ private:
 
         // create a temporary node and only progress tracker if it was actually inserted
         DAG::NodePointer key = level.dataSize;
-        level.data.insert(level.data.begin() + key, {
-            (uint32_t)childBit, // mask
-            (uint32_t)child     // child pointer
-        });
+        // resize if needed
+        level.data.resize(key + 2);
+        level.data[key] =       (uint32_t)childBit; // mask
+        level.data[key + 1] =   (uint32_t)child; // child pointer
 
         // std::cout << depth << " depth. bit: " << (uint32_t)childBit << '\n';
 
