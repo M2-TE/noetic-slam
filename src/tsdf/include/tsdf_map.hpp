@@ -6,6 +6,7 @@
 #include <array>
 //
 #include <Eigen/Dense>
+#include <Eigen/Geometry>
 #include <parallel_hashmap/phmap.h>
 //
 #include "constants.hpp"
@@ -55,6 +56,9 @@ public:
         } (std::make_index_sequence<nDagLevels - 1>{});
         
         Eigen::Vector3f normal = realPos; // todo
+
+        Eigen::Hyperplane<float, 3> plane(normal, realPos);//todo
+        
         // overwrite leaf node contents based on value to be inserted
         // for tsdf: compare each leaflet!
         // if any changes need to be made, make leaf node copy and change as needed
@@ -180,14 +184,18 @@ private:
             parentData[parent + childOffset] = childNode;
         }
         else {
-            // at all other depths, the parent's parent (parentParent) needs to be accessed
-            std::cout << "NOT YET IMPLEMENTED\n";
-
             // get the child pointer of parentParent
             DAG::NodePointer* pParentParentChild = &(dagLevels[depth - 2].data[parentParent]); // will point to the correct child entry of parentParent
-            for (uint32_t i = 0; i < 8; i++) { // go through children to find the "parent" child
-                pParentParentChild++;
-                if (parent == *pParentParentChild) break;
+            if constexpr (depth == 2) {
+                // special case for when the parentParent is root
+                std::cout << "NOT YET IMPLEMENTED\n";
+            }
+            else {
+                // go through children to find the "parent" child
+                for (uint32_t i = 0; i < 8; i++) {
+                    pParentParentChild++;
+                    if (parent == *pParentParentChild) break;
+                }
             }
 
             // key/index of new node
@@ -216,7 +224,6 @@ private:
 
             // update child of parentParent
             *pParentParentChild = *pNode;
-            std::cout << *pNode << "\n";
         }
         return;
     }

@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.0)
 project(tsdf LANGUAGES CXX)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 list(APPEND CATKIN_PACKAGES roscpp)
 list(APPEND CATKIN_PACKAGES sensor_msgs)
 list(APPEND CATKIN_PACKAGES geometry_msgs)
