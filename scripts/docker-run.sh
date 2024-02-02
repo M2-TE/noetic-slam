@@ -38,6 +38,8 @@ elif [ $selected_mode = "nvidia" ]; then
         --ulimit nofile=1024 \
         --gpus all \
         --env DISPLAY=${DISPLAY} \
+        --env __NV_PRIME_RENDER_OFFLOAD=1 \
+        --env __GLX_VENDOR_LIBRARY_NAME=nvidia \
         --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
         --runtime nvidia \
         noeticslam:latest
