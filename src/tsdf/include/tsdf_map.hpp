@@ -55,10 +55,18 @@ public:
 
         } (std::make_index_sequence<nDagLevels - 1>{});
         
-        Eigen::Vector3f normal = realPos; // todo
+        Eigen::Vector3f normal = {0, 1, 0}; // todo
+        Eigen::Hyperplane<float, 3> plane(normal, realPos);
 
-        Eigen::Hyperplane<float, 3> plane(normal, realPos);//todo
-        
+        // position of each leaf in real coordinates
+        std::array<Eigen::Vector3f, 8> leafPositions;
+
+
+        Eigen::Vector3f voxelPosOther = {0, 0, 0}; // todo: the voxel position converted to realPos
+        voxelPosOther = voxelPosOther.cast<float>() * voxelToCoordRatio;
+        // todo: output debug
+        Eigen::Vector3f sd = plane.signedDistance(voxelPosOther);
+
         // overwrite leaf node contents based on value to be inserted
         // for tsdf: compare each leaflet!
         // if any changes need to be made, make leaf node copy and change as needed
