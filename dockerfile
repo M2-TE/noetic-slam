@@ -29,16 +29,9 @@ ENV NOETICSLAM_DOCKER=1
 
 ## configurable env vars
 FROM setup AS config
-# options: replay, record, stream
-ENV MODE=replay
 ENV AUTOSTART=false
-ENV FILENAME=hsfd_nov2023_testing
 ENV LIDAR_ADDR=192.168.168.128
-
-# Hardware
-ENV LIDAR=ouster
-# options: integrated, nvidia, amd
-# ENV GPU=nvidia
+ENV FILENAME=hsfd_nov2023_testing
 
 # Topics (Pointcloud and IMU)
 ENV PCL_TOPIC=/ouster/points
@@ -47,6 +40,3 @@ ENV IMU_TOPIC=/ouster/imu
 # RVIZ
 ENV RVIZ_OUSTER=true
 ENV RVIZ_DLIO=true
-
-# DLIO specific setting for saving maps
-ENV LEAF_SIZE=0.01

@@ -1,3 +1,7 @@
+#include <ctime>
+#include <iostream>
+#include <iterator>
+#include <locale>
 // ROS
 #include <ros/ros.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -38,6 +42,13 @@ class Dliomapping_Node {
 public:
     Dliomapping_Node(ros::NodeHandle nh) {
         subPcl = nh.subscribe("robot/dlio/odom_node/pointcloud/deskewed", queueSize, &Dliomapping_Node::callback_pcl_deskewed, this);
+
+        std::time_t time = std::time({});
+        timeString = "yyyy-mm-dd_hh-mm_";
+        std::strftime(std::data(timeString), std::size(timeString),"%F_%H-%M", std::gmtime(&time));
+        timeString = timeString.substr(0, timeString.size() - 1); // because strftime is cursed to hell and back
+        std::cout << "Starting recording at timestamp: " << timeString << '\n';
+
     }
 
 public:
@@ -49,9 +60,9 @@ public:
         rawGlobalMap += pointcloud;
         iClouds++;
         if (iClouds >= nMaxCloudsPerPly - 1) {
-            std::string path = "/root/repo/maps/testoutput" + std::to_string(iPly++) + ".ply";
-            std::cout << "saving temporary map to" << path << "..." << std::endl;
-            int res = pcl::io::savePLYFile(path, rawGlobalMap); // pcd instead??
+            std::string path = "/root/repo/maps/" + timeString + "_" + std::to_string(iPly++) + ".ply";
+            std::cout << "saving temporary map to " << path << "..." << std::endl;
+            int res = pcl::io::savePLYFile(path, rawGlobalMap);
             // int res = pcl::io::savePCDFile(path, rawGlobalMap);
             rawGlobalMap = {};
             iClouds = 0;
@@ -62,6 +73,7 @@ public:
 private:
     uint32_t queueSize = 100;
     ros::Subscriber subPcl;
+    std::string timeString;
 
     // temporary stuff for saving raw maps:
     pcl::PointCloud<Point> rawGlobalMap;

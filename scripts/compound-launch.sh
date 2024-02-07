@@ -11,12 +11,11 @@ then
     done
 
     # let user override the mode
-    selected_mode="none"
-    if [ -n "$1" ]; then
-        selected_mode=$1
-    else
-        selected_mode=${MODE}
+    if [ -z "$1" ]; then
+        echo "error: select a mode: replay, record, stream"
+        exit -1
     fi
+    selected_mode=$1
 
     # handle selected mode
     if [ $selected_mode = "replay" ]; then
