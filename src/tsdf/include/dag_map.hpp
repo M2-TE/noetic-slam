@@ -65,7 +65,7 @@ struct Map {
             // calc normal using two neighbours
             auto vecA = scan[directNeighbourA.first] - *pCur;
             auto vecB = scan[directNeighbourB.first] - *pCur;
-            auto normal = vecA.cross(vecB);
+            auto normal = vecA.cross(vecB).normalized();
 
             // invert normal if it points in the wrong direction
             if (normal.dot(*pCur - position) >= 0.0f) normal = -normal;
@@ -81,13 +81,32 @@ struct Map {
             
             // iterate through all point to get close neighbours for current point
             influencers.clear();
-            for (auto pComp = scan.cbegin(); pComp != scan.cend(); pComp++) {
-                // todo: calc signed distance via hyperplane
-
-                // todo: if distance is < something, add index to influencers
+            auto pCompNorm = normals.cbegin();
+            for (auto pComp = scan.cbegin(); pComp != scan.cend(); pComp++, pCompNorm++) {
+                // squared distance is sufficient for comparison
+                float distSqr = (*pCur - *pComp).squaredNorm();
+                uint32_t index = pComp - scan.cbegin();
+                // potentially add to influence vector
+                if (distSqr < get_influence_radius_sqr<dim>()) influencers.emplace_back(index);
             }
             
-            // todo: fill signed distances with influencer candidates
+            for (auto pCur = influencers.cbegin(); pCur != influencers.cend(); pCur++) {
+                // construct hyperplane of close-by scan point
+                Eigen::Hyperplane<float, 3> plane(scan[*pCur], normals[*pCur]);
+
+                // todo: think about which points to overwrite others with
+
+                for (uint32_t x = 0; x < dim; x++) {
+                    for (uint32_t y = 0; y < dim; y++) {
+                        for (uint32_t z = 0; z < dim; z++) {
+                            uint32_t index = x * y * z;
+
+                        }
+                    }
+                }
+            }
+            // calc signed distance using eigen hyperplane
+            float sd = Eigen::Hyperplane<float, 3>(*pComp, *pCompNorm).signedDistance(*pCur);
         }
     }
 
