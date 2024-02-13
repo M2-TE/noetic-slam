@@ -1,4 +1,7 @@
+#include "dag_map.hpp"
+
 // ROS
+#ifndef __INTELLISENSE__
 #include <ros/ros.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseArray.h>
@@ -12,41 +15,53 @@
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/ply_io.h>
-
-// DLIO
-// #include "dlio/dlio.h"
+#endif
+#include <Eigen/Eigen>
+#include <chrono>
+#include <random>
+#include <cmath>
+//
 #include "dlio_stuff.hpp"
-
-// OTHER
 #include "tsdf_map.hpp"
+
 
 class TSDF_Node {
 public:
     TSDF_Node(ros::NodeHandle nh) {
         subPcl = nh.subscribe("robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
 
+        // generate random point data
+        std::vector<Eigen::Vector3f> points(10'000);
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<float> dis(-10.0f, 10.0f);
+        for (auto& point: points) {
+            point = {
+                dis(gen),
+                dis(gen),
+                dis(gen)
+            };
+        }
+
+        // insert into tsdf DAG
+        Eigen::Vector3f position = {0, 0, 0};
+        Eigen::Vector3f rotation = {0, 0, 0};
+        auto start = std::chrono::steady_clock::now();
+        std::cout << "inserting points" << std::endl;
+        dagMap.insert_scan(position, rotation, points);
+        auto end = std::chrono::steady_clock::now();
+        std::cout << std::chrono::duration<double, std::milli> (end - start).count() << " ms" << std::endl;
 
         // for debug purposes
-        tsdfMap.insert_point({ 5.70f, 2.51f, 8.60f });
-        tsdfMap.insert_point({ 5.70f, 2.51f, 8.60f });
+        // tsdfMap.insert_point({ 5.70f, 2.51f, 8.60f });
+        // tsdfMap.insert_point({ 5.70f, 2.51f, 8.60f });
         // tsdfMap.insert_point({ 5.70f, 2.50f, 8.60f });
         // tsdfMap.insert_point({ 5.70f, 2.50f, 8.60f });
-        tsdfMap.insert_point({ 5.70f, 2.52f, 8.60f });
-        tsdfMap.insert_point({ 5.70f, 2.52f, 8.60f });
+        // tsdfMap.insert_point({ 5.70f, 2.52f, 8.60f });
+        // tsdfMap.insert_point({ 5.70f, 2.52f, 8.60f });
         // tsdfMap.insert_point({ 4.70152345f, 1.50356f, 2.60234f });
         // tsdfMap.insert_point({ 4.70152345f, 1.50356f, 2.60234f });
         // nh.shutdown();
-    }
-    ~TSDF_Node() {
-        // std::cout << "saving temporary map as ply..." << std::endl;
-        // int res = pcl::io::savePLYFile("/root/repo/maps/full.ply", rawGlobalMap);
-        // if (res) std::cout << "failed saving ply file: " << res << std::endl;
-        // else std::cout << "success" << std::endl; 
-
-        // std::cout << "saving temporary map as pcd..." << std::endl;
-        // res = pcl::io::savePCDFile("/root/repo/maps/full.pcd", rawGlobalMap);
-        // if (res) std::cout << "failed saving ply file: " << res << std::endl;
-        // else std::cout << "success" << std::endl;
     }
 
 public:
@@ -55,30 +70,39 @@ public:
         pcl::PointCloud<Point> pointcloud = {};
         pcl::fromROSMsg(*msg, pointcloud);
 
-        // rawGlobalMap += pointcloud;
-        // iClouds++;
-        // if (iClouds >= nMaxCloudsPerPly - 1) {
-        //     std::string path = "/root/repo/maps/testoutput" + std::to_string(iPly++) + ".ply";
-        //     std::cout << "saving temporary map to" << path << "..." << std::endl;
-        //     int res = pcl::io::savePLYFile(path, rawGlobalMap); // pcd instead??
-        //     // int res = pcl::io::savePCDFile(path, rawGlobalMap);
-        //     rawGlobalMap = {};
-        //     iClouds = 0;
-        //     if (res) std::cout << "failed saving ply file: " << res << std::endl;
-        // }
+        // insert raw points into a non-pcl vector
+        std::vector<Eigen::Vector3f> points;
+        points.reserve(pointcloud.size());
+        for (auto cur = pointcloud.begin(); cur != pointcloud.end(); cur++) {
+            points.emplace_back(cur->getVector3fMap());
+        }
+
+        auto now = std::chrono::steady_clock::now();
+        std::cout << pointcloud.size() << " points with a window of ";
+        pointcloud.clear();
+        std::cout << std::chrono::duration<double, std::milli>(now - prev).count() << " ms" << std::endl;
+        prev = now;
+
+        // insert into tsdf DAG
+        Eigen::Vector3f position = {0, 0, 0};
+        Eigen::Vector3f rotation = {0, 0, 0};
+        auto start = std::chrono::steady_clock::now();
+        std::cout << "inserting points" << std::endl;
+        dagMap.insert_scan(position, rotation, points);
+        auto end = std::chrono::steady_clock::now();
+        std::cout << std::chrono::duration<double, std::milli>(end - start).count() << " ms" << std::endl;
+        exit(0);
     }
 
 private:
+    DAG::Map dagMap;
     TSDF_Map tsdfMap;
     uint32_t queueSize = 100;
     ros::Subscriber subPath;
     ros::Subscriber subPcl;
 
-    // temporary stuff for saving raw maps:
-    pcl::PointCloud<Point> rawGlobalMap;
-    size_t nMaxCloudsPerPly = 100;
-    size_t iClouds = 0;
-    size_t iPly = 0;
+    // timers
+    std::chrono::time_point<std::chrono::steady_clock> prev;
 };
 
 int main(int argc, char **argv) {

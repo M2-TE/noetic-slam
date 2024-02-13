@@ -4,9 +4,9 @@
 #include <cstdint>
 #include <cstring>
 #include <array>
+#include <vector>
 //
-#include <Eigen/Dense>
-#include <Eigen/Geometry>
+#include <Eigen/Eigen>
 #include <parallel_hashmap/phmap.h>
 //
 #include "constants.hpp"
@@ -24,6 +24,7 @@ public:
             level.pointerSet = decltype(level.pointerSet)(0, hashFnc, compFnc);
         }
     }
+
     void insert_pointcloud(sensor_msgs::PointCloud2ConstPtr& pMsgPointcloud) {
         ROS_INFO("adding pointcloud to tsdf");
 
@@ -65,7 +66,7 @@ public:
         Eigen::Vector3f voxelPosOther = {0, 0, 0}; // todo: the voxel position converted to realPos
         voxelPosOther = voxelPosOther.cast<float>() * voxelToCoordRatio;
         // todo: output debug
-        Eigen::Vector3f sd = plane.signedDistance(voxelPosOther);
+        float sd = plane.signedDistance(voxelPosOther);
 
         // overwrite leaf node contents based on value to be inserted
         // for tsdf: compare each leaflet!

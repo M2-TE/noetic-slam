@@ -4,6 +4,7 @@ if [ $NOETICSLAM_DOCKER ]
 then
     source /opt/ros/noetic/setup.bash
     roscore > /dev/null &
+    catkin config --init --cmake-args -DCMAKE_BUILD_TYPE=Release
     catkin build
     
     if [ $AUTOSTART = "true" ]
