@@ -4,11 +4,13 @@
 #include <array>
 #include <limits>
 #include <cmath>
+#include <bitset>
 //
 #define BOOST_BIND_GLOBAL_PLACEHOLDERS
 #include <boost/math/ccmath/ccmath.hpp>
 #include <Eigen/Eigen>
 #include <parallel_hashmap/phmap.h>
+#include <libmorton/morton.h>
 //
 #include "constants.hpp"
 #include "dag_structs.hpp"
@@ -43,6 +45,38 @@ struct Map {
 
     void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, const std::vector<Eigen::Vector3f>& scan) {
 
+        // uint32_t offset = 0b10000000000000000000000000000000;
+        uint32_t offset = 1 << 31;
+        for (int i = -3; i < 3; i++) {
+            uint32_t index = static_cast<uint32_t>(i) + offset;
+            std::cout << i << ": " << std::bitset<32>(index) << std::endl;
+        }
+            std::cout << std::numeric_limits<int32_t>::min() << ": " << std::bitset<32>(std::numeric_limits<int32_t>::min() + offset) << std::endl;
+            std::cout << std::numeric_limits<int32_t>::min()+1 << ": " << std::bitset<32>(std::numeric_limits<int32_t>::min() + offset+1) << std::endl;
+        return;
+        
+        std::vector<uint_fast64_t> mortonCodes;
+        mortonCodes.reserve(scan.size());
+        for (auto pCur = scan.cbegin(); pCur != scan.cend(); pCur++) {
+            // calculate voxel position in DAG tree
+            // Eigen::Vector3<int32_t> voxelPos32;
+            // remap min<int32_t>, max<int32_t>
+            // to: 0, max<uint32_t>
+            // Eigen::Vector3<uint32_t> voxelPos16;
+            // 
+
+            
+            uint_fast32_t x, y, z; // todo
+            mortonCodes.push_back(libmorton::morton3D_64_encode(x, y, z));
+        }
+
+
+
+        // 1. calc morton codes
+        // 2. sort (radix?) scan via morton code
+        // 3? create binary radix tree from sorted data
+        // 4. create DAG sub-tree from data
+        // 5. calculate each point's normal via approximated nearest neighbour hyperplane
     }
     void insert_scan_old(Eigen::Vector3f position, Eigen::Vector3f rotation, const std::vector<Eigen::Vector3f>& scan) {
         // normal estimation
