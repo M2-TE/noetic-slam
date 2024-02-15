@@ -44,13 +44,14 @@ public:
         }
 
         // insert into tsdf DAG
-        Eigen::Vector3f position = {0, 0, 0};
-        Eigen::Vector3f rotation = {0, 0, 0};
+        Eigen::Vector3f position = {};
+        Eigen::Quaternionf rotation = {};
         auto start = std::chrono::steady_clock::now();
         std::cout << "inserting points" << std::endl;
         dagMap.insert_scan(position, rotation, points);
         auto end = std::chrono::steady_clock::now();
         std::cout << std::chrono::duration<double, std::milli> (end - start).count() << " ms" << std::endl;
+        exit(0);
 
         // for debug purposes
         // tsdfMap.insert_point({ 5.70f, 2.51f, 8.60f });
@@ -84,8 +85,8 @@ public:
         prev = now;
 
         // insert into tsdf DAG
-        Eigen::Vector3f position = {0, 0, 0};
-        Eigen::Vector3f rotation = {0, 0, 0};
+        Eigen::Vector3f position = {};
+        Eigen::Quaternionf rotation = {};
         auto start = std::chrono::steady_clock::now();
         std::cout << "inserting points" << std::endl;
         dagMap.insert_scan(position, rotation, points);
