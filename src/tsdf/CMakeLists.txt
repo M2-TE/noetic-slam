@@ -33,6 +33,7 @@ target_include_directories(tsdf_node PRIVATE ${catkin_INCLUDE_DIRS})
 target_include_directories(tsdf_node PRIVATE include)
 target_include_directories(tsdf_node PRIVATE ext/phmap)
 target_include_directories(tsdf_node PRIVATE ext/libmorton/include)
+target_include_directories(tsdf_node PRIVATE ext/morton-nd/include)
 
 install(TARGETS tsdf_node DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION} )
 # install(DIRECTORY cfg launch DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})

@@ -5,12 +5,15 @@
 #include <limits>
 #include <cmath>
 #include <bitset>
+#include <random>
 //
 #define BOOST_BIND_GLOBAL_PLACEHOLDERS
 #include <boost/math/ccmath/ccmath.hpp>
 #include <Eigen/Eigen>
 #include <parallel_hashmap/phmap.h>
-#include <libmorton/morton.h>
+#include <libmorton/morton.h> // morton lib A
+#define __BMI2__
+#include <morton-nd/mortonND_BMI2.h> // morton lib B
 //
 #include "constants.hpp"
 #include "dag_structs.hpp"
@@ -44,15 +47,43 @@ struct Map {
     }
 
     void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, const std::vector<Eigen::Vector3f>& scan) {
+        
+        // get sign bit
+        constexpr int16_t offset = 1 << 15;
+        static_assert(sizeof(int16_t) == 2);
+        static_assert(sizeof(uint16_t) == 2);
+        static_assert(static_cast<int16_t>(0) == 0b0);
+        static_assert(std::numeric_limits<int16_t>::min() - offset == 0b0);
 
-        // uint32_t offset = 0b10000000000000000000000000000000;
-        uint32_t offset = 1 << 31;
-        for (int i = -3; i < 3; i++) {
-            uint32_t index = static_cast<uint32_t>(i) + offset;
-            std::cout << i << ": " << std::bitset<32>(index) << std::endl;
+        // std::cout << std::numeric_limits<int16_t>::min() << " " << std::bitset<16>(std::numeric_limits<int16_t>::min()) << std::endl;
+        // std::cout << std::numeric_limits<int16_t>::min() << " " << std::bitset<16>(std::numeric_limits<int16_t>::min() - offset) << std::endl;
+
+        // map min(int),...,max(int) to 0,...,max(uint) (-1, 0, 1 need to be right next to each other)
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<int16_t> dis(std::numeric_limits<int16_t>::min(), std::numeric_limits<int16_t>::max());
+        // std::uniform_int_distribution<int16_t> dis(-5, 5);
+        for (int i = 0; i < 100000; i++) {
+            int16_t x = dis(gen) - offset;
+            int16_t y = dis(gen) - offset;
+            int16_t z = dis(gen) - offset;
+
+            // todo: map range to 21 bits? or 20
+
+            // mortonnd::MortonNDBmi_3D_64::Encode()
+            
+            uint_fast64_t code = libmorton::morton3D_64_encode((uint_fast32_t)x, (uint_fast32_t)y, (uint_fast32_t)z);
+            uint_fast32_t xu, yu, zu;
+            libmorton::morton3D_64_decode(code, xu, yu, zu);
+
+            if (x == (int16_t)xu && y == (int16_t)yu && z == (int16_t)zu) {
+                // std::cout << "success: " << x << " " << y << " " << z  << std::endl;
+            }
+            else {
+                std::cout << "         " << x << " " << y << " " << z 
+                    << "\n\tcompared:" << xu << " " << yu << " " << zu << std::endl;
+            }
         }
-            std::cout << std::numeric_limits<int32_t>::min() << ": " << std::bitset<32>(std::numeric_limits<int32_t>::min() + offset) << std::endl;
-            std::cout << std::numeric_limits<int32_t>::min()+1 << ": " << std::bitset<32>(std::numeric_limits<int32_t>::min() + offset+1) << std::endl;
         return;
         
         std::vector<uint_fast64_t> mortonCodes;

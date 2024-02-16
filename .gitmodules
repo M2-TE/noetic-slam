@@ -7,6 +7,6 @@
 [submodule "src/tsdf/ext/phmap"]
 	path = src/tsdf/ext/phmap
 	url = https://github.com/greg7mdp/parallel-hashmap.git
-[submodule "src/tsdf/ext/libmorton"]
-	path = src/tsdf/ext/libmorton
-	url = https://github.com/Forceflow/libmorton.git
+[submodule "src/tsdf/ext/morton-nd"]
+	path = src/tsdf/ext/morton-nd
+	url = https://github.com/morton-nd/morton-nd.git
