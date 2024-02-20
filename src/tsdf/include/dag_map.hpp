@@ -10,9 +10,9 @@
 #include <boost/math/ccmath/ccmath.hpp>
 #include <Eigen/Eigen>
 #include <parallel_hashmap/phmap.h>
-#ifdef __INTELLISENSE__
-#define __BMI2__
-#endif
+// #ifdef __INTELLISENSE__
+// #define __BMI2__
+// #endif
 #include <morton-nd/mortonND_BMI2.h>
 //
 #include "constants.hpp"
@@ -62,22 +62,19 @@ struct Map {
     }
 
     void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, const std::vector<Eigen::Vector3f>& scan) {
+        typedef uint_fast32_t uint21_t;
+        typedef Eigen::Matrix<uint21_t, 3, 1> Vector3u;
         for (uint32_t depth = 0; depth < nDagLevels + 1; depth++) {
             std::cout << "depth " << depth << ": " << dagSizes[depth] << " voxel(s), " << dagResolutions[depth] << " resolution" << std::endl;
         }
 
+        // calculate morton codes based on leaf voxel position
+        uint32_t index = 0;
         std::vector<std::pair<uint_fast64_t, uint32_t>> mortonCodes;
         mortonCodes.reserve(scan.size());
-        uint32_t currentLevel = 0;
-        uint32_t index = 0;
         for (auto pCur = scan.cbegin(); pCur != scan.cend(); pCur++, index++) {
-            // calculate voxel position in DAG tree
-            typedef uint32_t uint21_t;
-            Eigen::Matrix<uint21_t, 3, 1> vPos = (*pCur * (1.0 / dagResolutions[currentLevel])).cast<uint21_t>();
-            // std::cout << "\n";
-            // std::cout << (int)vPos.x() << " " << (int)vPos.y() << " " << (int)vPos.z() << std::endl;
-            // std::cout << std::bitset<32>(vPos.x()) << " " << std::bitset<32>(vPos.y()) << " " << std::bitset<32>(vPos.z()) << std::endl;
-
+            // calculate leaf voxel position
+            Vector3u vPos = (*pCur * (1.0 / dagResolutions[nDagLevels])).cast<uint21_t>();
             // map 32-bit int to 21-bits
             vPos = vPos.unaryExpr([](const uint21_t i) {
                 constexpr uint21_t signBit32 = 1 << 31;
@@ -87,13 +84,11 @@ struct Map {
                     (i & bitmask) | // limit to 20 bits (note: mask may not be needed, mortonnd masks too)
                     ((i & signBit32 ^ signBit32) >> 11); // inverted sign bit for 21 bits total
             });
-            // std::cout << (int)vPos.x() << " " << (int)vPos.y() << " " << (int)vPos.z() << std::endl;
-            // std::cout << std::bitset<21>(vPos.x()) << " " << std::bitset<21>(vPos.y()) << " " << std::bitset<21>(vPos.z()) << std::endl;
-            
             // create 63-bit morton code from 3x21-bit fields
             // z order priority will be: x -> y -> z
             static_assert(mortonnd::MortonNDBmi_3D_64::FieldBits == 21);
-            mortonCodes.emplace_back(mortonnd::MortonNDBmi_3D_64::Encode<uint_fast32_t>(vPos.x(), vPos.z(), vPos.y()), index);
+            uint_fast64_t mortonCode = mortonnd::MortonNDBmi_3D_64::Encode(vPos.x(), vPos.z(), vPos.y());
+            mortonCodes.emplace_back(mortonCode, index);
         }
         // sort via morton codes to obtain z-order
         std::sort(mortonCodes.begin(), mortonCodes.end(), [](
@@ -102,18 +97,79 @@ struct Map {
                 return a.first > b.first;
         });
 
-        // testing z order
+        constexpr double maxRadius = leafResolution * 500.0;
+        constexpr size_t maxNeighbours = 16;
+        // nearest neighbours via z-order locality
         for (auto pCur = mortonCodes.cbegin(); pCur != mortonCodes.cend(); pCur++) {
-            auto index = pCur->second;
-            // std::cout << scan[index].x() << " " << scan[index].y() << " " << scan[index].z() << std::endl;
+            constexpr float maxRadiusSqr = maxRadius * maxRadius;
+            Eigen::Vector3f point = scan[pCur->second];
+            // A: store vector or index?
+            // B: use sorted container like std::set? (sort by distSqr)
+            std::vector<Eigen::Vector3d> neighbours;
+            neighbours.reserve(maxNeighbours);
+
+            // TODO: could leverage MatrixXd for SIMD acceleration
+            // "point" as default value? would allow <50 neighbours
+            // Eigen::Matrix<double, 4, Eigen::Dynamic> neighboursMat;
+            // Eigen::Matrix<double, 4, maxNeighbours> neighboursMat;
+            Eigen::Matrix<double, 4, Eigen::Dynamic, 0, 4, maxNeighbours> neighboursMat;
+
+            // TODO: define END pointers here, so the for loops dont look as complex
+            // can combine pointer with maxNeighbours that way
+            
+            // forward neighbours
+            for (auto pFwd = pCur + 1; pFwd < mortonCodes.cend(); pFwd++) {
+                Eigen::Vector3f candidate = scan[pFwd->second];
+                float distSqr = (point - candidate).squaredNorm();
+                if (distSqr < maxRadiusSqr) {
+                    neighbours.push_back(candidate.cast<double>());
+                    if (neighbours.size() >= maxNeighbours / 2) break;
+                }
+                else break;
+            }
+            // backward neighbours
+            for (auto pBwd = pCur - 1; pBwd >= mortonCodes.cbegin(); pBwd--) {
+                Eigen::Vector3f candidate = scan[pBwd->second];
+                float distSqr = (point - candidate).squaredNorm();
+                if (distSqr < maxRadiusSqr) {
+                    neighbours.push_back(candidate.cast<double>());
+                    if (neighbours.size() >= maxNeighbours) break;
+                }
+                else break;
+            }
+            
+            // centroid for neighbourhood plane
+            Eigen::Vector3d centroid = {0, 0, 0};
+            for (auto pNei = neighbours.cbegin(); pNei != neighbours.cend(); pNei++) {
+                centroid += *pNei;
+            }
+            centroid /= (double)neighbours.size();
+
+            // calculate normal via covariance matrix
+            Eigen::Matrix<double, 3, 3> covarianceMatrix = {};
+            for (uint32_t i = 0; i < 3; i++) {
+                for (uint32_t j = 0; j < 3; j++) {
+                    for (auto pNei = neighbours.cbegin(); pNei != neighbours.cend(); pNei++) {
+                        covarianceMatrix(i, j) += 
+                            (centroid(i) - (*pNei)(i)) *
+                            (centroid(j) - (*pNei)(j));
+                    }
+                    // covarianceMatrix(i, j) /= (double)neighbours.size();
+                }
+            }
+
+            // compute eigenvalues and eigenvectors
+            Eigen::EigenSolver<decltype(covarianceMatrix)> solver(covarianceMatrix, true);
+            const auto& eigenvalues = solver.eigenvalues();
+            // find lowest eigenvalue
+            uint32_t iMin = 0;
+            iMin = eigenvalues(1).real() < eigenvalues(iMin).real() ? 1 : iMin;
+            iMin = eigenvalues(2).real() < eigenvalues(iMin).real() ? 2 : iMin;
+            // eigenvector corresponding to lowest eigenvalue => surface normal
+            Eigen::Vector3d norm = solver.eigenvectors().col(iMin).real();
+
+            // std::cout << neighbours.size() << std::endl;
         }
-
-
-        // 1. calc morton codes
-        // 2. sort (radix?) scan via morton code
-        // 3? create binary radix tree from sorted data
-        // 4. create DAG sub-tree from data
-        // 5. calculate each point's normal via approximated nearest neighbour hyperplane
     }
 
 private:
