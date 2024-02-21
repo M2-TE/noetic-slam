@@ -99,16 +99,19 @@ Eigen::Matrix<T, 4, 1> normal_from_neighbourhood(Eigen::Matrix<T, 4, Eigen::Dyna
     return weighted_dir.normalized();
 }
 
-// TODO!
-template<std::integral T, size_t NVEC, size_t NBITS>
-static inline Eigen::Matrix<T, NVEC, 1> remap_for_morton(Eigen::Matrix<T, NVEC, 1> input) {
-    return input.unaryExpr([](const T i) {
+// TODO! dont confuse casts between 32 and 64 bits that may happen prior to this
+// do more static assertions!
+template<std::signed_integral T, size_t N_VEC>
+static inline uint_fast64_t calc_morton_signed(Eigen::Matrix<T, N_VEC, 1> input) {
+    static_assert(mortonnd::MortonNDBmi_3D_64::FieldBits == 21); // TODO: checkj if FieldBits is smaller than our bitmask thingy
+    auto res = input.unaryExpr([](const T i) {
         constexpr T signBit32 = 1 << 31;
         constexpr T bitmask20 = (1 << 20) - 1;
         return
             (i & bitmask20) | // limit to 20 bits (note: mask may not be needed, mortonnd masks too)
             ((i & signBit32 ^ signBit32) >> 11); // inverted sign bit for 21 bits total
     });
+    return mortonnd::MortonNDBmi_3D_64::Encode(res.x(), res.z(), res.y());
 }
 
 namespace DAG {
@@ -168,25 +171,10 @@ struct Map {
         mortonCodes.reserve(points.size());
         for (auto pCur = points.cbegin(); pCur != points.cend(); pCur++) {
             // calculate leaf voxel position
-            typedef uint_fast32_t uint21_t;
-            typedef Eigen::Matrix<uint21_t, 3, 1> Vector3u;
-            Vector3u vPos = (*pCur * (1.0 / leafResolution)).cast<uint21_t>();
-            // map 32-bit int to 21-bits
-            // constexpr uint21_t signBit32 = 1 << 31;
-            // constexpr uint21_t bitmask20 = (1 << 20) - 1;
-            // vPos = (vPos & bitmask20);
-            // vPos = vPos.unaryExpr([](const uint21_t i) {
-            //     constexpr uint21_t signBit32 = 1 << 31;
-            //     constexpr uint21_t bitmask20 = (1 << 20) - 1;
-            //     return
-            //         (i & bitmask20) | // limit to 20 bits (note: mask may not be needed, mortonnd masks too)
-            //         ((i & signBit32 ^ signBit32) >> 11); // inverted sign bit for 21 bits total
-            // });
-            vPos = remap_for_morton<uint21_t, 3, 21>(vPos);
+            Eigen::Matrix<int32_t, 3, 1> vPos = (*pCur * (1.0 / leafResolution)).cast<int32_t>();
             // create 63-bit morton code from 3x21-bit fields
             // z order priority will be: x -> y -> z
-            static_assert(mortonnd::MortonNDBmi_3D_64::FieldBits == 21);
-            uint_fast64_t mortonCode = mortonnd::MortonNDBmi_3D_64::Encode(vPos.x(), vPos.z(), vPos.y());
+            uint_fast64_t mortonCode = calc_morton_signed<int32_t, 3>(vPos);
             mortonCodes.emplace_back(mortonCode, mortonCodes.size());
 
             // todo: calc morton codes for all other DAG layers as well
@@ -232,8 +220,9 @@ struct Map {
                 else break;
             }
             neighbours.conservativeResize(Eigen::NoChange, nNeighbours);
+            // TODO: cant do normal estimation when there arent enough neighbours
             auto normal = normal_from_neighbourhood<double, maxNeighbours>(neighbours);
-            std::cout << normal.x() << " " << normal.y() << " " << normal.z() << " " << normal.w() << std::endl;
+            // std::cout << normal.x() << " " << normal.y() << " " << normal.z() << " " << normal.w() << std::endl;
             // std::cout << neighbours.cols() << std::endl;
         }
     }
