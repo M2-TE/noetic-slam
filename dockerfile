@@ -6,7 +6,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 # INSTALL DEPENDENCIES
 RUN apt-get update && apt-get upgrade -y
 # common build tools
-RUN apt-get install -y build-essential cmake git
+RUN apt-get install -y build-essential cmake git gcc-10 g++-10
 # catkin_tools
 RUN apt-get install -y python3-catkin-tools catkin-lint
 # PCL tools
@@ -23,6 +23,11 @@ RUN apt-get install -y wget
 RUN wget https://boostorg.jfrog.io/artifactory/main/release/1.84.0/source/boost_1_84_0.tar.gz
 RUN tar -xf boost_1_84_0.tar.gz
 RUN cd boost_1_84_0 && ./bootstrap.sh && ./b2 install
+
+# Use gcc-10 instead of standard gcc-9
+RUN apt-get install -y gcc-10 g++-10
+ENV CXX "/usr/bin/g++-10"
+ENV CC "/usr/bin/gcc-10"
 
 WORKDIR /root/repo/
 RUN echo 'source /opt/ros/noetic/setup.bash' >> /root/.bashrc
