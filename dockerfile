@@ -6,7 +6,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 # INSTALL DEPENDENCIES
 RUN apt-get update && apt-get upgrade -y
 # common build tools
-RUN apt-get install -y build-essential cmake git gcc-10 g++-10
+RUN apt-get install -y build-essential cmake git
 # catkin_tools
 RUN apt-get install -y python3-catkin-tools catkin-lint
 # PCL tools

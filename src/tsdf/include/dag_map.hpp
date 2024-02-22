@@ -6,8 +6,8 @@
 #include <cmath>
 #include <bitset>
 #include <concepts>
+#include <type_traits>
 //
-#define BOOST_BIND_GLOBAL_PLACEHOLDERS
 #include <boost/math/ccmath/ccmath.hpp>
 #include <Eigen/Eigen>
 #include <parallel_hashmap/phmap.h>
@@ -99,17 +99,17 @@ Eigen::Matrix<T, 4, 1> normal_from_neighbourhood(Eigen::Matrix<T, 4, Eigen::Dyna
     return weighted_dir.normalized();
 }
 
-// TODO! dont confuse casts between 32 and 64 bits that may happen prior to this
-// do more static assertions!
+// use x-bit signed integral as morton code input with locality between -1, 0, +1
 template<std::signed_integral T, size_t N_VEC>
 static inline uint_fast64_t calc_morton_signed(Eigen::Matrix<T, N_VEC, 1> input) {
-    static_assert(mortonnd::MortonNDBmi_3D_64::FieldBits == 21); // TODO: checkj if FieldBits is smaller than our bitmask thingy
     auto res = input.unaryExpr([](const T i) {
-        constexpr T signBit32 = 1 << 31;
-        constexpr T bitmask20 = (1 << 20) - 1;
+        typedef std::make_unsigned_t<T> uint;
+        constexpr T signBit = 1 << static_cast<uint>(sizeof(T) * 8 - 1);
+        constexpr T shift = mortonnd::MortonNDBmi_3D_64::FieldBits - 1;
+        constexpr T bitmask = (1 << static_cast<uint>(shift)) - 1;
         return
-            (i & bitmask20) | // limit to 20 bits (note: mask may not be needed, mortonnd masks too)
-            ((i & signBit32 ^ signBit32) >> 11); // inverted sign bit for 21 bits total
+            (i & bitmask) | // limit to 20 bits (note: mask may not be needed, mortonnd masks too)
+            ((i & signBit ^ signBit) >> static_cast<uint>(11)); // inverted sign bit for 21 bits total
     });
     return mortonnd::MortonNDBmi_3D_64::Encode(res.x(), res.z(), res.y());
 }
@@ -222,7 +222,7 @@ struct Map {
             neighbours.conservativeResize(Eigen::NoChange, nNeighbours);
             // TODO: cant do normal estimation when there arent enough neighbours
             auto normal = normal_from_neighbourhood<double, maxNeighbours>(neighbours);
-            // std::cout << normal.x() << " " << normal.y() << " " << normal.z() << " " << normal.w() << std::endl;
+            std::cout << normal.x() << " " << normal.y() << " " << normal.z() << " " << normal.w() << std::endl;
             // std::cout << neighbours.cols() << std::endl;
         }
     }
