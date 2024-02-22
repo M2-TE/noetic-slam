@@ -104,12 +104,14 @@ template<std::signed_integral T, size_t N_VEC>
 static inline uint_fast64_t calc_morton_signed(Eigen::Matrix<T, N_VEC, 1> input) {
     auto res = input.unaryExpr([](const T i) {
         typedef std::make_unsigned_t<T> uint;
-        constexpr T signBit = 1 << static_cast<uint>(sizeof(T) * 8 - 1);
-        constexpr T shift = mortonnd::MortonNDBmi_3D_64::FieldBits - 1;
-        constexpr T bitmask = (1 << static_cast<uint>(shift)) - 1;
+        constexpr uint shiftMask = mortonnd::MortonNDBmi_3D_64::FieldBits - 1;
+        constexpr uint shiftSign = sizeof(T) * 8 - 1;
+        constexpr uint shiftSign21 = shiftSign - shiftMask;
+        constexpr T signBit = 1 << shiftSign;
+        constexpr T bitmask = (1 << shiftMask) - 1;
         return
             (i & bitmask) | // limit to 20 bits (note: mask may not be needed, mortonnd masks too)
-            ((i & signBit ^ signBit) >> static_cast<uint>(11)); // inverted sign bit for 21 bits total
+            ((i & signBit ^ signBit) >> shiftSign21); // inverted sign bit for 21 bits total
     });
     return mortonnd::MortonNDBmi_3D_64::Encode(res.x(), res.z(), res.y());
 }
