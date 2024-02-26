@@ -41,7 +41,12 @@ public:
                 dis(gen),
                 dis(gen)
             };
+            point.normalize();
+            point *= 10.0f;
         }
+        // std::vector<Eigen::Vector3f> points;
+        // points.emplace_back(50.0f, 100.0f, 25.0f);
+        // points.emplace_back(50.0f, 100.0f, 25.0f);
 
         // insert into tsdf DAG
         Eigen::Vector3f position = {};

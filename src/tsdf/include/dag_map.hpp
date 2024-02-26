@@ -8,9 +8,11 @@
 #include <concepts>
 #include <type_traits>
 //
+#define BOOST_BIND_GLOBAL_PLACEHOLDERS
 #include <boost/math/ccmath/ccmath.hpp>
 #include <Eigen/Eigen>
 #include <parallel_hashmap/phmap.h>
+#include <parallel_hashmap/btree.h>
 // help intellisense be not stupid for once
 #ifndef __BMI2__
 #define __BMI2__
@@ -21,25 +23,23 @@
 #include "dag_structs.hpp"
 
 // https://www.ilikebigbits.com/2017_09_25_plane_from_points_2.html
-template<std::floating_point T, size_t N>
-Eigen::Matrix<T, 4, 1> normal_from_neighbourhood(Eigen::Matrix<T, 4, Eigen::Dynamic, 0, 4, N>& points) {
-    typedef Eigen::Matrix<T, 4, 1> Vec4;
+Eigen::Vector3f normal_from_neighbourhood(std::vector<Eigen::Vector3f>& points) {
     // calculate centroid by through coefficient average
-    Vec4 centroid = {};
-    for (const T* pCur = points.data(); pCur != points.data() + points.size(); pCur += 4) {
-        centroid += *reinterpret_cast<const Vec4*>(pCur);
+    Eigen::Vector3f centroid = {};
+    for (auto p = points.cbegin(); p != points.cend(); p++) {
+        centroid += *p;
     }
-    centroid /= (T)points.cols();
+    centroid /= (float)points.size();
 
     // covariance matrix excluding symmetries
-    T xx = 0.0;
-    T xy = 0.0;
-    T xz = 0.0;
-    T yy = 0.0;
-    T yz = 0.0;
-    T zz = 0.0;
-    for (const T* pCur = points.data(); pCur != points.data() + points.size(); pCur += 4) {
-        auto r = *reinterpret_cast<const Vec4*>(pCur) - centroid;
+    float xx = 0.0;
+    float xy = 0.0;
+    float xz = 0.0;
+    float yy = 0.0;
+    float yz = 0.0;
+    float zz = 0.0;
+    for (auto p = points.cbegin(); p != points.cend(); p++) {
+        auto r = *p - centroid;
         xx += r.x() * r.x();
         xy += r.x() * r.y();
         xz += r.x() * r.z();
@@ -47,49 +47,46 @@ Eigen::Matrix<T, 4, 1> normal_from_neighbourhood(Eigen::Matrix<T, 4, Eigen::Dyna
         yz += r.y() * r.z();
         zz += r.z() * r.z();
     }
-    xx /= (T)points.cols();
-    xy /= (T)points.cols();
-    xz /= (T)points.cols();
-    yy /= (T)points.cols();
-    yz /= (T)points.cols();
-    zz /= (T)points.cols();
+    xx /= (float)points.size();
+    xy /= (float)points.size();
+    xz /= (float)points.size();
+    yy /= (float)points.size();
+    yz /= (float)points.size();
+    zz /= (float)points.size();
 
     // weighting linear regression based on square determinant
-    Vec4 weighted_dir = {};
-    Vec4 axis_dir = {};
-    T weight = 0.0;
+    Eigen::Vector3f weighted_dir = {};
+    Eigen::Vector3f axis_dir = {};
+    float weight = 0.0;
 
     // determinant x
-    T det_x = yy*zz - yz*yz;
+    float det_x = yy*zz - yz*yz;
     axis_dir = {
         det_x,
         xz*yz - xy*zz,
-        xy*yz - xz*yy,
-        0.0
+        xy*yz - xz*yy
     };
     weight = det_x * det_x;
     if (weighted_dir.dot(axis_dir) < 0.0) weight = -weight;
     weighted_dir += axis_dir * weight;
 
     // determinant y
-    T det_y = xx*zz - xz*xz;
+    float det_y = xx*zz - xz*xz;
     axis_dir = {
         xz*yz - xy*zz,
         det_y,
-        xy*xz - yz*xx,
-        0.0
+        xy*xz - yz*xx
     };
     weight = det_y * det_y;
     if (weighted_dir.dot(axis_dir) < 0.0) weight = -weight;
     weighted_dir += axis_dir * weight;
 
     // determinant z
-    T det_z = xx*yy - xy*xy;
+    float det_z = xx*yy - xy*xy;
     axis_dir = {
         xy*yz - xz*yy,
         xy*xz - yz*xx,
-        det_z,
-        0.0
+        det_z
     };
     weight = det_z * det_z;
     if (weighted_dir.dot(axis_dir) < 0.0) weight = -weight;
@@ -118,7 +115,7 @@ static inline uint_fast64_t calc_morton_signed(Eigen::Matrix<T, N_VEC, 1> input)
 
 namespace DAG {
 static constexpr double leafResolution = 0.01; // real distance for each voxel step
-static constexpr uint32_t nDagLevels = 3; // number of DAG levels including root and leaf clusters (excluding leaves)
+static constexpr uint32_t nDagLevels = 10; // number of DAG levels including root and leaf clusters (excluding leaves)
 static constexpr uint32_t nAllLevels = nDagLevels + 1; // nDagLevels including implicit leaf depth
 static constexpr std::array<uint32_t, nAllLevels> get_sizes() {
     std::array<uint32_t, nAllLevels> arr = {};
@@ -142,12 +139,18 @@ static constexpr std::array<double, nAllLevels> get_resolutions() {
 };
 static constexpr std::array<uint32_t, nAllLevels> dagSizes = get_sizes();
 static constexpr std::array<double, nAllLevels> dagResolutions = get_resolutions();
-static constexpr uint32_t iRoot = 0;
-static constexpr uint32_t iLeaf = nDagLevels;
-static constexpr uint32_t iLeafCluster = iLeaf - 1;
+namespace idx { // static indices
+    static constexpr size_t root = 0;
+    static constexpr size_t leaf = nDagLevels;
+    static constexpr size_t leafCluster = leaf - 1;
+}
+static constexpr size_t mortonVolume = idx::leaf - 4;
+typedef uint64_t MortonCode;
+typedef uint32_t Index;
+typedef std::pair<MortonCode, Index> MortonIndex;
+typedef std::pair<Eigen::Vector3f, Eigen::Quaternionf> Pose;
 struct Scan {
-    Eigen::Vector3f position;
-    Eigen::Vector3f rotation;
+    Pose pose;
     std::vector<NodePointer> roots;
 };
 struct Map {
@@ -162,94 +165,96 @@ struct Map {
         }
     }
 
-    void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, const std::vector<Eigen::Vector3f>& points) {
+    void print_info() {
         for (uint32_t depth = 0; depth < nDagLevels + 1; depth++) {
             std::cout << "depth " << depth << ": " 
-                << dagSizes[depth] << " voxel(s), " 
-                << dagResolutions[depth] << " resolution" << std::endl;
+                << dagSizes[depth] << "^3" << " voxels, " 
+                << dagResolutions[depth] << "^3" << " resolution";
+            if (depth == idx::leaf) std::cout << " (implicit)";
+            std::cout << std::endl;
         }
-        typedef std::pair<uint_fast64_t, uint32_t> MortonIndex;
-        std::vector<MortonIndex> mortonCodes;
+        std::cout << "morton volume (leaf NN) of " << dagSizes[mortonVolume] << "^3 voxels";
+        std::cout << "(" << dagSizes[mortonVolume] * leafResolution << ")" << std::endl;
+    }
+    template<size_t depth> auto get_morton_map(std::vector<Eigen::Vector3f>& points) {
+        // multimap properties:
+        // 1. sorted
+        // 2. multiple values per key
+        // 3. cache friendly due to 1. and 2.
+        phmap::btree_multimap<MortonCode, Index> mortonMap;
 
-        // calculate morton codes based on leaf voxel position
-        mortonCodes.reserve(points.size());
+        // calculate morton codes based on voxel position
+        Index i = 0;
         for (auto pCur = points.cbegin(); pCur != points.cend(); pCur++) {
             // calculate leaf voxel position
             Eigen::Matrix<int32_t, 3, 1> vPos = (*pCur * (1.0 / leafResolution)).cast<int32_t>();
+            // assign to voxel chunk
+            vPos /= (int32_t)dagSizes[depth];
             // create 63-bit morton code from 3x21-bit fields
-            // z order priority will be: x -> y -> z
-            uint_fast64_t mortonCode = calc_morton_signed<int32_t, 3>(vPos);
-            mortonCodes.emplace_back(mortonCode, mortonCodes.size());
-
-            // todo: calc morton codes for all other DAG layers as well
+            MortonCode mortonCode = calc_morton_signed<int32_t, 3>(vPos);
+            mortonMap.insert({ mortonCode, i++ });
         }
-        // sort via morton codes to obtain z-order
-        std::sort(
-            mortonCodes.begin(), 
-            mortonCodes.end(), 
-            [](const MortonIndex& a, const MortonIndex& b) { return a.first > b.first; }
-        );
+        return mortonMap;
+    }
+    auto get_normals(Pose pose, std::vector<Eigen::Vector3f>& points) {
+        auto mortonMap = get_morton_map<mortonVolume>(points);
+        std::vector<Eigen::Vector3f> normals;
+        normals.reserve(points.size());
+        // estimate normals based on NN (nearest neighbours)
+        for (auto pCur = mortonMap.cbegin(); pCur != mortonMap.cend(); pCur++) {
+            Eigen::Vector3f point = points[pCur->second];
+            
+            std::vector<decltype(point)> neighbours;
+            neighbours.push_back(point);
 
-        // adjust these two as needed (high radius bcs of random input data atm)
-        constexpr double maxRadius = leafResolution * 500.0;
-        constexpr size_t maxNeighbours = 64;
-        // nearest neighbours via z-order locality
-        for (auto pCur = mortonCodes.cbegin(); pCur != mortonCodes.cend(); pCur++) {
-            constexpr float maxRadiusSqr = maxRadius * maxRadius;
-            Eigen::Vector4d point = points[pCur->second].head<4>().cast<double>();
-            point.w() = 0.0;
+            // morton code components are 21-bit signed integers (stored in unsigned)
+            // 21st bit is set for positive numbers to achieve smooth range from -max to +max
+            // performing math operations on it works as expected (relative to other 21-bit values)
+            // these values CANNOT be interpreted as real numbers without proper conversion
+            auto [xC, yC, zC] = mortonnd::MortonNDBmi_3D_64::Decode(pCur->first);
 
-            // 4-point vectors to leverage SIMD instructions
-            Eigen::Matrix<double, 4, Eigen::Dynamic, 0, 4, maxNeighbours> neighbours(4, maxNeighbours);
-            // add current point to "neighbours" to include it in normal estimation
-            neighbours.col(0) = point;
-            uint_fast32_t nNeighbours = 1;
-
-            // forward neighbours
-            for (auto pFwd = pCur + 1; pFwd < mortonCodes.cend(); pFwd++) {
-                Eigen::Vector4d candidate = points[pFwd->second].head<4>().cast<double>();
-                candidate.w() = 0.0;
-                double distSqr = (point - candidate).squaredNorm();
-                if (distSqr < maxRadiusSqr) {
-                    neighbours.col(nNeighbours) = candidate;
-                    if (++nNeighbours >= maxNeighbours / 2) break;
+            // traverse morton code neighbours for nearest neighbour search
+            constexpr decltype(xC) off = 1; // offset (1 = 3x3x3 morton neighbourhood)
+            for (auto x = xC - off; x <= xC + off; x++) {
+                for (auto y = yC - off; y <= yC + off; y++) {
+                    for (auto z = zC - off; z <= zC + off; z++) {
+                        // generate morton code from new coordinates
+                        MortonCode mc = mortonnd::MortonNDBmi_3D_64::Encode(x, y, z);
+                        // iterate over all values for current key
+                        auto ptr = mortonMap.find(mc);
+                        for (; ptr != mortonMap.cend() && ptr->first == mc; ptr++) {
+                            Eigen::Vector3f candidate = points[ptr->second];
+                            neighbours.push_back(candidate);
+                        }
+                    }
                 }
-                else break;
             }
-            // backward neighbours
-            for (auto pBwd = pCur - 1; pBwd >= mortonCodes.cbegin(); pBwd--) {
-                Eigen::Vector4d candidate = points[pBwd->second].head<4>().cast<double>();
-                candidate.w() = 0.0;
-                double distSqr = (point - candidate).squaredNorm();
-                if (distSqr < maxRadiusSqr) {
-                    neighbours.col(nNeighbours) = candidate;
-                    if (++nNeighbours >= maxNeighbours) break;
-                }
-                else break;
-            }
-            neighbours.conservativeResize(Eigen::NoChange, nNeighbours);
-
-            Eigen::Vector4d normal;
+            // std::cout << neighbours.size() << std::endl;
+            
             // estimate normal via neighbourhood if enough neighbours are present
-            if (nNeighbours >= 3) {
-                normal = normal_from_neighbourhood<double, maxNeighbours>(neighbours);
-            }
+            Eigen::Vector3f normal;
+            if (neighbours.size() > 1) normal = normal_from_neighbourhood(neighbours);
             // else use pose-to-point
-            else {
-                Eigen::Vector4d pos = position.cast<double>().head<4>();
-                pos.w() = 0.0;
-                normal = pos;
-            }
-            // std::cout << normal.x() << " " << normal.y() << " " << normal.z() << " " << normal.w() << std::endl;
-            // std::cout << neighbours.cols() << std::endl;
+            else normal = (pose.first - point).normalized();
+            normals.push_back(normal);
         }
+        return normals;
+    }
+    void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
+        Pose pose = { position, rotation };
+        print_info();
+
+        auto normals = get_normals(pose, points);
+
+
+        // std::vector<MortonIndex> mortonCodes = get_sorted_morton_codes(points, 1.0 / leafResolution);
+        // std::vector<Eigen::Vector3f> normals;
+        // normals.reserve(points.size());
+        // estimate_normals(pose, points, mortonCodes);
     }
 
 private:
-    std::vector<Scan> scans;
-
-    // not really in use atm
-    phmap::flat_hash_map<DAG::RootPos, DAG::NodePointer> dagRootMap;
+    std::vector<Scan> scans; // TODO
     phmap::flat_hash_map<DAG::Leaves, DAG::NodePointer> dagLeafMap;
     std::array<DAG::Level, nDagLevels> dagLevels;
 };
