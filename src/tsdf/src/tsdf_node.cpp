@@ -51,8 +51,8 @@ public:
         // insert into tsdf DAG
         Eigen::Vector3f position = {};
         Eigen::Quaternionf rotation = {};
-        auto start = std::chrono::steady_clock::now();
         std::cout << "inserting points" << std::endl;
+        auto start = std::chrono::steady_clock::now();
         dagMap.insert_scan(position, rotation, points);
         auto end = std::chrono::steady_clock::now();
         std::cout << std::chrono::duration<double, std::milli> (end - start).count() << " ms" << std::endl;
