@@ -161,18 +161,18 @@ struct Map {
     }
     
     // use n-bit signed integral as morton code input with locality between -1, 0, +1
-    template<std::signed_integral T>
-    uint_fast64_t calc_morton_signed(Eigen::Matrix<T, 3, 1> input) {
-        auto res = input.unaryExpr([](const T i) {
-            typedef std::make_unsigned_t<T> uint;
-            constexpr uint shiftMask = mortonnd::MortonNDBmi_3D_64::FieldBits - 1;
-            constexpr uint shiftSign = sizeof(T) * 8 - 1;
-            constexpr uint shiftSign21 = shiftSign - shiftMask;
-            constexpr T signBit = 1 << shiftSign;
-            constexpr T bitmask = (1 << shiftMask) - 1;
-            return
-                (i & bitmask) | // limit to 20 bits (note: mask may not be needed, mortonnd masks too)
-                ((i & signBit ^ signBit) >> shiftSign21); // inverted sign bit for 21 bits total
+    uint_fast64_t calc_morton_signed(Eigen::Matrix<int32_t, 3, 1> input) {
+        auto res = input.unaryExpr([](const int32_t i) {
+            constexpr uint signBit = 1 << 31;
+            constexpr uint signMask = signBit - 1;
+            constexpr uint mask = (1 << 20) - 1;
+            // invert sign
+            uint32_t sign = (i & signBit) ^ signBit;
+            // shift sign to 21st bit
+            sign = sign >> 11;
+            // combine sign with i
+            uint32_t res = (i & mask) | sign;
+            return (int32_t)res;
         });
         return mortonnd::MortonNDBmi_3D_64::Encode(res.x(), res.z(), res.y());
     }
@@ -193,7 +193,7 @@ struct Map {
             // assign to voxel chunk
             vPos /= (int32_t)dagSizes[depth];
             // create 63-bit morton code from 3x21-bit fields
-            MortonCode mortonCode = calc_morton_signed<int32_t>(vPos);
+            MortonCode mortonCode = calc_morton_signed(vPos);
             mortonMap.emplace(mortonCode, MortonIndex(*pCur, i++));
         }
         return mortonMap;
@@ -242,18 +242,16 @@ struct Map {
         return normals;
     }
     void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
-        // print_info();
+        print_info();
         Pose pose = { position, rotation };
         auto normals = get_normals(pose, points);
         
-        // scanpoints influence an area of 3x3x3 leaf clusters (TSDF values)
-        auto test = get_morton_map<idx::leafCluster>(points);
-        auto testcpy = test; // for insertion
-        for (auto p = test.begin(); p != test.end(); p++) {
-            auto point = p->second.point;
-
+        // scanpoints influence an area of 3x3x3 leaf clusters
+        auto clusterMap = get_morton_map<idx::leafCluster>(points);
+        auto influenceMap = clusterMap; // for insertion
+        for (auto p = clusterMap.begin(); p != clusterMap.end(); p++) {
+            // traverse morton code neighbours for TSDF influence
             auto [xC, yC, zC] = mortonnd::MortonNDBmi_3D_64::Decode(p->first);
-            // traverse morton code neighbours
             constexpr decltype(xC) off = 1; // offset (1 = 3x3x3 morton neighbourhood)
             for (auto x = xC - off; x <= xC + off; x++) {
                 for (auto y = yC - off; y <= yC + off; y++) {
@@ -261,18 +259,47 @@ struct Map {
                         // generate morton code from new coordinates
                         MortonCode mc = mortonnd::MortonNDBmi_3D_64::Encode(x, y, z);
                         // insert current point into neighbour for TSDF calcs later on
-                        testcpy.emplace(mc, MortonIndex(point, p->second.index));
+                        influenceMap.emplace(mc, MortonIndex(p->second.point, p->second.index));
                     }
                 }
             }
         }
+        // TODO: emplace point and norm together as value? more cache hits
 
-        // TODO: iterate over testcpy for leaf clusters
+        // iterate over InfluenceMap to generate leaf clusters
+        for (auto p = influenceMap.cbegin(); p != influenceMap.cend();) {
 
-        // TODO: dont actually need to know normals in this scope
-        // use the neighbours vector to determine which point is closest to the voxel
-        // -> (store indices+distanceSqr per leaf cluster?)
-        // after normal calc, write actual TSDF values into leaves (clusters?)
+            // calculate leaf cluster position
+            Eigen::Vector3f vPos = p->second.point.unaryExpr([&](const float f){
+                // convert to voxel position
+                int32_t i = static_cast<int32_t>(f * (1.0 / leafResolution));
+                // mask out lsb for cluster position
+                i = i & (0xffffffff ^ 0x1);
+                // convert to real position
+                return static_cast<float>(i) * static_cast<float>(leafResolution);
+            });
+
+            // offsets will be added to cPos to obtain actual leaf position
+            constexpr float k = leafResolution;
+            const std::array<Eigen::Vector3f, 8> leafPosOffsets = { // no constexpr :c
+                Eigen::Vector3f(0, 0, 0),
+                Eigen::Vector3f(k, 0, 0),
+                Eigen::Vector3f(0, k, 0),
+                Eigen::Vector3f(0, 0, k),
+                Eigen::Vector3f(k, k, 0),
+                Eigen::Vector3f(0, k, k),
+                Eigen::Vector3f(k, 0, k),
+                Eigen::Vector3f(k, k, k)
+            };
+
+            // signed distances for leaves within leaf chunk
+            std::array<float, 8> leaves;
+
+            // iterate over points that contribute to cluster
+            for (auto key = p->first; p->first == key && p != influenceMap.cend(); p++) {
+                // TODO
+            }
+        }
     }
 
 private:
