@@ -31,9 +31,9 @@ public:
         subPcl = nh.subscribe("robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
 
         // generate random point data
-        std::vector<Eigen::Vector3f> points(10'000);
+        std::vector<Eigen::Vector3f> points(100'000);
         std::random_device rd;
-        std::mt19937 gen(rd());
+        std::mt19937 gen(420);
         std::uniform_real_distribution<float> dis(-10.0f, 10.0f);
         for (auto& point: points) {
             point = {
