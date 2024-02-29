@@ -174,69 +174,35 @@ struct Map {
             uint32_t res = (i & mask) | sign;
             return (int32_t)res;
         });
-        return mortonnd::MortonNDBmi_3D_64::Encode(res.x(), res.z(), res.y());
+        return mortonnd::MortonNDBmi_3D_64::Encode(res.x(), res.y(), res.z());
     }
-    // template<size_t depth> 
-    // auto get_morton_map(std::vector<Eigen::Vector3f>& points) {
-    //     auto start = std::chrono::steady_clock::now();
-    //     // phmap::btree_multimap<MortonCode, MortonIndex> mortonMap;
-    //     // std::multimap<MortonCode, MortonIndex> mortonMap;
-    //     std::unordered_multimap<MortonCode, MortonIndex> mortonMap;
-    //     // mortonMap.reserve(points.size());
-    //     // mortonMap.rehash(points.size());
+    template<size_t depth> 
+    auto get_morton_map(std::vector<Eigen::Vector3f>& points) {
+        phmap::btree_multimap<MortonCode, MortonIndex> mortonMap;
+        // std::multimap<MortonCode, MortonIndex> mortonMap;
+        // std::unordered_multimap<MortonCode, MortonIndex> mortonMap;
+        // mortonMap.reserve(points.size());
+        // mortonMap.rehash(points.size());
 
-    //     // calculate morton codes based on voxel position
-    //     uint32_t i = 0;
-    //     // std::vector<MortonCode>
-    //     for (auto pCur = points.cbegin(); pCur != points.cend(); pCur++) {
-    //         // calculate leaf voxel position
-    //         Eigen::Matrix<int32_t, 3, 1> vPos = (*pCur * (1.0 / leafResolution)).cast<int32_t>();
-    //         // assign to voxel chunk
-    //         vPos /= (int32_t)dagSizes[depth];
-    //         // create 63-bit morton code from 3x21-bit fields
-    //         MortonCode mortonCode = calc_morton_signed(vPos);
-    //         mortonMap.emplace(mortonCode, MortonIndex(*pCur, i++));
-    //     }
-    //     auto end = std::chrono::steady_clock::now();
-    //     std::cout << "construction: " << std::chrono::duration<double, std::milli> (end - start).count() << " ms" << std::endl;
-    //     return mortonMap;
-    // }
-    auto get_normals(Pose pose, std::vector<Eigen::Vector3f>& points) {
-        auto beg = std::chrono::steady_clock::now();
-        std::unordered_multimap<uint64_t, MortonIndex> neighborMap;
-        uint32_t TEMP = 0;
-        for (auto p = points.cbegin(); p != points.cend(); p++) {
-            // calculate leaf voxel position
-            Eigen::Matrix<int32_t, 3, 1> vPos = (*p * (1.0 / leafResolution)).cast<int32_t>();
-            // assign to voxel chunk
-            vPos /= (int32_t)dagSizes[mortonVolume];
-            // compress dimensions down to 21 bits each (ignore sign)
-            constexpr uint64_t mask = (1 << 21) - 1;
-            uint64_t key = static_cast<uint64_t>(vPos.x() & mask);
-            key |= (static_cast<uint64_t>(vPos.y()) & mask) << 21;
-            key |= (static_cast<uint64_t>(vPos.z()) & mask) << 42;
-            neighborMap.emplace(key, MortonIndex(*p, TEMP++));
-        }
-        auto end = std::chrono::steady_clock::now();
-        auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-        std::cout << "construction: " << dur << " ms" << std::endl;
-        
-
-        beg = std::chrono::steady_clock::now();
         // calculate morton codes based on voxel position
-        std::unordered_multimap<MortonCode, MortonIndex> mortonMap;
         uint32_t i = 0;
+        // std::vector<MortonCode>
         for (auto pCur = points.cbegin(); pCur != points.cend(); pCur++) {
             // calculate leaf voxel position
             Eigen::Matrix<int32_t, 3, 1> vPos = (*pCur * (1.0 / leafResolution)).cast<int32_t>();
             // assign to voxel chunk
-            vPos /= (int32_t)dagSizes[mortonVolume];
+            vPos /= (int32_t)dagSizes[depth];
             // create 63-bit morton code from 3x21-bit fields
             MortonCode mortonCode = calc_morton_signed(vPos);
             mortonMap.emplace(mortonCode, MortonIndex(*pCur, i++));
         }
-        end = std::chrono::steady_clock::now();
-        dur = std::chrono::duration<double, std::milli> (end - beg).count();
+        return mortonMap;
+    }
+    auto get_normals(Pose pose, std::vector<Eigen::Vector3f>& points) {
+        auto beg = std::chrono::steady_clock::now();
+        auto mortonMap = get_morton_map<mortonVolume>(points);
+        auto end = std::chrono::steady_clock::now();
+        auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
         std::cout << "construction: " << dur << " ms" << std::endl;
 
         // estimate normals based on kNN (nearest neighbours)
@@ -260,16 +226,21 @@ struct Map {
                 for (auto y = yC - off; y <= yC + off; y++) {
                     for (auto z = zC - off; z <= zC + off; z++) {
                         // generate morton code from new coordinates
-                        // MortonCode mc = mortonnd::MortonNDBmi_3D_64::Encode(x, y, z);
+                        MortonCode mc = mortonnd::MortonNDBmi_3D_64::Encode(x, y, z);
+                        // MortonCode mc = x + y + z;
                         // iterate over all values for current key
-                        MortonCode mc = x + y + z;
-                        
-                        auto index = mortonMap.bucket(mc);
-                        auto ptr = mortonMap.cbegin(index);
-                        auto end = mortonMap.cend(index);
-                        for (; ptr != end; ptr++) {
+                        auto ptr = mortonMap.find(mc);
+                        if (ptr == mortonMap.cend()) continue;
+                        for (; ptr->first == mc && ptr != mortonMap.cend(); ptr++) {
                             neighbours.push_back(ptr->second.point);
                         }
+
+                        // auto index = mortonMap.bucket(mc);
+                        // auto ptr = mortonMap.cbegin(index);
+                        // auto end = mortonMap.cend(index);
+                        // for (; ptr != end; ptr++) {
+                        //     neighbours.push_back(ptr->second.point);
+                        // }
                     }
                 }
             }
@@ -289,28 +260,53 @@ struct Map {
     }
     void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
         // print_info();
+        // auto code = calc_morton_signed(vec);
+        // auto [x, y, z] = mortonnd::MortonNDBmi_3D_64::Decode(code);
+        // // std::cout << x << " " << y << " " << z << "\n";
+        // // std::cout << std::bitset<21>(x) << " " << std::bitset<21>(y) << " " << std::bitset<21>(z) << "\n";
+        // std::cout << std::bitset<63>(code) << "\n";
+        // constexpr uint64_t mask_x = 0b001001001001001001001001001001001001001001001001001001001001001;
+        // constexpr uint64_t mask_y = mask_x << 1;
+        // constexpr uint64_t mask_z = mask_y << 1;
+        // constexpr uint64_t mask_yz = mask_y | mask_z;
+        // code = (((code | mask_yz) + 1) & mask_x) | (code & mask_yz);
+        // std::cout << std::bitset<63>(code) << "\n";
+        // vec.x() += 1;
+        // code = calc_morton_signed(vec);
+        // std::cout << std::bitset<63>(code) << "\n";
+        // code = (((code & mask_x) - 1) & mask_x) | (code & mask_yz);
+        // std::cout << std::bitset<63>(code) << "\n";
+        // vec.x() -= 1;
+        // code = calc_morton_signed(vec);
+        // std::cout << std::bitset<63>(code) << "\n";
+
+
         Pose pose = { position, rotation };
         auto normals = get_normals(pose, points);
         return;
-        
-        // // scanpoints influence an area of 3x3x3 leaf clusters
-        // auto clusterMap = get_morton_map<idx::leafCluster>(points);
+        // scanpoints influence an area of 3x3x3 leaf clusters
+        auto clusterMap = get_morton_map<idx::leafCluster>(points);
+        phmap::parallel_flat_hash_map<MortonCode, uint32_t> leafClusters;
         // auto influenceMap = clusterMap; // for insertion
-        // for (auto p = clusterMap.begin(); p != clusterMap.end(); p++) {
-        //     // traverse morton code neighbours for TSDF influence
-        //     auto [xC, yC, zC] = mortonnd::MortonNDBmi_3D_64::Decode(p->first);
-        //     constexpr decltype(xC) off = 1; // offset (1 = 3x3x3 morton neighbourhood)
-        //     for (auto x = xC - off; x <= xC + off; x++) {
-        //         for (auto y = yC - off; y <= yC + off; y++) {
-        //             for (auto z = zC - off; z <= zC + off; z++) {
-        //                 // generate morton code from new coordinates
-        //                 MortonCode mc = mortonnd::MortonNDBmi_3D_64::Encode(x, y, z);
-        //                 // insert current point into neighbour for TSDF calcs later on
-        //                 influenceMap.emplace(mc, MortonIndex(p->second.point, p->second.index));
-        //             }
-        //         }
-        //     }
-        // }
+        for (auto p = clusterMap.begin(); p != clusterMap.end(); p++) {
+
+            auto [xC, yC, zC] = mortonnd::MortonNDBmi_3D_64::Decode(p->first);
+            constexpr decltype(xC) off = 1; // offset (1 = 3x3x3 morton neighbourhood)
+
+            // traverse morton code neighbours for TSDF influence
+            for (auto x = xC - off; x <= xC + off; x++) {
+                for (auto y = yC - off; y <= yC + off; y++) {
+                    for (auto z = zC - off; z <= zC + off; z++) {
+                        // generate morton code from new coordinates
+                        MortonCode mc = mortonnd::MortonNDBmi_3D_64::Encode(x, y, z);
+                        // MortonCode mc = x + y + z;
+                        uint32_t somedata = (uint32_t)mc;
+                        // TODO: calc signed distances here
+                        auto [pCluster, b] = leafClusters.try_emplace(mc, somedata);
+                    }
+                }
+            }
+        }
         // TODO: emplace point and norm together as value? more cache hits
 
         // iterate over InfluenceMap to generate leaf clusters
