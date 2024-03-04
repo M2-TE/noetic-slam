@@ -1,4 +1,7 @@
 #pragma once
+
+#include "trie.hpp"
+
 #include <iostream>
 #include <vector>
 #include <array>
@@ -8,6 +11,7 @@
 #include <concepts>
 #include <type_traits>
 #include <map>
+#include <new>
 //
 #define BOOST_BIND_GLOBAL_PLACEHOLDERS
 #include <boost/math/ccmath/ccmath.hpp>
@@ -19,6 +23,7 @@
 #define __BMI2__
 #endif
 #include <morton-nd/mortonND_BMI2.h>
+// #include <RadixTree/RadixTree.h>
 //
 #include "constants.hpp"
 #include "dag_structs.hpp"
@@ -280,7 +285,7 @@ struct Map {
         // code = calc_morton_signed(vec);
         // std::cout << std::bitset<63>(code) << "\n";
 
-
+        return;
         Pose pose = { position, rotation };
         auto normals = get_normals(pose, points);
         return;
