@@ -285,16 +285,22 @@ struct Map {
         // code = calc_morton_signed(vec);
         // std::cout << std::bitset<63>(code) << "\n";
 
-        return;
+        Trie trie;
+        trie.insert(0x7fffffffffffffff, 45);
+        trie.insert(0x7ffffffffff2ffff, 45);
+
+        // return;
         Pose pose = { position, rotation };
         auto normals = get_normals(pose, points);
-        return;
+        
         // scanpoints influence an area of 3x3x3 leaf clusters
         auto clusterMap = get_morton_map<idx::leafCluster>(points);
         phmap::parallel_flat_hash_map<MortonCode, uint32_t> leafClusters;
         // auto influenceMap = clusterMap; // for insertion
-        for (auto p = clusterMap.begin(); p != clusterMap.end(); p++) {
 
+        auto beg = std::chrono::steady_clock::now();
+        for (auto p = clusterMap.begin(); p != clusterMap.end(); p++) {
+            
             auto [xC, yC, zC] = mortonnd::MortonNDBmi_3D_64::Decode(p->first);
             constexpr decltype(xC) off = 1; // offset (1 = 3x3x3 morton neighbourhood)
 
@@ -303,15 +309,19 @@ struct Map {
                 for (auto y = yC - off; y <= yC + off; y++) {
                     for (auto z = zC - off; z <= zC + off; z++) {
                         // generate morton code from new coordinates
-                        MortonCode mc = mortonnd::MortonNDBmi_3D_64::Encode(x, y, z);
                         // MortonCode mc = x + y + z;
+                        MortonCode mc = mortonnd::MortonNDBmi_3D_64::Encode(x, y, z);
                         uint32_t somedata = (uint32_t)mc;
-                        // TODO: calc signed distances here
-                        auto [pCluster, b] = leafClusters.try_emplace(mc, somedata);
+                        // auto [pCluster, b] = leafClusters.try_emplace(mc, somedata);
+                        trie.insert(mc, somedata);
                     }
                 }
             }
         }
+        auto end = std::chrono::steady_clock::now();
+        auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+        std::cout << "trie iter: " << dur << " ms" << std::endl;
+        trie.printstuff();
         // TODO: emplace point and norm together as value? more cache hits
 
         // iterate over InfluenceMap to generate leaf clusters
