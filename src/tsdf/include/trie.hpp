@@ -16,7 +16,6 @@ class Trie {
         static_assert(sizeof(children) == 64);
     };
     struct Path {
-        Path(Key key): key(key) {}
         std::array<Node*, 21> nodes;
         Key key;
     };
@@ -41,18 +40,19 @@ public:
             NULL, NULL, NULL, NULL,
             NULL, NULL, NULL, NULL
         };
+
+        // keep track of last path to speed up subsequent accesses
+        cache.key = 0;
+        cache.nodes.back() = pNodes;
     }
     ~Trie() {
         free(pNodes);
     }
 
-    // insert value without position hint
-    inline Path insert(Key key, Value value) {
-        Path path(key); // an iterator of sorts
-        auto depth = msb / 3 - 1;
-        path.nodes[depth] = pNodes;
-
-        Node* pNode = pNodes; // start at root node
+    inline void insert(Key key, Value value) {
+        auto depth = read_cache(key);
+        cache.key = key;
+        Node* pNode = cache.nodes[depth];
         while (depth > 0) {
             auto index = (key >> depth * 3) & 0b111;
             auto& pChild = pNode->children[index];
@@ -65,30 +65,23 @@ public:
                 };
             }
             pNode = pChild;
-            path.nodes[--depth] = pNode;
+            cache.nodes[--depth] = pNode;
         }
         
         // this last node contains values
         auto index = (key >> depth * 3) & 0b111;
         pNode->leafClusters[index] = value;
-        return path; // return hint
+        cache.key = key; // REMOVE
     }
-    inline Value find(Path& hint, Key key) {
-        // find lowest common node
-        auto depth = msb / 3;
-        auto xorKey = hint.key ^ key;
-        while (depth > 0) {
-            if ((xorKey >> (depth * 3)) & 0b111) break;
-            depth--;
-        }
-
-        // iterate through trie via key
-        Node* pNode = hint.nodes[depth];
+    inline Value find(Key key) {
+        auto depth = read_cache(key);
+        cache.key = key;
+        Node* pNode = cache.nodes[depth];
         while (depth > 0) {
             auto index = (key >> depth * 3) & 0b111;
             pNode = pNode->children[index];
             if (pNode == nullptr) return 0;
-            hint.nodes[--depth] = pNode;
+            cache.nodes[--depth] = pNode;
         }
 
         // this last node contains values
@@ -103,8 +96,21 @@ public:
     }
     
 private:
+    // find depth of lowest common node
+    inline size_t read_cache(Key key) {
+        auto depth = msb / 3;
+        auto xorKey = cache.key ^ key;
+        while (depth > 0) {
+            if ((xorKey >> (depth * 3)) & 0b111) break;
+            depth--;
+        }
+        return depth;
+    }
+
+private:
     Node* pNodes;
     size_t nNodes;
+    Path cache;
     static constexpr size_t nMax = 1'000'000;
     static constexpr size_t msb = 63; // the most significant bit of a key
 };
