@@ -288,9 +288,9 @@ struct Map {
         Trie trie;
         auto pathA = trie.insert(0x7fffffffffffffff, 45);
         auto pathB = trie.insert(0x7ffffffffff2ffff, 46);
-        std::cout << trie.find(pathA, 0x7ffffffffff2ffff) << '\n';
+        std::cout << trie.find(pathB, 0x7fffffffffffffff) << '\n';
 
-        return;
+        // return;
         Pose pose = { position, rotation };
         auto normals = get_normals(pose, points);
         

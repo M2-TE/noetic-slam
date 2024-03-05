@@ -49,16 +49,12 @@ public:
     // insert value without position hint
     inline Path insert(Key key, Value value) {
         Path path(key); // an iterator of sorts
-        auto ptr = path.nodes.rbegin();
-        auto pathDepth = msb / 3;
+        auto depth = msb / 3 - 1;
+        path.nodes[depth] = pNodes;
 
-        auto depth = msb; // this depth starts at max on root
         Node* pNode = pNodes; // start at root node
-
-        path.nodes[--pathDepth] = pNode;
-        while (depth > 3) {
-            depth -= 3;
-            auto index = (key >> depth) & 0b111;
+        while (depth > 0) {
+            auto index = (key >> depth * 3) & 0b111;
             auto& pChild = pNode->children[index];
             // create child if nonexistant
             if (pChild == nullptr) {
@@ -69,57 +65,35 @@ public:
                 };
             }
             pNode = pChild;
-            path.nodes[--pathDepth] = pNode;
+            path.nodes[--depth] = pNode;
         }
         
-        // this last node (current pNode) does not contain pointers
-        // it instead contains the direct values
-        depth -= 3;
-        auto index = (key >> depth) & 0b111;
+        // this last node contains values
+        auto index = (key >> depth * 3) & 0b111;
         pNode->leafClusters[index] = value;
         return path; // return hint
     }
-    inline Value find(Key key) {
-        auto depth = msb; // this depth starts at max on root
-        Node* pNode = pNodes; // start at root node
-
-        while (depth > 3) {
-            depth -= 3;
-            auto index = (key >> depth) & 0b111;
-            pNode = pNode->children[index];
-            if (pNode == nullptr) return 0;
-        }
-
-        // this last node (current pNode) does not contain pointers
-        // it instead contains the direct values
-        depth -= 3;
-        auto index = (key >> depth) & 0b111;
-        return pNode->leafClusters[index];
-    }
     inline Value find(Path& hint, Key key) {
-
-        auto depth = msb;
-        auto pathDepth = msb / 3;
+        // find lowest common node
+        auto depth = msb / 3;
         auto xorKey = hint.key ^ key;
         while (depth > 0) {
-            if ((xorKey >> depth) & 0b111) break;
-            depth -= 3;
-            pathDepth--;
+            if ((xorKey >> (depth * 3)) & 0b111) break;
+            depth--;
         }
-        Node* pNode = hint.nodes[pathDepth];
 
+        // iterate through trie via key
+        Node* pNode = hint.nodes[depth];
         while (depth > 0) {
-            auto index = (key >> depth) & 0b111;
+            auto index = (key >> depth * 3) & 0b111;
             pNode = pNode->children[index];
-            if (pNode == nullptr) return 69;
-            depth -= 3;
+            if (pNode == nullptr) return 0;
+            hint.nodes[--depth] = pNode;
         }
 
-        // this last node (current pNode) does not contain pointers
-        // it instead contains the direct values
-        auto index = (key >> depth) & 0b111;
+        // this last node contains values
+        auto index = (key >> depth * 3) & 0b111;
         return pNode->leafClusters[index];
-        // return find(key);
     }
 
     void printstuff() {
