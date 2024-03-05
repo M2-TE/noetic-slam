@@ -286,10 +286,11 @@ struct Map {
         // std::cout << std::bitset<63>(code) << "\n";
 
         Trie trie;
-        trie.insert(0x7fffffffffffffff, 45);
-        trie.insert(0x7ffffffffff2ffff, 45);
+        auto pathA = trie.insert(0x7fffffffffffffff, 45);
+        auto pathB = trie.insert(0x7ffffffffff2ffff, 46);
+        std::cout << trie.find(pathA, 0x7ffffffffff2ffff) << '\n';
 
-        // return;
+        return;
         Pose pose = { position, rotation };
         auto normals = get_normals(pose, points);
         

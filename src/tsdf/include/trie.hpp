@@ -7,15 +7,19 @@
 #include <stdlib.h>
 
 class Trie {
-    // Trie node containing 8 children (2x2x2 voxel chunk)
+    typedef uint64_t Key;
+    typedef uint64_t Value;
     union Node {
         std::array<Node*, 8> children;
         std::array<uint64_t, 8> leafClusters;
         static_assert(sizeof(children) == sizeof(leafClusters));
         static_assert(sizeof(children) == 64);
     };
-    typedef uint64_t Key;
-    typedef uint64_t Value;
+    struct Path {
+        Path(Key key): key(key) {}
+        std::array<Node*, 21> nodes;
+        Key key;
+    };
 public:
     Trie() {
         // assume posix
@@ -43,16 +47,18 @@ public:
     }
 
     // insert value without position hint
-    inline Node* insert(Key key, Value value) {
-        Node* pNode = pNodes; // start at root node
-        Key mask = 0b111; // every node covers 3 bits (8 children)
-        auto depth = msb;
+    inline Path insert(Key key, Value value) {
+        Path path(key); // an iterator of sorts
+        auto ptr = path.nodes.rbegin();
+        auto pathDepth = msb / 3;
 
-        // progress through tree
-        auto nNew = 0;
+        auto depth = msb; // this depth starts at max on root
+        Node* pNode = pNodes; // start at root node
+
+        path.nodes[--pathDepth] = pNode;
         while (depth > 3) {
             depth -= 3;
-            auto index = (key >> depth) & mask;
+            auto index = (key >> depth) & 0b111;
             auto& pChild = pNode->children[index];
             // create child if nonexistant
             if (pChild == nullptr) {
@@ -61,24 +67,59 @@ public:
                     NULL, NULL, NULL, NULL,
                     NULL, NULL, NULL, NULL
                 };
-                nNew++;
             }
             pNode = pChild;
+            path.nodes[--pathDepth] = pNode;
+        }
+        
+        // this last node (current pNode) does not contain pointers
+        // it instead contains the direct values
+        depth -= 3;
+        auto index = (key >> depth) & 0b111;
+        pNode->leafClusters[index] = value;
+        return path; // return hint
+    }
+    inline Value find(Key key) {
+        auto depth = msb; // this depth starts at max on root
+        Node* pNode = pNodes; // start at root node
+
+        while (depth > 3) {
+            depth -= 3;
+            auto index = (key >> depth) & 0b111;
+            pNode = pNode->children[index];
+            if (pNode == nullptr) return 0;
         }
 
         // this last node (current pNode) does not contain pointers
         // it instead contains the direct values
         depth -= 3;
-        auto index = (key >> depth) & mask;
-        pNode->leafClusters[index] = value;
+        auto index = (key >> depth) & 0b111;
+        return pNode->leafClusters[index];
+    }
+    inline Value find(Path& hint, Key key) {
 
-        return pNode; // return node as potential hint
-    }
-    inline Value find(Key key) {
-        return 0;
-    }
-    inline Value find(Key hint, Node* pHint, Key key) {
-        return 0;
+        auto depth = msb;
+        auto pathDepth = msb / 3;
+        auto xorKey = hint.key ^ key;
+        while (depth > 0) {
+            if ((xorKey >> depth) & 0b111) break;
+            depth -= 3;
+            pathDepth--;
+        }
+        Node* pNode = hint.nodes[pathDepth];
+
+        while (depth > 0) {
+            auto index = (key >> depth) & 0b111;
+            pNode = pNode->children[index];
+            if (pNode == nullptr) return 69;
+            depth -= 3;
+        }
+
+        // this last node (current pNode) does not contain pointers
+        // it instead contains the direct values
+        auto index = (key >> depth) & 0b111;
+        return pNode->leafClusters[index];
+        // return find(key);
     }
 
     void printstuff() {
