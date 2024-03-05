@@ -286,33 +286,45 @@ struct Map {
         auto beg = std::chrono::steady_clock::now();
         for (auto p = clusterMap.begin(); p != clusterMap.end(); p++) {
             
-            MortonCode code = p->first;
-            std::array<MortonCode, 3> xparts = {
-                ((code & xmask) - 1) & xmask,
-                code & xmask,
-                ((code | mask_yz) + 1) & xmask,
-            };
-            std::array<MortonCode, 3> yparts = {
-                ((code & ymask) - 1) & ymask,
-                code & ymask,
-                ((code | mask_xz) + 1) & ymask,
-            };
-            std::array<MortonCode, 3> zparts = {
-                ((code & zmask) - 1) & zmask,
-                code & zmask,
-                ((code | mask_xy) + 1) & zmask,
-            };
-
-            for (auto x = 0; x < 3; x++) {
-                for (auto y = 0; y < 3; y++) {
-                    for (auto z = 0; z < 3; z++) {
-                        MortonCode code = xparts[x] | yparts[y] | zparts[z];
+            // traverse morton code neighbours for nearest neighbour search
+            auto [xC, yC, zC] = mortonnd::MortonNDBmi_3D_64::Decode(p->first);
+            constexpr decltype(xC) off = 1; // offset (1 = 3x3x3 morton neighbourhood)
+            for (auto x = xC - off; x <= xC + off; x++) {
+                for (auto y = yC - off; y <= yC + off; y++) {
+                    for (auto z = zC - off; z <= zC + off; z++) {
+                        // generate morton code from new coordinates
+                        MortonCode code = mortonnd::MortonNDBmi_3D_64::Encode(x, y, z);
                         uint64_t somedata = 24567234624;
-                        // std::cout << "count\n";
                         trie.insert(code, somedata);
                     }
                 }
             }
+            
+            // MortonCode code = p->first;
+            // std::array<MortonCode, 3> xparts = {
+            //     ((code & xmask) - 1) & xmask,
+            //     code & xmask,
+            //     ((code | mask_yz) + 1) & xmask,
+            // };
+            // std::array<MortonCode, 3> yparts = {
+            //     ((code & ymask) - 1) & ymask,
+            //     code & ymask,
+            //     ((code | mask_xz) + 1) & ymask,
+            // };
+            // std::array<MortonCode, 3> zparts = {
+            //     ((code & zmask) - 1) & zmask,
+            //     code & zmask,
+            //     ((code | mask_xy) + 1) & zmask,
+            // };
+            // for (auto x = 0; x < 3; x++) {
+            //     for (auto y = 0; y < 3; y++) {
+            //         for (auto z = 0; z < 3; z++) {
+            //             MortonCode code = xparts[x] | yparts[y] | zparts[z];
+            //             uint64_t somedata = 24567234624;
+            //             trie.insert(code, somedata);
+            //         }
+            //     }
+            // }
         }
         auto end = std::chrono::steady_clock::now();
         auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
