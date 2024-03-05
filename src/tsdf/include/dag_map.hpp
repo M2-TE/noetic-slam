@@ -265,32 +265,47 @@ struct Map {
     }
     void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
         // print_info();
-        // auto code = calc_morton_signed(vec);
-        // auto [x, y, z] = mortonnd::MortonNDBmi_3D_64::Decode(code);
-        // // std::cout << x << " " << y << " " << z << "\n";
-        // // std::cout << std::bitset<21>(x) << " " << std::bitset<21>(y) << " " << std::bitset<21>(z) << "\n";
-        // std::cout << std::bitset<63>(code) << "\n";
-        // constexpr uint64_t mask_x = 0b001001001001001001001001001001001001001001001001001001001001001;
-        // constexpr uint64_t mask_y = mask_x << 1;
-        // constexpr uint64_t mask_z = mask_y << 1;
-        // constexpr uint64_t mask_yz = mask_y | mask_z;
-        // code = (((code | mask_yz) + 1) & mask_x) | (code & mask_yz);
-        // std::cout << std::bitset<63>(code) << "\n";
-        // vec.x() += 1;
-        // code = calc_morton_signed(vec);
-        // std::cout << std::bitset<63>(code) << "\n";
-        // code = (((code & mask_x) - 1) & mask_x) | (code & mask_yz);
-        // std::cout << std::bitset<63>(code) << "\n";
-        // vec.x() -= 1;
-        // code = calc_morton_signed(vec);
-        // std::cout << std::bitset<63>(code) << "\n";
+        
+        Eigen::Vector3i vec = { 2, -5, 4 };
+        auto code = calc_morton_signed(vec);
+        
+        constexpr uint64_t xmask = 0b001001001001001001001001001001001001001001001001001001001001001;
+        constexpr uint64_t ymask = xmask << 1;
+        constexpr uint64_t zmask = ymask << 1;
+        constexpr uint64_t mask_xy = xmask | ymask;
+        constexpr uint64_t mask_xz = xmask | zmask;
+        constexpr uint64_t mask_yz = ymask | zmask;
+        std::array<MortonCode, 3> xparts = {
+            ((code & xmask) - 1) & xmask,
+            code & xmask,
+            ((code | mask_yz) + 1) & xmask, // TODO: test
+        };
+        std::array<MortonCode, 3> yparts = {
+            ((code & ymask) - 1) & ymask,
+            code & ymask,
+            ((code | mask_xz) + 1) & ymask, // TODO: test
+        };
+        std::array<MortonCode, 3> zparts = {
+            ((code & zmask) - 1) & zmask,
+            code & zmask,
+            ((code | mask_xy) + 1) & zmask, // TODO: test
+        };
+
+        for (auto x = 0; x < 3; x++) {
+            for (auto y = 0; y < 3; y++) {
+                for (auto z = 0; z < 3; z++) {
+                    auto code = xparts[x] | yparts[y] | zparts[z];
+                    
+                }
+            }
+        }
 
         Trie trie;
-        trie.insert(0x7fffffffffffffff, 45);
-        trie.insert(0x7ffffffffff2ffff, 46);
-        std::cout << trie.find(0x7fffffffffffffff) << '\n';
+        // trie.insert(0x7fffffffffffffff, 45);
+        // trie.insert(0x7ffffffffff2ffff, 46);
+        // std::cout << trie.find(0x7fffffffffffffff) << '\n';
 
-        // return;
+        return;
         Pose pose = { position, rotation };
         auto normals = get_normals(pose, points);
         

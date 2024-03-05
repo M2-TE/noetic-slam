@@ -96,14 +96,15 @@ public:
     }
     
 private:
+    inline size_t leading_zeroes(unsigned long v) { return __builtin_clzl(v); }
+    inline size_t leading_zeroes(unsigned long long v) { return __builtin_clzll(v); }
     // find depth of lowest common node
     inline size_t read_cache(Key key) {
-        auto depth = msb / 3;
         auto xorKey = cache.key ^ key;
-        while (depth > 0) {
-            if ((xorKey >> (depth * 3)) & 0b111) break;
-            depth--;
-        }
+        if (xorKey == 0) return 0;
+        size_t leadingBits = leading_zeroes(xorKey);
+        auto depth = sizeof(size_t) * 8 - 1 - leadingBits;
+        depth /= 3;
         return depth;
     }
 
