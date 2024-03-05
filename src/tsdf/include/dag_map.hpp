@@ -268,7 +268,7 @@ struct Map {
         
         Eigen::Vector3i vec = { 2, -5, 4 };
         auto code = calc_morton_signed(vec);
-        
+
         constexpr uint64_t xmask = 0b001001001001001001001001001001001001001001001001001001001001001;
         constexpr uint64_t ymask = xmask << 1;
         constexpr uint64_t zmask = ymask << 1;
@@ -301,9 +301,10 @@ struct Map {
         }
 
         Trie trie;
+        trie.insert(500000000, 12);
         // trie.insert(0x7fffffffffffffff, 45);
         // trie.insert(0x7ffffffffff2ffff, 46);
-        // std::cout << trie.find(0x7fffffffffffffff) << '\n';
+        std::cout << trie.find(5) << '\n';
 
         return;
         Pose pose = { position, rotation };
@@ -317,19 +318,30 @@ struct Map {
         auto beg = std::chrono::steady_clock::now();
         for (auto p = clusterMap.begin(); p != clusterMap.end(); p++) {
             
-            auto [xC, yC, zC] = mortonnd::MortonNDBmi_3D_64::Decode(p->first);
-            constexpr decltype(xC) off = 1; // offset (1 = 3x3x3 morton neighbourhood)
+            MortonCode code = p->first;
+            std::array<MortonCode, 3> xparts = {
+                ((code & xmask) - 1) & xmask,
+                code & xmask,
+                ((code | mask_yz) + 1) & xmask, // TODO: test
+            };
+            std::array<MortonCode, 3> yparts = {
+                ((code & ymask) - 1) & ymask,
+                code & ymask,
+                ((code | mask_xz) + 1) & ymask, // TODO: test
+            };
+            std::array<MortonCode, 3> zparts = {
+                ((code & zmask) - 1) & zmask,
+                code & zmask,
+                ((code | mask_xy) + 1) & zmask, // TODO: test
+            };
 
-            // traverse morton code neighbours for TSDF influence
-            for (auto x = xC - off; x <= xC + off; x++) {
-                for (auto y = yC - off; y <= yC + off; y++) {
-                    for (auto z = zC - off; z <= zC + off; z++) {
-                        // generate morton code from new coordinates
-                        // MortonCode mc = x + y + z;
-                        MortonCode mc = mortonnd::MortonNDBmi_3D_64::Encode(x, y, z);
-                        uint32_t somedata = (uint32_t)mc;
-                        // auto [pCluster, b] = leafClusters.try_emplace(mc, somedata);
-                        trie.insert(mc, somedata);
+            for (auto x = 0; x < 3; x++) {
+                for (auto y = 0; y < 3; y++) {
+                    for (auto z = 0; z < 3; z++) {
+                        MortonCode code = xparts[x] | yparts[y] | zparts[z];
+                        uint64_t somedata = 24567234624;
+                        // std::cout << "count\n";
+                        trie.insert(code, somedata);
                     }
                 }
             }

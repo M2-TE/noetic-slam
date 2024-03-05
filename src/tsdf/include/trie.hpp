@@ -46,7 +46,9 @@ public:
         cache.nodes.back() = pNodes;
     }
     ~Trie() {
+        std::cout << "nefore\n";
         free(pNodes);
+        std::cout << "after\n";
     }
 
     inline void insert(Key key, Value value) {
@@ -71,7 +73,6 @@ public:
         // this last node contains values
         auto index = (key >> depth * 3) & 0b111;
         pNode->leafClusters[index] = value;
-        cache.key = key; // REMOVE
     }
     inline Value find(Key key) {
         auto depth = read_cache(key);
