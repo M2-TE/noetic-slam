@@ -266,47 +266,14 @@ struct Map {
     void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
         // print_info();
         
-        Eigen::Vector3i vec = { 2, -5, 4 };
-        auto code = calc_morton_signed(vec);
-
         constexpr uint64_t xmask = 0b001001001001001001001001001001001001001001001001001001001001001;
         constexpr uint64_t ymask = xmask << 1;
         constexpr uint64_t zmask = ymask << 1;
         constexpr uint64_t mask_xy = xmask | ymask;
         constexpr uint64_t mask_xz = xmask | zmask;
         constexpr uint64_t mask_yz = ymask | zmask;
-        std::array<MortonCode, 3> xparts = {
-            ((code & xmask) - 1) & xmask,
-            code & xmask,
-            ((code | mask_yz) + 1) & xmask, // TODO: test
-        };
-        std::array<MortonCode, 3> yparts = {
-            ((code & ymask) - 1) & ymask,
-            code & ymask,
-            ((code | mask_xz) + 1) & ymask, // TODO: test
-        };
-        std::array<MortonCode, 3> zparts = {
-            ((code & zmask) - 1) & zmask,
-            code & zmask,
-            ((code | mask_xy) + 1) & zmask, // TODO: test
-        };
 
-        for (auto x = 0; x < 3; x++) {
-            for (auto y = 0; y < 3; y++) {
-                for (auto z = 0; z < 3; z++) {
-                    auto code = xparts[x] | yparts[y] | zparts[z];
-                    
-                }
-            }
-        }
-
-        Trie trie;
-        trie.insert(500000000, 12);
-        // trie.insert(0x7fffffffffffffff, 45);
-        // trie.insert(0x7ffffffffff2ffff, 46);
-        std::cout << trie.find(5) << '\n';
-
-        return;
+        // return;
         Pose pose = { position, rotation };
         auto normals = get_normals(pose, points);
         
@@ -315,6 +282,7 @@ struct Map {
         phmap::parallel_flat_hash_map<MortonCode, uint32_t> leafClusters;
         // auto influenceMap = clusterMap; // for insertion
 
+        Trie trie;
         auto beg = std::chrono::steady_clock::now();
         for (auto p = clusterMap.begin(); p != clusterMap.end(); p++) {
             
@@ -322,17 +290,17 @@ struct Map {
             std::array<MortonCode, 3> xparts = {
                 ((code & xmask) - 1) & xmask,
                 code & xmask,
-                ((code | mask_yz) + 1) & xmask, // TODO: test
+                ((code | mask_yz) + 1) & xmask,
             };
             std::array<MortonCode, 3> yparts = {
                 ((code & ymask) - 1) & ymask,
                 code & ymask,
-                ((code | mask_xz) + 1) & ymask, // TODO: test
+                ((code | mask_xz) + 1) & ymask,
             };
             std::array<MortonCode, 3> zparts = {
                 ((code & zmask) - 1) & zmask,
                 code & zmask,
-                ((code | mask_xy) + 1) & zmask, // TODO: test
+                ((code | mask_xy) + 1) & zmask,
             };
 
             for (auto x = 0; x < 3; x++) {

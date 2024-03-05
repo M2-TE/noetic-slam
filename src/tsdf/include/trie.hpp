@@ -44,11 +44,11 @@ public:
         // keep track of last path to speed up subsequent accesses
         cache.key = 0;
         cache.nodes.back() = pNodes;
+        // fill cache with valid nodes
+        insert(0x7fffffffffffffff, 0);
     }
     ~Trie() {
-        std::cout << "nefore\n";
         free(pNodes);
-        std::cout << "after\n";
     }
 
     inline void insert(Key key, Value value) {
