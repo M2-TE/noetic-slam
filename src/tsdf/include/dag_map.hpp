@@ -301,17 +301,17 @@ struct Map {
             }
             
             // MortonCode code = p->first;
-            // std::array<MortonCode, 3> xparts = {
+            // const std::array<MortonCode, 3> xparts = {
             //     ((code & xmask) - 1) & xmask,
             //     code & xmask,
             //     ((code | mask_yz) + 1) & xmask,
             // };
-            // std::array<MortonCode, 3> yparts = {
+            // const std::array<MortonCode, 3> yparts = {
             //     ((code & ymask) - 1) & ymask,
             //     code & ymask,
             //     ((code | mask_xz) + 1) & ymask,
             // };
-            // std::array<MortonCode, 3> zparts = {
+            // const std::array<MortonCode, 3> zparts = {
             //     ((code & zmask) - 1) & zmask,
             //     code & zmask,
             //     ((code | mask_xy) + 1) & zmask,
@@ -330,8 +330,8 @@ struct Map {
         auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
         std::cout << "trie iter: " << dur << " ms" << std::endl;
         trie.printstuff();
-        // TODO: emplace point and norm together as value? more cache hits
 
+        // TODO: emplace point and norm together as value? more cache hits
         // iterate over InfluenceMap to generate leaf clusters
         // for (auto p = influenceMap.cbegin(); p != influenceMap.cend();) {
 
