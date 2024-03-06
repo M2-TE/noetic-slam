@@ -184,10 +184,6 @@ struct Map {
     template<size_t depth> 
     auto get_morton_map(std::vector<Eigen::Vector3f>& points) {
         phmap::btree_multimap<MortonCode, MortonIndex> mortonMap;
-        // std::multimap<MortonCode, MortonIndex> mortonMap;
-        // std::unordered_multimap<MortonCode, MortonIndex> mortonMap;
-        // mortonMap.reserve(points.size());
-        // mortonMap.rehash(points.size());
 
         // calculate morton codes based on voxel position
         uint32_t i = 0;
@@ -209,7 +205,7 @@ struct Map {
         auto end = std::chrono::steady_clock::now();
         auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
         std::cout << "construction: " << dur << " ms" << std::endl;
-
+        
         // estimate normals based on kNN (nearest neighbours)
         std::vector<Eigen::Vector3f> normals(points.size());
         beg = std::chrono::steady_clock::now();
@@ -219,13 +215,8 @@ struct Map {
             std::vector<decltype(point)> neighbours;
             neighbours.push_back(point);
 
-            // morton code components are 21-bit signed integers (stored in unsigned)
-            // 21st bit is set for positive numbers to achieve smooth range from -max to +max
-            // performing math operations on it works as expected (relative to other 21-bit values)
-            // these values CANNOT be interpreted as real numbers without proper conversion
-            auto [xC, yC, zC] = mortonnd::MortonNDBmi_3D_64::Decode(pCur->first);
-
             // traverse morton code neighbours for nearest neighbour search
+            auto [xC, yC, zC] = mortonnd::MortonNDBmi_3D_64::Decode(pCur->first);
             constexpr decltype(xC) off = 1; // offset (1 = 3x3x3 morton neighbourhood)
             for (auto x = xC - off; x <= xC + off; x++) {
                 for (auto y = yC - off; y <= yC + off; y++) {
@@ -239,13 +230,6 @@ struct Map {
                         for (; ptr->first == mc && ptr != mortonMap.cend(); ptr++) {
                             neighbours.push_back(ptr->second.point);
                         }
-
-                        // auto index = mortonMap.bucket(mc);
-                        // auto ptr = mortonMap.cbegin(index);
-                        // auto end = mortonMap.cend(index);
-                        // for (; ptr != end; ptr++) {
-                        //     neighbours.push_back(ptr->second.point);
-                        // }
                     }
                 }
             }
@@ -266,40 +250,57 @@ struct Map {
     void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
         // print_info();
         
-        constexpr uint64_t xmask = 0b001001001001001001001001001001001001001001001001001001001001001;
-        constexpr uint64_t ymask = xmask << 1;
-        constexpr uint64_t zmask = ymask << 1;
-        constexpr uint64_t mask_xy = xmask | ymask;
-        constexpr uint64_t mask_xz = xmask | zmask;
-        constexpr uint64_t mask_yz = ymask | zmask;
-
-        // return;
         Pose pose = { position, rotation };
         auto normals = get_normals(pose, points);
         
-        // scanpoints influence an area of 3x3x3 leaf clusters
-        auto clusterMap = get_morton_map<idx::leafCluster>(points);
-        phmap::parallel_flat_hash_map<MortonCode, uint32_t> leafClusters;
-        // auto influenceMap = clusterMap; // for insertion
-
-        Trie trie;
         auto beg = std::chrono::steady_clock::now();
-        for (auto p = clusterMap.begin(); p != clusterMap.end(); p++) {
+        Trie trie;
+        auto pNorm = normals.cbegin();
+        for (auto p = points.cbegin(); p != points.cend(); p++, pNorm++) {
+            // leaf cluster position that p belongs to
+            auto fPos = p->unaryExpr([](const float f){
+                return f - std::fmod(f, 2.0f * (float)leafResolution);
+            });
+            auto norm = *pNorm;
+
+            // offsets will be added to cPos to obtain actual leaf position
+            constexpr float k = leafResolution;
+            static const std::array<Eigen::Vector3f, 8> leafPosOffsets = {
+                Eigen::Vector3f(k, k, k),
+                Eigen::Vector3f(0, k, k),
+                Eigen::Vector3f(k, 0, k),
+                Eigen::Vector3f(0, 0, k),
+                Eigen::Vector3f(k, k, 0),
+                Eigen::Vector3f(0, k, 0),
+                Eigen::Vector3f(k, 0, 0),
+                Eigen::Vector3f(0, 0, 0),
+            };
+
+            // signed distances for leaves within leaf chunk
+            std::array<float, 8> leaves;
             
             // traverse morton code neighbours for nearest neighbour search
-            auto [xC, yC, zC] = mortonnd::MortonNDBmi_3D_64::Decode(p->first);
-            constexpr decltype(xC) off = 1; // offset (1 = 3x3x3 morton neighbourhood)
-            for (auto x = xC - off; x <= xC + off; x++) {
-                for (auto y = yC - off; y <= yC + off; y++) {
-                    for (auto z = zC - off; z <= zC + off; z++) {
+            constexpr int32_t off = 1; // offset (1 = 3x3x3 morton neighbourhood)
+            for (auto x = -off; x <= +off; x++) {
+                for (auto y = -off; y <= +off; y++) {
+                    for (auto z = -off; z <= +off; z++) {
                         // generate morton code from new coordinates
                         MortonCode code = mortonnd::MortonNDBmi_3D_64::Encode(x, y, z);
+
+                        uint64_t leafCluster = x + y + z; // TODO
+
                         uint64_t somedata = 24567234624;
-                        trie.insert(code, somedata);
+                        trie.insert(code, somedata); // todo: try_insert
                     }
                 }
             }
             
+            // constexpr uint64_t xmask = 0b001001001001001001001001001001001001001001001001001001001001001;
+            // constexpr uint64_t ymask = xmask << 1;
+            // constexpr uint64_t zmask = ymask << 1;
+            // constexpr uint64_t mask_xy = xmask | ymask;
+            // constexpr uint64_t mask_xz = xmask | zmask;
+            // constexpr uint64_t mask_yz = ymask | zmask;
             // MortonCode code = p->first;
             // const std::array<MortonCode, 3> xparts = {
             //     ((code & xmask) - 1) & xmask,
