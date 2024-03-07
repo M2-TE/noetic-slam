@@ -258,39 +258,43 @@ struct Map {
         auto pNorm = normals.cbegin();
         for (auto p = points.cbegin(); p != points.cend(); p++, pNorm++) {
             // leaf cluster position that p belongs to
-            auto fPos = p->unaryExpr([](const float f){
-                return f - std::fmod(f, 2.0f * (float)leafResolution);
-            });
-            auto norm = *pNorm;
-
-            // offsets will be added to cPos to obtain actual leaf position
-            constexpr float k = leafResolution;
-            static const std::array<Eigen::Vector3f, 8> leafPosOffsets = {
-                Eigen::Vector3f(k, k, k),
-                Eigen::Vector3f(0, k, k),
-                Eigen::Vector3f(k, 0, k),
-                Eigen::Vector3f(0, 0, k),
-                Eigen::Vector3f(k, k, 0),
-                Eigen::Vector3f(0, k, 0),
-                Eigen::Vector3f(k, 0, 0),
-                Eigen::Vector3f(0, 0, 0),
-            };
-
-            // signed distances for leaves within leaf chunk
-            std::array<float, 8> leaves;
+            Eigen::Vector3f clusterPos = *p * (0.5f / leafResolution);
+            Eigen::Vector3i voxelPos = clusterPos.cast<int32_t>();
             
-            // traverse morton code neighbours for nearest neighbour search
-            constexpr int32_t off = 1; // offset (1 = 3x3x3 morton neighbourhood)
+            // calculate signed distances for neighbours of current leaf cluster as well
+            constexpr int32_t off = 1; // offset (1 = 3x3x3)
             for (auto x = -off; x <= +off; x++) {
                 for (auto y = -off; y <= +off; y++) {
                     for (auto z = -off; z <= +off; z++) {
-                        // generate morton code from new coordinates
-                        MortonCode code = mortonnd::MortonNDBmi_3D_64::Encode(x, y, z);
+                        // this is be a leaf cluster containing 8 individual leaves
+                        Eigen::Vector3i cPos = voxelPos + Eigen::Vector3i(x, y, z);
+                        auto code = calc_morton_signed(cPos);
+                        auto& cluster = trie.find(code);
 
-                        uint64_t leafCluster = x + y + z; // TODO
+                        // actual floating position of cluster
+                        Eigen::Vector3f fPos = cPos.cast<float>() * 2.0f * leafResolution;
 
-                        uint64_t somedata = 24567234624;
-                        trie.insert(code, somedata); // todo: try_insert
+                        std::array<float, 8> leaves;
+                        auto pLeaf = leaves.begin();
+
+                        // offsets of leaves within
+                        for (auto xl = 0; xl < 2; xl++) {
+                            for (auto yl = 0; yl < 2; yl++) {
+                                for (auto zl = 0; zl < 2; zl++) {
+                                    // leaf position
+                                    Eigen::Vector3f offset = Eigen::Vector3f(xl, yl, zl) * leafResolution;
+                                    Eigen::Vector3f lPos = fPos + offset;
+                                    *pLeaf = pNorm->dot(*p - lPos);
+                                    // std::cout << *pLeaf << '\n';
+                                    pLeaf++;
+                                }
+                            }
+                        }
+                        // TODO: check norm nan
+                        // todo: turn float array into compacted leaf thing
+
+                        uint64_t compactedLeaves = 24567234624;
+                        cluster = compactedLeaves;
                     }
                 }
             }

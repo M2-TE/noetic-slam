@@ -74,17 +74,25 @@ public:
         auto index = (key >> depth * 3) & 0b111;
         pNode->leafClusters[index] = value;
     }
-    inline Value find(Key key) {
+    inline Value& find(Key key) {
         auto depth = read_cache(key);
         cache.key = key;
         Node* pNode = cache.nodes[depth];
         while (depth > 0) {
             auto index = (key >> depth * 3) & 0b111;
-            pNode = pNode->children[index];
-            if (pNode == nullptr) return 0;
+            auto& pChild = pNode->children[index];
+            // create child if nonexistant
+            if (pChild == nullptr) {
+                pChild = pNodes + nNodes++;
+                pChild->children = {
+                    NULL, NULL, NULL, NULL,
+                    NULL, NULL, NULL, NULL
+                };
+            }
+            pNode = pChild;
             cache.nodes[--depth] = pNode;
         }
-
+        
         // this last node contains values
         auto index = (key >> depth * 3) & 0b111;
         return pNode->leafClusters[index];
