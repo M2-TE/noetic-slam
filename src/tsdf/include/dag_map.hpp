@@ -284,13 +284,12 @@ struct Map {
                                     Eigen::Vector3f offset = Eigen::Vector3f(xl, yl, zl) * leafResolution;
                                     Eigen::Vector3f lPos = fPos + offset;
                                     *pLeaf = pNorm->dot(*p - lPos);
-                                    std::cout << *pLeaf << '\n';
                                     pLeaf++;
                                 }
                             }
                         }
-                        return;
-                        // todo: turn float array into compacted leaf thing
+
+
 
                         uint64_t compactedLeaves = 24567234624;
                         cluster = compactedLeaves;
