@@ -1,7 +1,5 @@
 #pragma once
 
-#include "trie.hpp"
-
 #include <iostream>
 #include <vector>
 #include <array>
@@ -12,6 +10,7 @@
 #include <type_traits>
 #include <map>
 #include <new>
+#include <span>
 //
 #define BOOST_BIND_GLOBAL_PLACEHOLDERS
 #include <boost/math/ccmath/ccmath.hpp>
@@ -23,29 +22,29 @@
 #define __BMI2__
 #endif
 #include <morton-nd/mortonND_BMI2.h>
-// #include <RadixTree/RadixTree.h>
-//
 #include "constants.hpp"
 #include "dag_structs.hpp"
+#include "trie.hpp"
 
 // https://www.ilikebigbits.com/2017_09_25_plane_from_points_2.html
-Eigen::Vector3f normal_from_neighbourhood(std::vector<Eigen::Vector3f>& points) {
+Eigen::Vector3f normal_from_neighbourhood(std::span<Eigen::Vector3f> points) {
+    typedef double prec;
     // calculate centroid by through coefficient average
-    Eigen::Vector3f centroid = {};
-    for (auto p = points.cbegin(); p != points.cend(); p++) {
-        centroid += *p;
+    Eigen::Vector3d centroid = { 0, 0, 0 };
+    for (auto p = points.begin(); p != points.end(); p++) {
+        centroid += p->cast<prec>();
     }
-    centroid /= (float)points.size();
+    centroid /= (prec)points.size();
 
     // covariance matrix excluding symmetries
-    float xx = 0.0;
-    float xy = 0.0;
-    float xz = 0.0;
-    float yy = 0.0;
-    float yz = 0.0;
-    float zz = 0.0;
-    for (auto p = points.cbegin(); p != points.cend(); p++) {
-        auto r = *p - centroid;
+    prec xx = 0.0;
+    prec xy = 0.0;
+    prec xz = 0.0;
+    prec yy = 0.0;
+    prec yz = 0.0;
+    prec zz = 0.0;
+    for (auto p = points.begin(); p != points.end(); p++) {
+        auto r = p->cast<prec>() - centroid;
         xx += r.x() * r.x();
         xy += r.x() * r.y();
         xz += r.x() * r.z();
@@ -53,20 +52,20 @@ Eigen::Vector3f normal_from_neighbourhood(std::vector<Eigen::Vector3f>& points) 
         yz += r.y() * r.z();
         zz += r.z() * r.z();
     }
-    xx /= (float)points.size();
-    xy /= (float)points.size();
-    xz /= (float)points.size();
-    yy /= (float)points.size();
-    yz /= (float)points.size();
-    zz /= (float)points.size();
+    xx /= (prec)points.size();
+    xy /= (prec)points.size();
+    xz /= (prec)points.size();
+    yy /= (prec)points.size();
+    yz /= (prec)points.size();
+    zz /= (prec)points.size();
 
     // weighting linear regression based on square determinant
-    Eigen::Vector3f weighted_dir = {};
-    Eigen::Vector3f axis_dir = {};
-    float weight = 0.0;
+    Eigen::Vector3d weighted_dir = {};
+    Eigen::Vector3d axis_dir = {};
+    prec weight = 0.0;
 
     // determinant x
-    float det_x = yy*zz - yz*yz;
+    prec det_x = yy*zz - yz*yz;
     axis_dir = {
         det_x,
         xz*yz - xy*zz,
@@ -77,7 +76,7 @@ Eigen::Vector3f normal_from_neighbourhood(std::vector<Eigen::Vector3f>& points) 
     weighted_dir += axis_dir * weight;
 
     // determinant y
-    float det_y = xx*zz - xz*xz;
+    prec det_y = xx*zz - xz*xz;
     axis_dir = {
         xz*yz - xy*zz,
         det_y,
@@ -88,7 +87,7 @@ Eigen::Vector3f normal_from_neighbourhood(std::vector<Eigen::Vector3f>& points) 
     weighted_dir += axis_dir * weight;
 
     // determinant z
-    float det_z = xx*yy - xy*xy;
+    prec det_z = xx*yy - xy*xy;
     axis_dir = {
         xy*yz - xz*yy,
         xy*xz - yz*xx,
@@ -99,7 +98,7 @@ Eigen::Vector3f normal_from_neighbourhood(std::vector<Eigen::Vector3f>& points) 
     weighted_dir += axis_dir * weight;
 
     // return normalized weighted direction as surface normal
-    return weighted_dir.normalized();
+    return weighted_dir.normalized().cast<float>();
 }
 
 namespace DAG {
@@ -182,13 +181,13 @@ struct Map {
         return mortonnd::MortonNDBmi_3D_64::Encode(res.x(), res.y(), res.z());
     }
     template<size_t depth> 
-    auto get_morton_map(std::vector<Eigen::Vector3f>& points) {
+    auto get_morton_map(std::span<Eigen::Vector3f> points) {
         phmap::btree_multimap<MortonCode, MortonIndex> mortonMap;
 
         // calculate morton codes based on voxel position
         uint32_t i = 0;
         // std::vector<MortonCode>
-        for (auto pCur = points.cbegin(); pCur != points.cend(); pCur++) {
+        for (auto pCur = points.begin(); pCur != points.end(); pCur++) {
             // calculate leaf voxel position
             Eigen::Matrix<int32_t, 3, 1> vPos = (*pCur * (1.0 / leafResolution)).cast<int32_t>();
             // assign to voxel chunk
@@ -212,7 +211,7 @@ struct Map {
         for (auto pCur = mortonMap.cbegin(); pCur != mortonMap.cend(); pCur++) {
             Eigen::Vector3f point = pCur->second.point;
             
-            std::vector<decltype(point)> neighbours;
+            std::vector<Eigen::Vector3f> neighbours;
             neighbours.push_back(point);
 
             // traverse morton code neighbours for nearest neighbour search
@@ -285,12 +284,12 @@ struct Map {
                                     Eigen::Vector3f offset = Eigen::Vector3f(xl, yl, zl) * leafResolution;
                                     Eigen::Vector3f lPos = fPos + offset;
                                     *pLeaf = pNorm->dot(*p - lPos);
-                                    // std::cout << *pLeaf << '\n';
+                                    std::cout << *pLeaf << '\n';
                                     pLeaf++;
                                 }
                             }
                         }
-                        // TODO: check norm nan
+                        return;
                         // todo: turn float array into compacted leaf thing
 
                         uint64_t compactedLeaves = 24567234624;
