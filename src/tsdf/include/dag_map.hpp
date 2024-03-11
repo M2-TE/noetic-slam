@@ -289,45 +289,37 @@ struct Map {
                             }
                         }
 
+                        // since we write signed distances into neighbours as well:
+                        // 1. leaf clusters are 2x2x2 where 1 = leafResolution
+                        // 2. neighbours are twice that, so total max distance should be:
+                        //      neighbourhood is 6x6x6, but only 4x4x4 matters here
+                        //      3, 3, 3 in leaf cluster for point
+                        //      0, 0, 0 in neighbour
+                        // 3. calc max distance based on this assumption, then normalize all signed distances based on that
+                        constexpr double sdMax = boost::math::ccmath::sqrt(3.0*3.0*3.0) * leafResolution;
+                        constexpr float sdMaxRecip = 1.0 / sdMax;
 
+                        // pack all leaves into single 32(64) bit uint
+                        for (auto i = 0; i < leaves.size(); i++) {
+                            float sd = leaves[i];
+                            float sdNorm = sd * sdMaxRecip; // normalize between -1.0 and 1.0
 
-                        uint64_t compactedLeaves = 24567234624;
-                        cluster = compactedLeaves;
+                            // currently, signed distance use 4 bits (4x8 = 32 bits)
+                            constexpr size_t sdBits = 4;
+                            constexpr float sdConv = static_cast<float>((1 << sdBits - 1) - 1);
+                            int32_t sdInt = static_cast<int32_t>(sdNorm * sdConv);
+                            std::cout << sdInt << '\n';
+
+                            // std::cout << sdNorm << '\n';
+                            // float sdNorm = sd * (1.0f / voxelToCoordRatio); // normalize signed distance between 0 and 1
+                            // sd = sdNorm * static_cast<float>(DAG::maxSignedDistance); // scale up to uint4_t range
+
+                            // TODO: these fuckers still need the sign bit
+                        }
+                        // return;
                     }
                 }
             }
-            
-            // constexpr uint64_t xmask = 0b001001001001001001001001001001001001001001001001001001001001001;
-            // constexpr uint64_t ymask = xmask << 1;
-            // constexpr uint64_t zmask = ymask << 1;
-            // constexpr uint64_t mask_xy = xmask | ymask;
-            // constexpr uint64_t mask_xz = xmask | zmask;
-            // constexpr uint64_t mask_yz = ymask | zmask;
-            // MortonCode code = p->first;
-            // const std::array<MortonCode, 3> xparts = {
-            //     ((code & xmask) - 1) & xmask,
-            //     code & xmask,
-            //     ((code | mask_yz) + 1) & xmask,
-            // };
-            // const std::array<MortonCode, 3> yparts = {
-            //     ((code & ymask) - 1) & ymask,
-            //     code & ymask,
-            //     ((code | mask_xz) + 1) & ymask,
-            // };
-            // const std::array<MortonCode, 3> zparts = {
-            //     ((code & zmask) - 1) & zmask,
-            //     code & zmask,
-            //     ((code | mask_xy) + 1) & zmask,
-            // };
-            // for (auto x = 0; x < 3; x++) {
-            //     for (auto y = 0; y < 3; y++) {
-            //         for (auto z = 0; z < 3; z++) {
-            //             MortonCode code = xparts[x] | yparts[y] | zparts[z];
-            //             uint64_t somedata = 24567234624;
-            //             trie.insert(code, somedata);
-            //         }
-            //     }
-            // }
         }
         auto end = std::chrono::steady_clock::now();
         auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
