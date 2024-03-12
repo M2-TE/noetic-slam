@@ -273,10 +273,9 @@ struct Map {
                         // actual floating position of cluster
                         Eigen::Vector3f fPos = cPos.cast<float>() * 2.0f * leafResolution;
 
+                        // offsets of leaves within
                         std::array<float, 8> leaves;
                         auto pLeaf = leaves.begin();
-
-                        // offsets of leaves within
                         for (auto xl = 0; xl < 2; xl++) {
                             for (auto yl = 0; yl < 2; yl++) {
                                 for (auto zl = 0; zl < 2; zl++) {
@@ -299,24 +298,39 @@ struct Map {
                         constexpr double sdMax = boost::math::ccmath::sqrt(3.0*3.0*3.0) * leafResolution;
                         constexpr float sdMaxRecip = 1.0 / sdMax;
 
-                        // pack all leaves into single 32(64) bit uint
+                        // only compare to previous signed distance if there is one
+                        bool bComp = cluster > 0;
+
+                        // pack all leaves into 32 bits
+                        typedef uint32_t pack;
+                        pack packedLeaves = 0;
                         for (auto i = 0; i < leaves.size(); i++) {
                             float sd = leaves[i];
-                            float sdNorm = sd * sdMaxRecip; // normalize between -1.0 and 1.0
+                            // normalize between -1.0 and 1.0 (not yet clamped)
+                            sd = sd * sdMaxRecip;
 
-                            // currently, signed distance use 4 bits (4x8 = 32 bits)
-                            constexpr size_t sdBits = 4;
-                            constexpr float sdConv = static_cast<float>((1 << sdBits - 1) - 1);
-                            int32_t sdInt = static_cast<int32_t>(sdNorm * sdConv);
-                            std::cout << sdInt << '\n';
+                            constexpr pack sdBits = 4;
+                            constexpr pack sdMask = (1 << sdBits - 1) - 1;
+                            constexpr float sdConv = static_cast<float>(sdMask);
+                            // expand for int conversion
+                            sd = sd * sdConv;
+                            // convert absolute value, copy sign manually
+                            pack sdInt = static_cast<int>(std::abs(sd));
+                            pack signBit = std::signbit(sd) << sdBits - 1;
+                            sdInt |= signBit;
+                            
 
-                            // std::cout << sdNorm << '\n';
-                            // float sdNorm = sd * (1.0f / voxelToCoordRatio); // normalize signed distance between 0 and 1
-                            // sd = sdNorm * static_cast<float>(DAG::maxSignedDistance); // scale up to uint4_t range
-
-                            // TODO: these fuckers still need the sign bit
+                            // check if signed distance is smaller than saved one
+                            if (bComp) {
+                                constexpr pack mask = (1 << sdBits) - 1;
+                                // extract relevant portion
+                                pack part = (cluster >> i * sdBits) & mask;
+                                // < comparison works if treating sign bit as data
+                                if (part < sdInt) sdInt = part;
+                            }
+                            packedLeaves |= sdInt << i * sdBits;
                         }
-                        // return;
+                        cluster = packedLeaves;
                     }
                 }
             }
@@ -325,44 +339,6 @@ struct Map {
         auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
         std::cout << "trie iter: " << dur << " ms" << std::endl;
         trie.printstuff();
-
-        // TODO: emplace point and norm together as value? more cache hits
-        // iterate over InfluenceMap to generate leaf clusters
-        // for (auto p = influenceMap.cbegin(); p != influenceMap.cend();) {
-
-        //     // calculate leaf cluster position
-        //     Eigen::Vector3f vPos = p->second.point.unaryExpr([&](const float f){
-        //         // convert to voxel position
-        //         int32_t i = static_cast<int32_t>(f * (1.0 / leafResolution));
-        //         // mask out lsb for cluster position
-        //         i = i & (0xffffffff ^ 0x1);
-        //         // convert to real position
-        //         return static_cast<float>(i) * static_cast<float>(leafResolution);
-        //     });
-
-        //     // offsets will be added to cPos to obtain actual leaf position
-        //     // order important for cache coherency
-        //     constexpr float k = leafResolution;
-        //     const std::array<Eigen::Vector3f, 8> leafPosOffsets = { // no constexpr :c
-        //         Eigen::Vector3f(k, k, k),
-        //         Eigen::Vector3f(0, k, k),
-        //         Eigen::Vector3f(k, 0, k),
-        //         Eigen::Vector3f(0, 0, k),
-        //         Eigen::Vector3f(k, k, 0),
-        //         Eigen::Vector3f(0, k, 0),
-        //         Eigen::Vector3f(k, 0, 0),
-        //         Eigen::Vector3f(0, 0, 0),
-        //     };
-
-        //     // signed distances for leaves within leaf chunk
-        //     std::array<float, 8> leaves;
-
-        //     // iterate over points that contribute to cluster
-        //     for (auto key = p->first; p->first == key && p != influenceMap.cend(); p++) {
-        //         Eigen::Vector3f point = p->second.point;
-        //         // TODO
-        //     }
-        // }
     }
 
 private:
