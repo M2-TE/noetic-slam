@@ -133,7 +133,36 @@ namespace idx { // static indices
     static constexpr size_t leafCluster = leaf - 1;
 }
 static constexpr size_t mortonVolume = idx::leaf - 4;
-typedef uint64_t MortonCode;
+struct MortonCode {
+    MortonCode(int x, int y, int z): MortonCode(Eigen::Vector3i(x, y, z)) {}
+    MortonCode(uint64_t code): val(code) {}
+    MortonCode(Eigen::Vector3i vec) {
+        // use n-bit signed integral as morton code input with locality between -1, 0, +1
+        auto res = vec.unaryExpr([](const int32_t i) {
+            constexpr uint signBit = 1 << 31;
+            constexpr uint signMask = signBit - 1;
+            constexpr uint mask = (1 << 20) - 1;
+            // invert sign
+            uint32_t sign = (i & signBit) ^ signBit;
+            // shift sign to 21st bit
+            sign = sign >> 11;
+            // combine sign with i
+            uint32_t res = (i & mask) | sign;
+            return (int32_t)res;
+        });
+        val = mortonnd::MortonNDBmi_3D_64::Encode(res.x(), res.y(), res.z());
+    }
+    inline bool operator==(const MortonCode& other) const {
+        return val == other.val;
+    }
+    inline bool operator<(const MortonCode& other) const {
+        return val < other.val;
+    }
+    inline bool operator>(const MortonCode& other) const {
+        return val > other.val;
+    }
+    uint64_t val;
+};
 struct MortonIndex { Eigen::Vector3f point; uint32_t index; };
 struct Pose { Eigen::Vector3f pos; Eigen::Quaternionf rot; };
 struct Scan {
@@ -152,36 +181,8 @@ struct Map {
         }
     }
 
-    void print_info() {
-        for (uint32_t depth = 0; depth < nDagLevels + 1; depth++) {
-            std::cout << "depth " << depth << ": " 
-                << dagSizes[depth] << "^3" << " voxels, " 
-                << dagResolutions[depth] << "^3" << " resolution";
-            if (depth == idx::leaf) std::cout << " (implicit)";
-            std::cout << std::endl;
-        }
-        std::cout << "morton volume (leaf NN) of " << dagSizes[mortonVolume] << "^3 voxels";
-        std::cout << "(" << dagSizes[mortonVolume] * leafResolution << ")" << std::endl;
-    }
-    
-    // use n-bit signed integral as morton code input with locality between -1, 0, +1
-    uint_fast64_t calc_morton_signed(Eigen::Matrix<int32_t, 3, 1> input) {
-        auto res = input.unaryExpr([](const int32_t i) {
-            constexpr uint signBit = 1 << 31;
-            constexpr uint signMask = signBit - 1;
-            constexpr uint mask = (1 << 20) - 1;
-            // invert sign
-            uint32_t sign = (i & signBit) ^ signBit;
-            // shift sign to 21st bit
-            sign = sign >> 11;
-            // combine sign with i
-            uint32_t res = (i & mask) | sign;
-            return (int32_t)res;
-        });
-        return mortonnd::MortonNDBmi_3D_64::Encode(res.x(), res.y(), res.z());
-    }
-    template<size_t depth> 
-    auto get_morton_map(std::span<Eigen::Vector3f> points) {
+    auto get_normals(Pose pose, std::vector<Eigen::Vector3f>& points) {
+        auto beg = std::chrono::steady_clock::now();
         phmap::btree_multimap<MortonCode, MortonIndex> mortonMap;
 
         // calculate morton codes based on voxel position
@@ -191,16 +192,10 @@ struct Map {
             // calculate leaf voxel position
             Eigen::Matrix<int32_t, 3, 1> vPos = (*pCur * (1.0 / leafResolution)).cast<int32_t>();
             // assign to voxel chunk
-            vPos /= (int32_t)dagSizes[depth];
+            vPos /= (int32_t)dagSizes[mortonVolume];
             // create 63-bit morton code from 3x21-bit fields
-            MortonCode mortonCode = calc_morton_signed(vPos);
-            mortonMap.emplace(mortonCode, MortonIndex(*pCur, i++));
+            mortonMap.emplace(vPos, MortonIndex(*pCur, i++));
         }
-        return mortonMap;
-    }
-    auto get_normals(Pose pose, std::vector<Eigen::Vector3f>& points) {
-        auto beg = std::chrono::steady_clock::now();
-        auto mortonMap = get_morton_map<mortonVolume>(points);
         auto end = std::chrono::steady_clock::now();
         auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
         std::cout << "construction: " << dur << " ms" << std::endl;
@@ -215,7 +210,7 @@ struct Map {
             neighbours.push_back(point);
 
             // traverse morton code neighbours for nearest neighbour search
-            auto [xC, yC, zC] = mortonnd::MortonNDBmi_3D_64::Decode(pCur->first);
+            auto [xC, yC, zC] = mortonnd::MortonNDBmi_3D_64::Decode(pCur->first.val);
             constexpr decltype(xC) off = 1; // offset (1 = 3x3x3 morton neighbourhood)
             for (auto x = xC - off; x <= xC + off; x++) {
                 for (auto y = yC - off; y <= yC + off; y++) {
@@ -246,12 +241,7 @@ struct Map {
         std::cout << "normal est: " << dur << " ms" << std::endl;
         return normals;
     }
-    void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
-        // print_info();
-        
-        Pose pose = { position, rotation };
-        auto normals = get_normals(pose, points);
-        
+    auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) {
         auto beg = std::chrono::steady_clock::now();
         Trie trie;
         auto pNorm = normals.cbegin();
@@ -267,8 +257,8 @@ struct Map {
                     for (auto z = -off; z <= +off; z++) {
                         // this is be a leaf cluster containing 8 individual leaves
                         Eigen::Vector3i cPos = voxelPos + Eigen::Vector3i(x, y, z);
-                        auto code = calc_morton_signed(cPos);
-                        auto& cluster = trie.find(code);
+                        MortonCode code(cPos);
+                        auto& cluster = trie.find(code.val);
 
                         // actual floating position of cluster
                         Eigen::Vector3f fPos = cPos.cast<float>() * 2.0f * leafResolution;
@@ -288,13 +278,7 @@ struct Map {
                             }
                         }
 
-                        // since we write signed distances into neighbours as well:
-                        // 1. leaf clusters are 2x2x2 where 1 = leafResolution
-                        // 2. neighbours are twice that, so total max distance should be:
-                        //      neighbourhood is 6x6x6, but only 4x4x4 matters here
-                        //      3, 3, 3 in leaf cluster for point
-                        //      0, 0, 0 in neighbour
-                        // 3. calc max distance based on this assumption, then normalize all signed distances based on that
+                        // sd max should be turned into a parameter
                         constexpr double sdMax = boost::math::ccmath::sqrt(3.0*3.0*3.0) * leafResolution;
                         constexpr float sdMaxRecip = 1.0 / sdMax;
 
@@ -337,7 +321,13 @@ struct Map {
         }
         auto end = std::chrono::steady_clock::now();
         auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-        std::cout << "trie iter: " << dur << " ms" << std::endl;
+        std::cout << "trie ctor: " << dur << " ms" << std::endl;
+        return trie;
+    }
+    void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
+        Pose pose = { position, rotation };
+        auto normals = get_normals(pose, points);
+        auto trie = get_trie(points, normals);
         trie.printstuff();
     }
 
