@@ -185,6 +185,52 @@ struct Map {
         auto beg = std::chrono::steady_clock::now();
         phmap::btree_multimap<MortonCode, MortonIndex> mortonMap;
 
+        {
+            auto beg = std::chrono::steady_clock::now();
+            // store index in trie, used for NN lookup later (only one pointer per voxel!)
+            Trie trie;
+            uint64_t index = 0;
+            for (auto pCur = points.begin(); pCur != points.end(); pCur++) {
+                // create 63-bit morton code from 3x21-bit fields
+                Eigen::Vector3i vPos = (*pCur * (1.0 / leafResolution)).cast<int32_t>();
+                MortonCode mc(vPos);
+                trie.insert(mc.val, index++);
+            }
+            auto end = std::chrono::steady_clock::now();
+            auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+            std::cout << "NN Trie ctor: " << dur << " ms" << std::endl;
+            trie.printstuff();
+
+            // estimate normals based on kNN (nearest neighbours)
+            std::vector<Eigen::Vector3f> normals;
+            normals.reserve(points.size());
+            beg = std::chrono::steady_clock::now();
+            for (auto pCur = points.begin(); pCur != points.end(); pCur++) {
+                Eigen::Vector3f point = *pCur;
+                
+                std::vector<Eigen::Vector3f> neighbours;
+                neighbours.push_back(point);
+
+                // TODO: next a function that gets all points around a neighbourhood
+                // stuff in trie, dw about it rn
+                
+                // std::cout << neighbours.size() << std::endl;
+                
+                // estimate normal via neighbourhood if enough neighbours are present
+                // else use pose-to-point
+                Eigen::Vector3f normal;
+                if (neighbours.size() > 1) normal = normal_from_neighbourhood(neighbours);
+                else normal = (pose.pos - point).normalized();
+                normals.emplace_back(normal);
+            }
+            end = std::chrono::steady_clock::now();
+            dur = std::chrono::duration<double, std::milli> (end - beg).count();
+            std::cout << "NN Trie norm: " << dur << " ms" << std::endl;
+            return normals;
+        }
+
+
+
         // calculate morton codes based on voxel position
         uint32_t i = 0;
         // std::vector<MortonCode>

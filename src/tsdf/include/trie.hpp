@@ -52,27 +52,7 @@ public:
     }
 
     inline void insert(Key key, Value value) {
-        auto depth = read_cache(key);
-        cache.key = key;
-        Node* pNode = cache.nodes[depth];
-        while (depth > 0) {
-            auto index = (key >> depth * 3) & 0b111;
-            auto& pChild = pNode->children[index];
-            // create child if nonexistant
-            if (pChild == nullptr) {
-                pChild = pNodes + nNodes++;
-                pChild->children = {
-                    NULL, NULL, NULL, NULL,
-                    NULL, NULL, NULL, NULL
-                };
-            }
-            pNode = pChild;
-            cache.nodes[--depth] = pNode;
-        }
-        
-        // this last node contains values
-        auto index = (key >> depth * 3) & 0b111;
-        pNode->leafClusters[index] = value;
+        find(key) = value;
     }
     inline Value& find(Key key) {
         auto depth = read_cache(key);
