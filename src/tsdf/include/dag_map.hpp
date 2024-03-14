@@ -211,14 +211,14 @@ struct Map {
                 std::vector<Eigen::Vector3f> neighbours;
                 neighbours.push_back(point);
 
-                // TODO: next a function that gets all points around a neighbourhood
-                // stuff in trie, dw about it rn
+                // get all neighbourhood nodes
+                Eigen::Vector3i vPos = (*pCur * (1.0 / leafResolution)).cast<int32_t>();
+                MortonCode mc(vPos);
+                auto neighbourIndices = trie.get_neighbourhood(mc.val, 3);
+                // std::cout << neighbourIndices.size() << std::endl;
                 
-                // std::cout << neighbours.size() << std::endl;
-                
-                // estimate normal via neighbourhood if enough neighbours are present
-                // else use pose-to-point
                 Eigen::Vector3f normal;
+                // estimate normals with sufficient neighbours
                 if (neighbours.size() > 1) normal = normal_from_neighbourhood(neighbours);
                 else normal = (pose.pos - point).normalized();
                 normals.emplace_back(normal);

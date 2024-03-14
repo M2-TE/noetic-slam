@@ -7,8 +7,10 @@
 #include <stdlib.h>
 
 class Trie {
+public:
     typedef uint64_t Key;
     typedef uint64_t Value;
+private:
     union Node {
         std::array<Node*, 8> children;
         std::array<uint64_t, 8> leafClusters;
@@ -19,6 +21,7 @@ class Trie {
         std::array<Node*, 21> nodes;
         Key key;
     };
+
 public:
     Trie() {
         // assume posix
@@ -76,6 +79,18 @@ public:
         // this last node contains values
         auto index = (key >> depth * 3) & 0b111;
         return pNode->leafClusters[index];
+    }
+    inline std::vector<Value> get_neighbourhood(Key center, uint64_t distanceFromLeaf) {
+        std::vector<Value> neighbours;
+
+        // 1. iterate down to the requested depth
+        //      -> first go down using cache, then back up if necessary
+        // 2. get all children below here recursively
+        // 3. get all 8 neighbours via modification of morton code key
+
+        // think about cache! current cache is not as efficient with leading zeroes
+
+        return neighbours;
     }
 
     void printstuff() {
