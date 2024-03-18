@@ -1,0 +1,6 @@
+CompileFlags:
+    CompilationDatabase: build/tsdf
+    Add: [
+        --include-directory=src/tsdf/ext/phmap/,
+        --include-directory=src/tsdf/ext/morton-nd/include/
+    ]
