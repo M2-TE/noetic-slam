@@ -1,7 +1,6 @@
 #pragma once
 #include <array>
 #include <vector>
-#include <bitset>
 #include <cstdint>
 #include <iostream>
 #include <unistd.h>
@@ -37,8 +36,7 @@ public:
 
         // first node will be root node
         static_assert(nullptr == 0b0);
-        static_assert(NULL == 0b0);
-        static_assert(NULL == nullptr);
+        static_assert((uintptr_t)NULL == 0b0);
         nNodes = 0;
         (pNodes + nNodes++)->children = {
             NULL, NULL, NULL, NULL,
@@ -81,17 +79,65 @@ public:
         auto index = (key >> depth * 3) & 0b111;
         return pNode->leafClusters[index];
     }
-    inline std::vector<Value> get_neighbourhood(Key center, uint64_t distanceFromLeaf) {
-        std::vector<Value> neighbours;
+    template<size_t rDepth> inline std::vector<Value> get_neighbourhood(Key center) {
 
-        // 1. iterate down to the requested depth
-        //      -> first go down using cache, then back up if necessary
-        // 2. get all children below here recursively
-        // 3. get all 8 neighbours via modification of morton code key
+        auto depth = read_cache(center);
+        cache.key = center;
+        Node* pNode = cache.nodes[depth];
+        while (depth > rDepth) {
+            auto index = (center >> depth * 3) & 0b111;
+            auto& pChild = pNode->children[index];
+            // create child if nonexistant
+            if (pChild == nullptr) {
+                pChild = pNodes + nNodes++;
+                pChild->children = {
+                    NULL, NULL, NULL, NULL,
+                    NULL, NULL, NULL, NULL
+                };
+            }
+            pNode = pChild;
+            cache.nodes[--depth] = pNode;
+        }
+        std::vector<Node*> prev = {pNode};
+        // for (size_t i = 0; i < rDepth; i++) {
+        //     std::vector<Node*> curr;
+        //     // for every node of previous depth
+        //     for (auto* node: prev) {
+        //         // for every child
+        //         for (auto* child: node->children) {
+        //             // add to collection if valid
+        //             if (child != nullptr) curr.push_back(child);
+        //         }
+        //     }
 
-        // think about cache! current cache is not as efficient with leading zeroes
+        //     depth--;
+        //     prev = curr;
+        // }
+        while (depth > 0) {
+            std::vector<Node*> curr;
+            // for every node of previous depth
+            for (auto* node: prev) {
+                // for every child
+                for (auto* child: node->children) {
+                    // add to collection if valid
+                    if (child != nullptr) curr.push_back(child);
+                }
+            }
 
-        return neighbours;
+            depth--;
+            prev = curr;
+        }
+
+        // finally, check for valid leaf nodes
+        std::vector<Value> neighbourhood;
+        for (auto* node: prev) {
+            // for every child
+            for (auto leaf: node->leafClusters) {
+                // add to collection if valid
+                if (leaf > 0) neighbourhood.push_back(leaf);
+            }
+        }
+        return neighbourhood;
     }
 
     void printstuff() {

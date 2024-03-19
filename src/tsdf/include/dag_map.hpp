@@ -176,52 +176,6 @@ namespace DAG {
             auto beg = std::chrono::steady_clock::now();
             phmap::btree_multimap<MortonCode, MortonIndex> mortonMap;
 
-            {
-                auto beg = std::chrono::steady_clock::now();
-                // store index in trie, used for NN lookup later (only one pointer per voxel!)
-                Trie trie;
-                uint64_t index = 0;
-                for (auto pCur = points.begin(); pCur != points.end(); pCur++) {
-                    // create 63-bit morton code from 3x21-bit fields
-                    Eigen::Vector3i vPos = (*pCur * (1.0 / leafResolution)).cast<int32_t>();
-                    MortonCode mc(vPos);
-                    trie.insert(mc.val, index++);
-                }
-                auto end = std::chrono::steady_clock::now();
-                auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-                std::cout << "NN Trie ctor: " << dur << " ms" << std::endl;
-                trie.printstuff();
-
-                // estimate normals based on kNN (nearest neighbours)
-                std::vector<Eigen::Vector3f> normals;
-                normals.reserve(points.size());
-                beg = std::chrono::steady_clock::now();
-                for (auto pCur = points.begin(); pCur != points.end(); pCur++) {
-                    Eigen::Vector3f point = *pCur;
-                    
-                    std::vector<Eigen::Vector3f> neighbours;
-                    neighbours.push_back(point);
-
-                    // get all neighbourhood nodes
-                    Eigen::Vector3i vPos = (*pCur * (1.0 / leafResolution)).cast<int32_t>();
-                    MortonCode mc(vPos);
-                    auto neighbourIndices = trie.get_neighbourhood(mc.val, 3);
-                    // std::cout << neighbourIndices.size() << std::endl;
-                    
-                    Eigen::Vector3f normal;
-                    // estimate normals with sufficient neighbours
-                    if (neighbours.size() > 1) normal = normal_from_neighbourhood(neighbours);
-                    else normal = (pose.pos - point).normalized();
-                    normals.emplace_back(normal);
-                }
-                end = std::chrono::steady_clock::now();
-                dur = std::chrono::duration<double, std::milli> (end - beg).count();
-                std::cout << "NN Trie norm: " << dur << " ms" << std::endl;
-                return normals;
-            }
-
-
-
             // calculate morton codes based on voxel position
             uint32_t i = 0;
             // std::vector<MortonCode>
@@ -264,7 +218,7 @@ namespace DAG {
                         }
                     }
                 }
-                // std::cout << neighbours.size() << std::endl;
+                std::cout << neighbours.size() << std::endl;
                 
                 // estimate normal via neighbourhood if enough neighbours are present
                 // else use pose-to-point
@@ -331,13 +285,13 @@ namespace DAG {
                                 sd = sd * sdMaxRecip;
 
                                 constexpr pack sdBits = 4;
-                                constexpr pack sdMask = (1 << sdBits - 1) - 1;
+                                constexpr pack sdMask = (1 << (sdBits - 1)) - 1;
                                 constexpr float sdConv = static_cast<float>(sdMask);
                                 // expand for int conversion
                                 sd = sd * sdConv;
                                 // convert absolute value, copy sign manually
                                 pack sdInt = static_cast<int>(std::abs(sd));
-                                pack signBit = std::signbit(sd) << sdBits - 1;
+                                pack signBit = std::signbit(sd) << (sdBits - 1);
                                 sdInt |= signBit;
                                 
 
