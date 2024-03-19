@@ -1,6 +1,6 @@
 #pragma once
 #include <array>
-#include <vector>
+#include <limits>
 #include <cstdint>
 #include <iostream>
 #include <unistd.h>
@@ -10,6 +10,7 @@ class Trie {
 public:
     typedef uint64_t Key;
     typedef uint64_t Value;
+    
 private:
     union Node {
         std::array<Node*, 8> children;
@@ -20,6 +21,12 @@ private:
     struct Path {
         std::array<Node*, 21> nodes;
         Key key;
+    };
+public:
+    struct DepthFirstIter {
+        static constexpr size_t maxDepth = 63 / 3;
+        struct Pair { Node* pNode; size_t index; };
+        std::array<Pair, maxDepth> path;
     };
 
 public:
@@ -39,8 +46,8 @@ public:
         static_assert((uintptr_t)NULL == 0b0);
         nNodes = 0;
         (pNodes + nNodes++)->children = {
-            NULL, NULL, NULL, NULL,
-            NULL, NULL, NULL, NULL
+            (Node*)defVal, (Node*)defVal, (Node*)defVal, (Node*)defVal,
+            (Node*)defVal, (Node*)defVal, (Node*)defVal, (Node*)defVal
         };
 
         // keep track of last path to speed up subsequent accesses
@@ -56,7 +63,7 @@ public:
     inline void insert(Key key, Value value) {
         find(key) = value;
     }
-    inline Value& find(Key key) {
+    inline Value& find(Key key) { // TODO: segfault fix
         auto depth = read_cache(key);
         cache.key = key;
         Node* pNode = cache.nodes[depth];
@@ -64,11 +71,11 @@ public:
             auto index = (key >> depth * 3) & 0b111;
             auto& pChild = pNode->children[index];
             // create child if nonexistant
-            if (pChild == nullptr) {
+            if (pChild == (Node*)defVal) {
                 pChild = pNodes + nNodes++;
                 pChild->children = {
-                    NULL, NULL, NULL, NULL,
-                    NULL, NULL, NULL, NULL
+                    (Node*)defVal, (Node*)defVal, (Node*)defVal, (Node*)defVal,
+                    (Node*)defVal, (Node*)defVal, (Node*)defVal, (Node*)defVal
                 };
             }
             pNode = pChild;
@@ -79,65 +86,29 @@ public:
         auto index = (key >> depth * 3) & 0b111;
         return pNode->leafClusters[index];
     }
-    template<size_t rDepth> inline std::vector<Value> get_neighbourhood(Key center) {
+    inline DepthFirstIter get_depth_first() {
+        // start at root node
+        DepthFirstIter iter = {};
+        iter.path[0].pNode = pNodes;
+        iter.path[0].index = 0;
 
-        auto depth = read_cache(center);
-        cache.key = center;
-        Node* pNode = cache.nodes[depth];
-        while (depth > rDepth) {
-            auto index = (center >> depth * 3) & 0b111;
-            auto& pChild = pNode->children[index];
-            // create child if nonexistant
-            if (pChild == nullptr) {
-                pChild = pNodes + nNodes++;
-                pChild->children = {
-                    NULL, NULL, NULL, NULL,
-                    NULL, NULL, NULL, NULL
-                };
-            }
-            pNode = pChild;
-            cache.nodes[--depth] = pNode;
-        }
-        std::vector<Node*> prev = {pNode};
-        // for (size_t i = 0; i < rDepth; i++) {
-        //     std::vector<Node*> curr;
-        //     // for every node of previous depth
-        //     for (auto* node: prev) {
-        //         // for every child
-        //         for (auto* child: node->children) {
-        //             // add to collection if valid
-        //             if (child != nullptr) curr.push_back(child);
-        //         }
-        //     }
-
-        //     depth--;
-        //     prev = curr;
-        // }
-        while (depth > 0) {
-            std::vector<Node*> curr;
-            // for every node of previous depth
-            for (auto* node: prev) {
-                // for every child
-                for (auto* child: node->children) {
-                    // add to collection if valid
-                    if (child != nullptr) curr.push_back(child);
+        Node* pPrev = pNodes;
+        // path from root to leaf
+        for (size_t i = 1; i < msb/3; i++) {
+            // look for first valid child
+            Node* pNode;
+            for (size_t k = 0; k < 8; k++) {
+                pNode = pPrev->children[k];
+                if (pNode != (Node*)defVal) {
+                    iter.path[i].pNode = pNode;
+                    iter.path[i].index = k;
+                    break;
                 }
             }
-
-            depth--;
-            prev = curr;
+            pPrev = pNode;
         }
 
-        // finally, check for valid leaf nodes
-        std::vector<Value> neighbourhood;
-        for (auto* node: prev) {
-            // for every child
-            for (auto leaf: node->leafClusters) {
-                // add to collection if valid
-                if (leaf > 0) neighbourhood.push_back(leaf);
-            }
-        }
-        return neighbourhood;
+        return iter;
     }
 
     void printstuff() {
@@ -165,4 +136,7 @@ private:
     Path cache;
     static constexpr size_t nMax = 1'000'000;
     static constexpr size_t msb = 63; // the most significant bit of a key
+public:
+    // the default value of an uninitialized node/leaf
+    static constexpr uintptr_t defVal = std::numeric_limits<uintptr_t>::max();
 };

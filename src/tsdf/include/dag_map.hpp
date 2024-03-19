@@ -11,10 +11,6 @@
 #include <eigen3/Eigen/Eigen>
 #include <parallel_hashmap/phmap.h>
 #include <parallel_hashmap/btree.h>
-// help intellisense be not stupid for once
-#ifndef __BMI2__
-#define __BMI2__
-#endif
 #include <morton-nd/mortonND_BMI2.h>
 #include "dag_structs.hpp"
 #include "trie.hpp"
@@ -218,7 +214,7 @@ namespace DAG {
                         }
                     }
                 }
-                std::cout << neighbours.size() << std::endl;
+                // std::cout << neighbours.size() << std::endl;
                 
                 // estimate normal via neighbourhood if enough neighbours are present
                 // else use pose-to-point
@@ -248,9 +244,6 @@ namespace DAG {
                         for (auto z = -off; z <= +off; z++) {
                             // this is be a leaf cluster containing 8 individual leaves
                             Eigen::Vector3i cPos = voxelPos + Eigen::Vector3i(x, y, z);
-                            MortonCode code(cPos);
-                            auto& cluster = trie.find(code.val);
-
                             // actual floating position of cluster
                             Eigen::Vector3f fPos = cPos.cast<float>() * 2.0f * leafResolution;
 
@@ -273,8 +266,8 @@ namespace DAG {
                             constexpr double sdMax = boost::math::ccmath::sqrt(3.0*3.0*3.0) * leafResolution;
                             constexpr float sdMaxRecip = 1.0 / sdMax;
 
-                            // only compare to previous signed distance if there is one
-                            bool bComp = cluster > 0;
+                            MortonCode code(cPos);
+                            auto& cluster = trie.find(code.val);
 
                             // pack all leaves into 32 bits
                             typedef uint32_t pack;
@@ -294,9 +287,8 @@ namespace DAG {
                                 pack signBit = std::signbit(sd) << (sdBits - 1);
                                 sdInt |= signBit;
                                 
-
                                 // check if signed distance is smaller than saved one
-                                if (bComp) {
+                                if (cluster != Trie::defVal) {
                                     constexpr pack mask = (1 << sdBits) - 1;
                                     // extract relevant portion
                                     pack part = (cluster >> i * sdBits) & mask;
@@ -320,6 +312,11 @@ namespace DAG {
             auto normals = get_normals(pose, points);
             auto trie = get_trie(points, normals);
             trie.printstuff();
+
+            auto iter = trie.get_depth_first();
+            for (auto leaf: iter.path[20].pNode->leafClusters) {
+                std::cout << leaf << '\n';
+            }
         }
 
     private:
