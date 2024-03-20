@@ -10,23 +10,17 @@ class Trie {
 public:
     typedef uint64_t Key;
     typedef uint64_t Value;
-    
-private:
     union Node {
         std::array<Node*, 8> children;
         std::array<uint64_t, 8> leafClusters;
         static_assert(sizeof(children) == sizeof(leafClusters));
         static_assert(sizeof(children) == 64);
     };
+    
+private:
     struct Path {
         std::array<Node*, 21> nodes;
         Key key;
-    };
-public:
-    struct DepthFirstIter {
-        static constexpr size_t maxDepth = 63 / 3;
-        struct Pair { Node* pNode; size_t index; };
-        std::array<Pair, maxDepth> path;
     };
 
 public:
@@ -86,29 +80,8 @@ public:
         auto index = (key >> depth * 3) & 0b111;
         return pNode->leafClusters[index];
     }
-    inline DepthFirstIter get_depth_first() {
-        // start at root node
-        DepthFirstIter iter = {};
-        iter.path[0].pNode = pNodes;
-        iter.path[0].index = 0;
-
-        Node* pPrev = pNodes;
-        // path from root to leaf
-        for (size_t i = 1; i < msb/3; i++) {
-            // look for first valid child
-            Node* pNode;
-            for (size_t k = 0; k < 8; k++) {
-                pNode = pPrev->children[k];
-                if (pNode != (Node*)defVal) {
-                    iter.path[i].pNode = pNode;
-                    iter.path[i].index = k;
-                    break;
-                }
-            }
-            pPrev = pNode;
-        }
-
-        return iter;
+    inline Node* get_root() {
+        return pNodes;
     }
 
     void printstuff() {

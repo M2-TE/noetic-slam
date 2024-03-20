@@ -19,7 +19,6 @@
 #include <Eigen/Eigen>
 #include <chrono>
 #include <random>
-#include <cmath>
 //
 #include "dlio_stuff.hpp"
 #include "tsdf_map.hpp"
@@ -102,7 +101,6 @@ public:
 
 private:
     DAG::Map dagMap;
-    TSDF_Map tsdfMap;
     uint32_t queueSize = 100;
     ros::Subscriber subPath;
     ros::Subscriber subPcl;
