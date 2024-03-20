@@ -8,12 +8,12 @@
 #include <Eigen/Eigen>
 
 namespace DAG {
-    typedef uint32_t NodePointer; // position of node in a level's data vector
-    typedef uint8_t ChildMask; // contains 8 children
+    typedef uint32_t NodeIndex; // position of node in a level's data vector
+    typedef uint32_t ChildMask; // contains 8 children
 
     struct MortonIndex { Eigen::Vector3f point; uint32_t index; };
     struct Pose { Eigen::Vector3f pos; Eigen::Quaternionf rot; };
-    struct Scan { Pose pose; std::vector<NodePointer> roots; };
+    struct Scan { Pose pose; std::vector<NodeIndex> roots; };
 
     static constexpr double leafResolution = 0.01; // real distance for each voxel step
     static constexpr uint32_t nDagLevels = 10; // number of DAG levels including root and leaf clusters (excluding leaves)
@@ -79,10 +79,10 @@ namespace DAG {
     };
 
     struct HashFunctor {
-        inline size_t operator()(NodePointer key) const noexcept {
+        inline size_t operator()(NodeIndex key) const noexcept {
             std::vector<uint32_t>& data = *pData;
-            ChildMask childMask = static_cast<ChildMask>(data[key]);
-            uint8_t nChildren = std::popcount<ChildMask>(childMask);
+            ChildMask childMask = data[key];
+            uint8_t nChildren = std::popcount<uint8_t>(childMask);
             // hash child mask
             size_t hash = phmap::HashState::combine(0, childMask);
             // hash all children
@@ -94,25 +94,33 @@ namespace DAG {
         std::vector<uint32_t>* pData; // non-owning pointer to raw data array
     };
     struct CompFunctor {
-        inline bool operator()(NodePointer keyA, NodePointer keyB) const noexcept {
+        inline bool operator()(NodeIndex keyA, NodeIndex keyB) const noexcept {
             std::vector<uint32_t>& data = *pData;
             // compare all children
-            ChildMask childMaskA = static_cast<ChildMask>(data[keyA]);
-            return std::memcmp(&data[keyA + 1], &data[keyB + 1], std::popcount(childMaskA) * sizeof(uint32_t));
+            ChildMask childMaskA = data[keyA];
+            return std::memcmp(
+                &data[keyA + 1],
+                &data[keyB + 1],
+                std::popcount<uint8_t>(childMaskA) * sizeof(uint32_t));
         }
         std::vector<uint32_t>* pData; // non-owning pointer to raw data array
     };
 
     // represents a node of theoretical max size in memory
     template<size_t nChildren = 8> struct Node {
-        ChildMask childMask;
-        [[maybe_unused]] std::array<ChildMask, 3> padding;
-        std::array<NodePointer, nChildren> children;
+        static inline Node* reinterpret(void* p) {
+            return reinterpret_cast<Node*>(p);
+        }
+        inline uint8_t count_children() const {
+            return std::popcount<uint8_t>(childMask);
+        }
+        ChildMask childMask = 0;
+        std::array<NodeIndex, nChildren> children;
     };
 
     struct Level {
         Level(): pointers(0, HashFunctor(&data), CompFunctor(&data)) {}
-        phmap::parallel_flat_hash_set<NodePointer, HashFunctor, CompFunctor> pointers;
+        phmap::parallel_flat_hash_set<NodeIndex, HashFunctor, CompFunctor> pointers;
         std::vector<uint32_t> data;
         size_t dataSize = 0;
     };

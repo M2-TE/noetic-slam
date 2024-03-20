@@ -264,20 +264,57 @@ namespace DAG {
             }
             // test
             for (int i = 0; i < 8; i++) {
-                auto val = nodes.back()->leafClusters[i];
-                if (val != Trie::defVal) std::cout << i << ' ' << val << '\n';
+                auto leafCluster = nodes.back()->leafClusters[i];
+                if (leafCluster != Trie::defVal) std::cout << i << ' ' << leafCluster << '\n';
             }
 
-            size_t depth = 1;
-            while (true) {
-                auto* node = nodes[depth];
-                for (int i = 0; i < 8; i++) {
+            // for each level, store the current NodeIndex references
+            // then build node once all references for a node at given level are available
+            // repeat until fully iterated through trie
+            std::array<std::vector<NodeIndex>, nDagLevels> dagTemps;
 
+            size_t depth = maxDepth - 1;
+            auto* parent = nodes[depth];
+            while (true) {
+                // when its a parent of leaf clusters
+                if (depth == maxDepth - 1) {
+                    // construct a DAG node
+                    Node<8> newNode = {};
+                    size_t nClusters = 0;
+                    // go over all children
+                    for (ChildMask i = 0; i < 8; i++) {
+                        auto cluster = parent->leafClusters[i];
+                        if (cluster == Trie::defVal) continue;
+                        // add to node and insert into mask
+                        newNode.children[nClusters++] = cluster;
+                        newNode.childMask |= 1 << i;
+                    }
+                    auto& level = dagLevels.back();
+                    // insert temporary node into data array
+                    auto& data = level.data;
+                    data.resize(level.dataSize + nClusters);
+                    std::memcpy(data.data() + level.dataSize, &newNode, sizeof(newNode));
+
+                    // check if the same node existed previously, only then do we count up dataSize
+                    auto& pointers = level.pointers;
+                    auto [pIndex, bNew] = pointers.emplace(level.dataSize);
+                    if (bNew) level.dataSize += 1 + nClusters; // mask + children
+
+                    // reinterpret as actual node
+                    // note: accessing the array outside of nClusters is UB
+                    Node<8>* node = Node<8>::reinterpret(data.data() + *pIndex);
+                    uint32_t n = node->count_children();
+                    for (int i = 0; i < n; i++) {
+                        std::cout << node->children[i] << '\n';
+                    }
                 }
+                // otherwise
+                //TODO
 
                 break;
             }
-
+            
+            // done
         }
 
     private:

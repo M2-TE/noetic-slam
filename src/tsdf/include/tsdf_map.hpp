@@ -46,8 +46,8 @@
 
 //         // retrieve leaf node from tree 
 //         // (parent will contain leaf, as multiple leaves are packed into single node)
-//         DAG::NodePointer parent = get_root_node(voxelPos / rootDimSize);
-//         DAG::NodePointer parentParent = 0;
+//         DAG::NodeIndex parent = get_root_node(voxelPos / rootDimSize);
+//         DAG::NodeIndex parentParent = 0;
 //         [&]<size_t... indices>(std::index_sequence<indices...>) {
             
 //             bool bContinue = true;
@@ -99,7 +99,7 @@
 //         return childBit;
 //     }
 
-//     inline DAG::NodePointer get_root_node(Eigen::Vector3i voxelRootPos) {
+//     inline DAG::NodeIndex get_root_node(Eigen::Vector3i voxelRootPos) {
 //         DAG::RootPos rootPos = (DAG::RootPos)voxelRootPos.x();
 //         rootPos |= (DAG::RootPos)voxelRootPos.y() << (DAG::xRootBits);
 //         rootPos |= (DAG::RootPos)voxelRootPos.z() << (DAG::xRootBits + DAG::yRootBits);
@@ -108,14 +108,14 @@
 //         auto [pRoot, bEmplacedNew] = dagRootMap.emplace(rootPos, dagLevels[0].data.size());
 //         if (bEmplacedNew) {
 //             // always allocate all 8 children + child mask for a root
-//             std::array<DAG::NodePointer, DAG::nLeavesPerNode + 1> children;
+//             std::array<DAG::NodeIndex, DAG::nLeavesPerNode + 1> children;
 //             for (auto& child : children) child = 0;
 //             dagLevels[0].data.insert(dagLevels[0].data.end(), children.begin(), children.end());
 //             std::cout << "created new root node\n";
 //         }
 //         return pRoot->second;
 //     }
-//     inline DAG::NodePointer create_node_leaf(Eigen::Vector3i voxelPos) {
+//     inline DAG::NodeIndex create_node_leaf(Eigen::Vector3i voxelPos) {
 //         DAG::ChildMask childBit = get_child_bit<nDagLevels - 1>(voxelPos);
 //         DAG::Level& level = dagLevels[nDagLevels - 1];
         
@@ -152,7 +152,7 @@
 //         return 0;
 //     }
 
-//     template<int32_t depth> inline void get_child_node(Eigen::Vector3i& voxelPos, DAG::NodePointer& parent, DAG::NodePointer& parentParent, bool& bContinue) {
+//     template<int32_t depth> inline void get_child_node(Eigen::Vector3i& voxelPos, DAG::NodeIndex& parent, DAG::NodeIndex& parentParent, bool& bContinue) {
 //         if (!bContinue) return;
 
 //         // try to find child in parent
@@ -169,7 +169,7 @@
 //         else bContinue = false;
 
 //         // we need to reroute the tree structure without changing the parent
-//         DAG::NodePointer childNode = create_children<depth>(voxelPos);
+//         DAG::NodeIndex childNode = create_children<depth>(voxelPos);
 //         if constexpr (depth == 1) {
 //             // at root depth its easy, because the root always has all 8 children allocated
 
@@ -194,7 +194,7 @@
 //         }
 //         else {
 //             // get the child pointer of parentParent
-//             DAG::NodePointer* pParentParentChild = &(dagLevels[depth - 2].data[parentParent]); // will point to the correct child entry of parentParent
+//             DAG::NodeIndex* pParentParentChild = &(dagLevels[depth - 2].data[parentParent]); // will point to the correct child entry of parentParent
 //             if constexpr (depth == 2) {
 //                 // special case for when the parentParent is root
 //                 std::cout << "NOT YET IMPLEMENTED\n";
@@ -237,11 +237,11 @@
 //         return;
 //     }
     
-//     template<int32_t depth> inline DAG::NodePointer create_children(Eigen::Vector3i& voxelPos) {
+//     template<int32_t depth> inline DAG::NodeIndex create_children(Eigen::Vector3i& voxelPos) {
 //         std::cout << "creating children from leaf to depth " << depth << '\n';
 
 //         // create children all the way from leaves up until the <depth> given via template
-//         DAG::NodePointer lastNode = 0;
+//         DAG::NodeIndex lastNode = 0;
 //         [&]<size_t... indices>(std::index_sequence<indices...>) {
 //             // keep track of last node
 //             lastNode = create_node_leaf(voxelPos);
@@ -249,13 +249,13 @@
 //         } (std::make_index_sequence<nDagLevels - depth - 1>{});
 //         return lastNode;
 //     }
-//     template<int32_t depth> inline DAG::NodePointer create_node_generic(Eigen::Vector3i& voxelPos, DAG::NodePointer child) {
+//     template<int32_t depth> inline DAG::NodeIndex create_node_generic(Eigen::Vector3i& voxelPos, DAG::NodeIndex child) {
 //         DAG::Level& level = dagLevels[depth];
 //         // get mask bit for the child at one depth below
 //         DAG::ChildMask childBit = get_child_bit<depth>(voxelPos);
 
 //         // create a temporary node and only progress tracker if it was actually inserted
-//         DAG::NodePointer key = level.dataSize;
+//         DAG::NodeIndex key = level.dataSize;
 //         // resize if needed
 //         level.data.resize(key + 2);
 //         level.data[key] =       (uint32_t)childBit; // mask
@@ -270,7 +270,7 @@
 //     }
 
 // private:
-//     phmap::flat_hash_map<DAG::RootPos, DAG::NodePointer> dagRootMap;
-//     phmap::flat_hash_map<DAG::Leaves, DAG::NodePointer> dagLeafMap;
+//     phmap::flat_hash_map<DAG::RootPos, DAG::NodeIndex> dagRootMap;
+//     phmap::flat_hash_map<DAG::Leaves, DAG::NodeIndex> dagLeafMap;
 //     std::array<DAG::Level, nDagLevels> dagLevels;
 // };
