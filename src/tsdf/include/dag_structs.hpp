@@ -120,7 +120,7 @@ namespace DAG {
     };
 
     struct Level {
-        Level(): pointers(0, HashFunctor(&data), CompFunctor(&data)) {}
+        Level(): pointers(0, HashFunctor(&data), CompFunctor(&data)), data(1), dataSize(1) {}
         phmap::parallel_flat_hash_set<NodeIndex, HashFunctor, CompFunctor> pointers;
         std::vector<NodeData> data;
         size_t dataSize = 0;

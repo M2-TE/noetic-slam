@@ -240,10 +240,55 @@ namespace DAG {
 
             // keep track of path
             constexpr size_t maxDepth = 63 / 3;
-            std::array<Trie::Node*, maxDepth> nodes;
+            std::array<std::array<NodeIndex, 8>, maxDepth> nodeCache;
             std::array<size_t, maxDepth> indices;
+            
+            { // ISOLATION
+                struct Layer {
+                    std::array<NodeIndex, 8> nodeIndices = {0,0,0,0,0,0,0,0};
+                    size_t index = 0;
+                };
+                std::array<Layer, maxDepth> cache;
+                std::array<Trie::Node*, maxDepth> path;
 
+                size_t depth = 0;
+                path[depth] = trie.get_root();
+                while (true) {
+                    auto& layer = cache[depth];
+                    auto* pNode = path[depth];
+                    if (depth < maxDepth - 1) {
+                        while (true) {
+                            // retrace to parent when all children were checked
+                            if (layer.index == 8) {
+                                layer.index = 0;
+                                depth--;
+                                break;
+                            }
+                            // go deeper when child is valid
+                            auto* pChild = pNode->children[layer.index++];
+                            if (pChild != (Trie::Node*)Trie::defVal) {
+                                path[++depth] = pChild;
+                                break;
+                            }
+                        }
+                    }
+                    // parent of leaf clusters (cluster of leaf clusters? man..)
+                    else {
+                        std::cout << "leaf\n";
+                        for (int i = 0 ; i < 8; i++) {
+                            std::cout << pNode->leafClusters[i] << '\n';
+                        }
+                        depth--;
+                        break;
+                    }
+                    if (depth == 0) break;
+                }
+            }
+
+
+            return;
             // start point
+            std::array<Trie::Node*, maxDepth> nodes;
             nodes[0] = trie.get_root();
             indices[0] = 0;
             { // iterate to depth-first leaf
@@ -309,6 +354,7 @@ namespace DAG {
                     for (auto i = 0; i < n; i++) {
                         std::cout << node->children[i] << '\n';
                     }
+                    std::cout << *pIndex << '\n';
                 }
                 // otherwise
                 //TODO
