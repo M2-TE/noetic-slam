@@ -238,108 +238,56 @@ namespace DAG {
             auto trie = get_trie(points, normals);
             trie.printstuff();
 
+            auto beg = std::chrono::steady_clock::now();
+
             // keep track of path
-            constexpr size_t maxDepth = 63 / 3;
-            std::array<std::array<NodeIndex, 8>, maxDepth> nodeCache;
-            std::array<size_t, maxDepth> indices;
-            
-            { // ISOLATION
-                struct Layer {
-                    std::array<NodeIndex, 8> nodeIndices = {0,0,0,0,0,0,0,0};
-                    size_t index = 0;
-                };
-                std::array<Layer, maxDepth> cache;
-                std::array<Trie::Node*, maxDepth> path;
+            struct Layer {
+                std::array<NodeIndex, 8> nodeIndices = {0,0,0,0,0,0,0,0};
+                size_t index = 0;
+            };
+            constexpr size_t maxDepth = 63 / 3; // 3 bits for every 2x2x2 node
+            std::array<Layer, maxDepth> cache;
+            std::array<Trie::Node*, maxDepth> path;
 
-                size_t depth = 0;
-                path[depth] = trie.get_root();
-                while (true) {
-                    auto& layer = cache[depth];
-                    auto* pNode = path[depth];
-                    if (depth < maxDepth - 1) {
-                        while (true) {
-                            // retrace to parent when all children were checked
-                            if (layer.index == 8) {
-                                layer.index = 0;
-                                depth--;
-                                break;
-                            }
-                            // go deeper when child is valid
-                            auto* pChild = pNode->children[layer.index++];
-                            if (pChild != (Trie::Node*)Trie::defVal) {
-                                path[++depth] = pChild;
-                                break;
-                            }
+            size_t depth = 0;
+            path[depth] = trie.get_root();
+            while (true) {
+                auto& layer = cache[depth];
+                auto* pNode = path[depth];
+                if (depth < maxDepth - 1) {
+                    while (true) {
+                        // retrace to parent when all children were checked
+                        if (layer.index == 8) {
+                            layer.index = 0;
+                            depth--;
+                            break;
                         }
-                    }
-                    // parent of leaf clusters (cluster of leaf clusters? man..)
-                    else {
-                        std::cout << "leaf\n";
-                        for (int i = 0 ; i < 8; i++) {
-                            std::cout << pNode->leafClusters[i] << '\n';
-                        }
-                        depth--;
-                        break;
-                    }
-                    if (depth == 0) break;
-                }
-            }
-
-
-            return;
-            // start point
-            std::array<Trie::Node*, maxDepth> nodes;
-            nodes[0] = trie.get_root();
-            indices[0] = 0;
-            { // iterate to depth-first leaf
-                Trie::Node* pPrev = nodes[0];
-                // path from root to leaf
-                for (size_t i = 1; i < maxDepth; i++) {
-                    // look for first valid child
-                    Trie::Node* pNode;
-                    for (size_t k = 0; k < 8; k++) {
-                        pNode = pPrev->children[k];
-                        if (pNode != (Trie::Node*)Trie::defVal) {
-                            nodes[i] = pNode;
-                            indices[i] = k;
+                        // go deeper when child is valid
+                        auto* pChild = pNode->children[layer.index++];
+                        if (pChild != (Trie::Node*)Trie::defVal) {
+                            path[++depth] = pChild;
                             break;
                         }
                     }
-                    pPrev = pNode;
                 }
-            }
-            // test
-            for (int i = 0; i < 8; i++) {
-                auto leafCluster = nodes.back()->leafClusters[i];
-                if (leafCluster != Trie::defVal) std::cout << i << ' ' << leafCluster << '\n';
-            }
-
-            // for each level, store the current NodeIndex references
-            // then build node once all references for a node at given level are available
-            // repeat until fully iterated through trie
-            std::array<std::vector<NodeIndex>, nDagLevels> dagTemps;
-
-            size_t depth = maxDepth - 1;
-            auto* parent = nodes[depth];
-            while (true) {
-                // when its a parent of leaf clusters
-                if (depth == maxDepth - 1) {
+                // parent of leaf clusters (cluster of leaf clusters? man..)
+                else {
                     // construct a DAG node
                     Node<8> newNode = {};
                     size_t nClusters = 0;
                     // go over all children
                     for (ChildMask i = 0; i < 8; i++) {
-                        auto cluster = parent->leafClusters[i];
+                        auto cluster = pNode->leafClusters[i];
                         if (cluster == Trie::defVal) continue;
                         // add to node and insert into mask
                         newNode.children[nClusters++] = cluster;
                         newNode.childMask |= 1 << i;
                     }
-                    auto& level = dagLevels.back();
                     // insert temporary node into data array
+                    auto& level = dagLevels.back();
                     auto& data = level.data;
-                    data.resize(level.dataSize + nClusters);
-                    std::memcpy(data.data() + level.dataSize, &newNode, sizeof(newNode));
+                    level.data.resize(level.dataSize + nClusters + 1);
+                    std::memcpy(data.data() + level.dataSize, &newNode, nClusters + 1);
 
                     // check if the same node existed previously, only then do we count up dataSize
                     auto& pointers = level.pointers;
@@ -347,22 +295,26 @@ namespace DAG {
                     if (bNew) level.dataSize += 1 + nClusters; // mask + children
 
                     // TESTING BEHAVIOR
-                    // reinterpret data as actual node
-                    // note: accessing the array outside of nClusters is UB
-                    auto* node = Node<8>::reinterpret(data.data() + *pIndex);
-                    uint32_t n = node->count_children();
-                    for (auto i = 0; i < n; i++) {
-                        std::cout << node->children[i] << '\n';
-                    }
-                    std::cout << *pIndex << '\n';
-                }
-                // otherwise
-                //TODO
+                    // auto* node = Node<8>::reinterpret(data.data() + *pIndex);
+                    // uint32_t n = node->count_children();
+                    // for (auto i = 0; i < n; i++) {
+                    //     std::cout << i << ' ' << node->children[i] << '\n';
+                    // }
+                    // break;
 
-                break;
+                    // todo: write created node index to cache array
+
+                    // retrace to parent
+                    depth--;
+                }
+                if (depth == 0) break;
             }
-            
+            auto end = std::chrono::steady_clock::now();
+            auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+            std::cout << "trie iter: " << dur << " ms" << std::endl;
             // done
+            std::cout << nComp << " comparions\n";
+            std::cout << nHash << " hashes\n";
         }
 
     private:
