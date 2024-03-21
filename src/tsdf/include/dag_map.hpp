@@ -242,6 +242,7 @@ namespace DAG {
             constexpr size_t maxDepth = 63 / 3;
             std::array<Trie::Node*, maxDepth> nodes;
             std::array<size_t, maxDepth> indices;
+
             // start point
             nodes[0] = trie.get_root();
             indices[0] = 0;
@@ -300,11 +301,12 @@ namespace DAG {
                     auto [pIndex, bNew] = pointers.emplace(level.dataSize);
                     if (bNew) level.dataSize += 1 + nClusters; // mask + children
 
-                    // reinterpret as actual node
+                    // TESTING BEHAVIOR
+                    // reinterpret data as actual node
                     // note: accessing the array outside of nClusters is UB
-                    Node<8>* node = Node<8>::reinterpret(data.data() + *pIndex);
+                    auto* node = Node<8>::reinterpret(data.data() + *pIndex);
                     uint32_t n = node->count_children();
-                    for (int i = 0; i < n; i++) {
+                    for (auto i = 0; i < n; i++) {
                         std::cout << node->children[i] << '\n';
                     }
                 }

@@ -10,6 +10,7 @@
 namespace DAG {
     typedef uint32_t NodeIndex; // position of node in a level's data vector
     typedef uint32_t ChildMask; // contains 8 children
+    typedef uint32_t NodeData; // contains a mask or child as raw undefined data
 
     struct MortonIndex { Eigen::Vector3f point; uint32_t index; };
     struct Pose { Eigen::Vector3f pos; Eigen::Quaternionf rot; };
@@ -121,7 +122,7 @@ namespace DAG {
     struct Level {
         Level(): pointers(0, HashFunctor(&data), CompFunctor(&data)) {}
         phmap::parallel_flat_hash_set<NodeIndex, HashFunctor, CompFunctor> pointers;
-        std::vector<uint32_t> data;
+        std::vector<NodeData> data;
         size_t dataSize = 0;
     };
 };
