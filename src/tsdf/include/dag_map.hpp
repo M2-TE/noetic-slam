@@ -247,8 +247,10 @@ namespace DAG {
             };
             constexpr size_t maxDepth = 63 / 3; // 3 bits for every 2x2x2 node
             std::array<Layer, maxDepth> cache;
-            std::array<Trie::Node*, maxDepth> path;
+            std::array<Trie::Node*, maxDepth - 1> path;
 
+            size_t unique = 0;
+            size_t dupes = 0;
             size_t depth = 0;
             path[depth] = trie.get_root();
             while (true) {
@@ -258,16 +260,28 @@ namespace DAG {
                     while (true) {
                         // retrace to parent when all children were checked
                         if (layer.index == 8) {
+
+                            // TODO: create new node here
+                            std::cout << "depth " << depth << " layer index: " << layer.index << '\n';
+                            for (size_t i = 0; i < layer.nodeIndices.size(); i++) {
+                                std::cout << layer.nodeIndices[i] << '\n';
+                            }
+                            
+                            // std::cout << depth << '\n';
+                            exit(0);
+
                             layer.index = 0;
                             depth--;
                             break;
                         }
                         // go deeper when child is valid
-                        auto* pChild = pNode->children[layer.index++];
+                        auto* pChild = pNode->children[layer.index];
                         if (pChild != (Trie::Node*)Trie::defVal) {
                             path[++depth] = pChild;
                             break;
                         }
+                        // else set child cache to invalid and continue to next index
+                        else layer.nodeIndices[layer.index++] = 0;
                     }
                 }
                 // parent of leaf clusters (cluster of leaf clusters? man..)
@@ -294,15 +308,13 @@ namespace DAG {
                     auto [pIndex, bNew] = pointers.emplace(level.dataSize);
                     if (bNew) level.dataSize += 1 + nClusters; // mask + children
 
-                    // TESTING BEHAVIOR
-                    // auto* node = Node<8>::reinterpret(data.data() + *pIndex);
-                    // uint32_t n = node->count_children();
-                    // for (auto i = 0; i < n; i++) {
-                    //     std::cout << i << ' ' << node->children[i] << '\n';
-                    // }
-                    // break;
+                    // add node to cache of previous level and increment cache index
+                    auto& layer = cache[depth - 1];
+                    layer.nodeIndices[layer.index++] = *pIndex;
 
-                    // todo: write created node index to cache array
+                    // tracking data
+                    if (bNew) unique++;
+                    else dupes++;
 
                     // retrace to parent
                     depth--;
@@ -313,8 +325,7 @@ namespace DAG {
             auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
             std::cout << "trie iter: " << dur << " ms" << std::endl;
             // done
-            std::cout << nComp << " comparions\n";
-            std::cout << nHash << " hashes\n";
+            std::cout << "Unique: " << unique << " dupes: " << dupes << '\n';
         }
 
     private:

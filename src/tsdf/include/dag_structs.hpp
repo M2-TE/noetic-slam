@@ -80,11 +80,8 @@ namespace DAG {
         uint64_t val;
     };
 
-    static size_t nHash = 0;
-    static size_t nComp = 0;
     struct HashFunctor {
         inline size_t operator()(NodeIndex key) const noexcept {
-            nHash++;
             std::vector<uint32_t>& data = *pData;
             // count children
             uint8_t nChildren = std::popcount<uint8_t>(data[key]);
@@ -99,14 +96,13 @@ namespace DAG {
     };
     struct CompFunctor {
         inline bool operator()(NodeIndex keyA, NodeIndex keyB) const noexcept {
-            nComp++;
             std::vector<uint32_t>& data = *pData;
             // count children
             uint8_t nChildren = std::popcount<uint8_t>(data[keyB]);
             // compare entire node
             int cmp = std::memcmp(
-                data.data() + keyA,
-                data.data() + keyB,
+                &data[keyA],
+                &data[keyB],
                 nChildren * sizeof(uint32_t) + sizeof(uint32_t));
             return cmp == 0;
         }
