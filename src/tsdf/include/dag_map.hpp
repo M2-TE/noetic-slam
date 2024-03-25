@@ -290,7 +290,6 @@ namespace DAG {
                     if (cacheIndex == 8) {
 
                         // TODO: create new node here
-                        std::cout << "depth " << depth << " layer index: " << cacheIndex << '\n';
                         for (size_t i = 0; i < cacheNodes.size(); i++) {
                             std::cout << cacheNodes[i] << '\n';
                         }
@@ -307,26 +306,19 @@ namespace DAG {
                         break;
                     }
 
-                    // go deeper when child is valid
+                    // child invalid: invalidate cache entry
                     auto* pChild = path[depth]->children[cacheIndex];
-                    // when child is missing, advance child index
                     if (pChild == (Trie::Node*)Trie::defVal) {
-                        std::cout << "depth " << depth << " index " << cacheIndex << ": index advancing\n";
                         cacheNodes[cacheIndex++] = 0;
                     }
-                    // when child is found, advance into it
+                    // child leaf: create new leaf node
+                    else if (depth == maxDepth - 2) {
+                        cacheNodes[cacheIndex++] = create_leaf_node(pChild);
+                    }
+                    // child normal: go to child node
                     else {
-                        std::cout << "depth " << depth << " index " << cacheIndex << ": child found\n";
-                        // create "cluster of leaf clusters"
-                        if (depth == maxDepth - 2) {
-                            cacheNodes[cacheIndex++] = create_leaf_node(pChild);
-                            std::cout << "leafcluster cluster created: " << cacheNodes[cacheIndex - 1] << '\n';
-                        }
-                        // go down to child
-                        else {
-                            path[++depth] = pChild;
-                            break;
-                        }
+                        path[++depth] = pChild;
+                        break;
                     }
                 }
             }
