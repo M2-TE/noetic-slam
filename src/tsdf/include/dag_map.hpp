@@ -257,6 +257,9 @@ namespace DAG {
             if (bNew) level.dataSize += 1 + nClusters; // mask + children
             return *pIndex;
         }
+        uint32_t create_node(std::array<uint32_t, 8>& children, size_t depth) {
+            return 0;
+        }
         void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
             Pose pose = { position, rotation };
             auto normals = get_normals(pose, points);
@@ -278,7 +281,8 @@ namespace DAG {
             size_t dupes = 0;
             size_t depth = 0;
             path[depth] = trie.get_root();
-            while (true) {
+
+            do {
                 auto& cacheIndex = cache[depth].index;
                 auto& cacheNodes = cache[depth].nodeIndices;
                 while (true) {
@@ -290,39 +294,43 @@ namespace DAG {
                         for (size_t i = 0; i < cacheNodes.size(); i++) {
                             std::cout << cacheNodes[i] << '\n';
                         }
-                        static int i = 0;
-                        i++;
                         std::cout << "depth " << depth << " index " << cacheIndex << ": EXIT A\n";
-                        if (i == 2) exit(0);
-                        // exit(0);
+                        if (depth == 17) exit(0);
 
+                        // reset cache for this level
                         cacheIndex = 0;
+                        // go up by one level
                         depth--;
+                        // update parent level
+                        auto& parentLevel = cache[depth];
+                        parentLevel.nodeIndices[parentLevel.index++] = 42; // TODO
                         break;
                     }
+
                     // go deeper when child is valid
                     auto* pChild = path[depth]->children[cacheIndex];
-                    if (pChild != (Trie::Node*)Trie::defVal) {
+                    // when child is missing, advance child index
+                    if (pChild == (Trie::Node*)Trie::defVal) {
+                        std::cout << "depth " << depth << " index " << cacheIndex << ": index advancing\n";
+                        cacheNodes[cacheIndex++] = 0;
+                    }
+                    // when child is found, advance into it
+                    else {
                         std::cout << "depth " << depth << " index " << cacheIndex << ": child found\n";
-                        // create leaf when leaf depth is reached
+                        // create "cluster of leaf clusters"
                         if (depth == maxDepth - 2) {
                             cacheNodes[cacheIndex++] = create_leaf_node(pChild);
                             std::cout << "leafcluster cluster created: " << cacheNodes[cacheIndex - 1] << '\n';
                         }
+                        // go down to child
                         else {
                             path[++depth] = pChild;
-                            cacheIndex++;
                             break;
                         }
                     }
-                    // else set child cache to invalid and continue to next index
-                    else {
-                        std::cout << "depth " << depth << " index " << cacheIndex << ": index advancing\n";
-                        cacheNodes[cacheIndex++] = 0;
-                    }
                 }
-                if (depth == 0) break;
             }
+            while (depth > 0);
             auto end = std::chrono::steady_clock::now();
             auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
             std::cout << "trie iter: " << dur << " ms" << std::endl;
