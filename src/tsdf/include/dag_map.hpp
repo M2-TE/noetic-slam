@@ -254,11 +254,22 @@ namespace DAG {
             // check if the same node existed previously, only then do we count up dataSize
             auto& pointers = level.pointers;
             auto [pIndex, bNew] = pointers.emplace(level.dataSize);
-            if (bNew) level.dataSize += 1 + nClusters; // mask + children
+            if (bNew) {
+                level.dataSize += 1 + nClusters; // mask + children
+                uniques.back()++;
+            }
+            else dupes.back()++;
+            
             return *pIndex;
         }
-        uint32_t create_node(std::array<uint32_t, 8>& children, size_t depth) {
-            return 0;
+        uint32_t create_normal_node(std::array<uint32_t, 8>& children, size_t depth) {
+            // std::cout << "NEW NORMAL NODE\n";
+            // for (size_t i = 0; i < children.size(); i++) {
+            //     std::cout << children[i] << '\n';
+            // }
+            // if (depth == 17) exit(0);
+            uniques[depth]++;
+            return 42;
         }
         void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
             Pose pose = { position, rotation };
@@ -276,9 +287,6 @@ namespace DAG {
             constexpr size_t maxDepth = 63 / 3; // 3 bits for every 2x2x2 node
             std::array<Layer, maxDepth> cache;
             std::array<Trie::Node*, maxDepth - 1> path;
-
-            size_t unique = 0;
-            size_t dupes = 0;
             size_t depth = 0;
             path[depth] = trie.get_root();
 
@@ -288,21 +296,15 @@ namespace DAG {
                 while (true) {
                     // retrace to parent when all children were checked
                     if (cacheIndex == 8) {
-
-                        // TODO: create new node here
-                        for (size_t i = 0; i < cacheNodes.size(); i++) {
-                            std::cout << cacheNodes[i] << '\n';
-                        }
-                        std::cout << "depth " << depth << " index " << cacheIndex << ": EXIT A\n";
-                        if (depth == 17) exit(0);
-
+                        // create normal node
+                        uint32_t node = create_normal_node(cacheNodes, depth);
                         // reset cache for this level
                         cacheIndex = 0;
                         // go up by one level
                         depth--;
                         // update parent level
                         auto& parentLevel = cache[depth];
-                        parentLevel.nodeIndices[parentLevel.index++] = 42; // TODO
+                        parentLevel.nodeIndices[parentLevel.index++] = node;
                         break;
                     }
 
@@ -326,11 +328,15 @@ namespace DAG {
             auto end = std::chrono::steady_clock::now();
             auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
             std::cout << "trie iter: " << dur << " ms" << std::endl;
+            for (size_t i = 0; i < uniques.size(); i++) {
+                std::cout << "Level " << i << ": " << uniques[i] << " uniques, " << dupes[i] << " dupes\n";
+            }
             // done
-            std::cout << "Unique: " << unique << " dupes: " << dupes << '\n';
         }
 
     private:
         std::array<DAG::Level, nDagLevels> dagLevels;
+        std::array<uint32_t, nDagLevels> uniques = {};
+        std::array<uint32_t, nDagLevels> dupes = {};
     };
 }
