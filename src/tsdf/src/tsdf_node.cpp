@@ -1,5 +1,3 @@
-#include "dag_map.hpp"
-
 // ROS
 #ifndef __INTELLISENSE__
 #include <ros/ros.h>
@@ -21,7 +19,7 @@
 #include <random>
 //
 #include "dlio_stuff.hpp"
-#include "tsdf_map.hpp"
+#include "dag_map.hpp"
 
 
 class TSDF_Node {
