@@ -237,7 +237,6 @@ namespace DAG {
             Node<8> newNode = {};
             size_t nClusters = 0;
             // go over all children
-            auto test = pNode->leafClusters[0];
             for (ChildMask i = 0; i < 8; i++) {
                 auto cluster = pNode->leafClusters[i];
                 if (cluster == Trie::defVal) continue;
@@ -263,13 +262,30 @@ namespace DAG {
             return *pIndex;
         }
         uint32_t create_normal_node(std::array<uint32_t, 8>& children, size_t depth) {
-            // std::cout << "NEW NORMAL NODE\n";
-            // for (size_t i = 0; i < children.size(); i++) {
-            //     std::cout << children[i] << '\n';
-            // }
-            // if (depth == 17) exit(0);
-            uniques[depth]++;
-            return 42;
+            Node<8> newNode = {};
+            size_t nChildren = 0;
+            // go over all children
+            for (ChildMask i = 0; i < children.size(); i++) {
+                auto child = children[i];
+                if (child == 0) continue;
+                newNode.children[nChildren++] = child;
+                newNode.childMask |= 1 << i;
+            }
+            // insert temporary node into data array
+            auto& level = dagLevels[depth];
+            auto& data = level.data;
+            level.data.resize(level.dataSize + nChildren + 1);
+            std::memcpy(data.data() + level.dataSize, &newNode, nChildren + 1);
+
+            // check if the same node existed previously, only then do we count up dataSize
+            auto& pointers = level.pointers;
+            auto [pIndex, bNew] = pointers.emplace(level.dataSize);
+            if (bNew) {
+                level.dataSize += 1 + nChildren; // mask + children
+                uniques[depth]++;
+            }
+            else dupes[depth]++;
+            return *pIndex;
         }
         void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
             Pose pose = { position, rotation };
@@ -284,12 +300,10 @@ namespace DAG {
                 std::array<NodeIndex, 8> nodeIndices = {0,0,0,0,0,0,0,0};
                 size_t index = 0;
             };
-            constexpr size_t maxDepth = 63 / 3; // 3 bits for every 2x2x2 node
-            std::array<Layer, maxDepth> cache;
-            std::array<Trie::Node*, maxDepth - 1> path;
+            std::array<Layer, nDagLevels> cache;
+            std::array<Trie::Node*, nDagLevels - 1> path;
             size_t depth = 0;
             path[depth] = trie.get_root();
-
             do {
                 auto& cacheIndex = cache[depth].index;
                 auto& cacheNodes = cache[depth].nodeIndices;
@@ -314,7 +328,7 @@ namespace DAG {
                         cacheNodes[cacheIndex++] = 0;
                     }
                     // child leaf: create new leaf node
-                    else if (depth == maxDepth - 2) {
+                    else if (depth == nDagLevels - 2) {
                         cacheNodes[cacheIndex++] = create_leaf_node(pChild);
                     }
                     // child normal: go to child node
