@@ -341,10 +341,25 @@ namespace DAG {
             auto end = std::chrono::steady_clock::now();
             auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
             std::cout << "trie iter: " << dur << " ms" << std::endl;
+
+            size_t nUniques = 0;
+            size_t nDupes = 0;
+            size_t nBytes = 0;
             for (size_t i = 0; i < uniques.size(); i++) {
-                std::cout << "Level " << i << ": " << uniques[i] << " uniques, " << dupes[i] << " dupes\n";
+                std::cout << "Level " << i << ": "
+                    << dagLevels[i].data.size() * sizeof(uint32_t) << " bytes, "
+                    << uniques[i] << " uniques, " << dupes[i] << " dupes\n";
+                nUniques += uniques[i];
+                nDupes += dupes[i];
+                nBytes += dagLevels[i].data.size() * sizeof(uint32_t);
             }
+            std::cout << "Total: " << nUniques << " uniques, " << nDupes << " dupes\n";
+            std::cout << "Memory footprint: " << nBytes << " bytes (" << (double)nBytes / 1'000'000 << " MB)\n";
+            size_t pointsBytes = points.size() * sizeof(Eigen::Vector3f);
+            std::cout << "Pointcloud footprint: " << pointsBytes << " bytes (" << (double)pointsBytes / 1'000'000 << "MB)\n";
             // done
+
+            exit(0);
         }
 
     private:
