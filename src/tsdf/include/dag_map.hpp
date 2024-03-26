@@ -6,7 +6,6 @@
 #include <cmath>
 #include <span>
 //
-#define BOOST_BIND_GLOBAL_PLACEHOLDERS
 #include <boost/math/ccmath/ccmath.hpp>
 #include <eigen3/Eigen/Eigen>
 #include <parallel_hashmap/phmap.h>
