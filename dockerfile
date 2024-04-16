@@ -18,6 +18,16 @@ RUN apt-get install -y libomp-dev libpcl-dev
 # extra utils
 RUN apt-get install -y iputils-ping mesa-utils
 
+# OpenVDB
+RUN apt-get install --no-install-recommends -y libblosc-dev libboost-iostreams-dev libboost-system-dev libboost-system-dev 
+RUN apt-get install -y libjemalloc-dev libtbb-dev
+RUN git clone --depth 1 https://github.com/nachovizzo/openvdb.git -b nacho/vdbfusion
+RUN cd openvdb && mkdir build && cd build && cmake  -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DUSE_ZLIB=OFF .. &&  sudo make -j$(nproc) all install
+#VDBfusion
+RUN apt-get install -y ros-noetic-tf2-sensor-msgs
+RUN git clone --depth 1 https://github.com/PRBonn/vdbfusion.git
+RUN cd vdbfusion && mkdir build && cd build && cmake .. &&  sudo make -j$(nproc) all install
+
 # Boost 1.84.0
 RUN apt-get install -y wget
 RUN wget https://boostorg.jfrog.io/artifactory/main/release/1.84.0/source/boost_1_84_0.tar.gz

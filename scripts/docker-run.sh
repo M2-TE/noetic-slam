@@ -7,12 +7,21 @@ fi
 
 docker build -t noeticslam:latest $(dirname "$0")/..
 
-selected_mode="integrated"
+selected_mode="none"
 if [ -n "$1" ]; then
     selected_mode=$1
 fi
 
-if [ $selected_mode = "integrated" ]; then
+if [ $selected_mode = "none" ]; then
+    docker run -it \
+        --rm \
+        --name noeticslam \
+        --publish 7008:7008/udp \
+        --publish 7009:7009/udp \
+        --mount type=bind,source="$(pwd)/$(dirname "$0")"/..,target=/root/repo \
+        --ulimit nofile=1024 \
+        noeticslam:latest
+elif [ $selected_mode = "integrated" ]; then
     # with intel integrated gpu
     xhost +local:docker
     docker run -it \
