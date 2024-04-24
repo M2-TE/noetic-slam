@@ -40,6 +40,9 @@ namespace DAG {
         inline bool operator>(const MortonCode& other) const {
             return val > other.val;
         }
+        inline size_t hash() {
+            return val;
+        }
         uint64_t val;
     };
 
@@ -91,3 +94,12 @@ namespace DAG {
         size_t dataSize;
     };
 };
+
+namespace std {
+    template<>
+    struct hash<DAG::MortonCode> {
+        inline size_t operator()(const DAG::MortonCode& x) const {
+            return x.val;
+        }
+    };
+}

@@ -57,7 +57,8 @@ public:
     inline void insert(Key key, Value value) {
         find(key) = value;
     }
-    inline Value& find(Key key) { // TODO: segfault fix
+    inline Value& find(Key key) {
+
         auto depth = read_cache(key);
         cache.key = key;
         Node* pNode = cache.nodes[depth];
@@ -107,7 +108,7 @@ private:
     Node* pNodes;
     size_t nNodes;
     Path cache;
-    static constexpr size_t nMax = 1'000'000;
+    static constexpr size_t nMax = 10'000'000;
     static constexpr size_t msb = 63; // the most significant bit of a key
 public:
     // the default value of an uninitialized node/leaf
