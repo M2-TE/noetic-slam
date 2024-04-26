@@ -1,7 +1,6 @@
 #pragma once
 
 #include <iostream>
-#include <unordered_map>
 #include <vector>
 #include <array>
 #include <cmath>
@@ -284,7 +283,6 @@ namespace DAG {
                             Eigen::Vector3i cPos = voxelPos + Eigen::Vector3i(x, y, z);
                             // actual floating position of cluster
                             Eigen::Vector3f fPos = cPos.cast<float>() * 2.0f * leafResolution;
-
 
                             // offsets of leaves within
                             std::array<float, 8> leaves;
