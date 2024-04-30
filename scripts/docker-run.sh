@@ -4,7 +4,6 @@ if [ $NOETICSLAM_DOCKER ]; then
     echo "Use this script from the host, not the container!"
     exit 1
 fi
-
 docker build -t noeticslam:latest $(dirname "$0")/..
 
 selected_mode="none"
@@ -18,7 +17,7 @@ if [ $selected_mode = "none" ]; then
         --name noeticslam \
         --publish 7008:7008/udp \
         --publish 7009:7009/udp \
-        --mount type=bind,source="$(pwd)/$(dirname "$0")"/..,target=/root/repo \
+        --volume $(pwd)/$(dirname "$0")/..:/root/repo/:Z \
         --ulimit nofile=1024 \
         noeticslam:latest
 elif [ $selected_mode = "integrated" ]; then
