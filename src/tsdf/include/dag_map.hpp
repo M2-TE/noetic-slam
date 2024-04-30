@@ -6,7 +6,6 @@
 #include <cmath>
 #include <span>
 #include <thread>
-#include <execution>
 #include <parallel/algorithm>
 #include <cstdint>
 //
@@ -143,7 +142,7 @@ namespace DAG {
             if (bLog) {
                 auto end = std::chrono::steady_clock::now();
                 auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-                std::cout << "lookup-ctor: " << dur << " ms" << std::endl;
+                std::cout << "sorting: " << dur << " ms" << std::endl;
             }
             beg = std::chrono::steady_clock::now();
             
@@ -158,8 +157,9 @@ namespace DAG {
             for (size_t i = 0; i < nThreads; i++) {
                 size_t nElements = points.size() / std::jthread::hardware_concurrency();
                 if (i == nThreads - 1) nElements = 0; // special value for final thread
+
+                // launch thread
                 threads.emplace_back([&sorted, &normals, &map, progress, nElements, pose](){
-                    auto pOut = normals.begin() + progress;
                     auto pCur = sorted.cbegin() + progress;
                     auto pEnd = (nElements == 0) ? (sorted.cend()) : (pCur + nElements);
                     for (; pCur != pEnd; pCur++) {
@@ -210,6 +210,12 @@ namespace DAG {
         }
         auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) {
             auto beg = std::chrono::steady_clock::now();
+
+            size_t nThreads = std::jthread::hardware_concurrency();
+            Octree trie2(nThreads, 10'000'000);
+            trie2.insert(0x7fffffffffffffff, 42, 1);
+
+
             Trie trie;
             auto pNorm = normals.cbegin();
             for (auto p = points.cbegin(); p != points.cend(); p++, pNorm++) {

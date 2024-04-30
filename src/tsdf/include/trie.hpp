@@ -1,10 +1,94 @@
 #pragma once
 #include <array>
+#include <cstring>
 #include <limits>
 #include <cstdint>
 #include <iostream>
+#include <mutex>
 #include <unistd.h>
 #include <stdlib.h>
+#include <vector>
+
+struct Octree {
+    typedef uint64_t Key; // only 63 bits in use
+    typedef uint64_t Leaf;
+    union Node {
+        std::array<Node*, 8> children;
+        std::array<Leaf, 8> leaves;
+        static_assert(sizeof(children) == sizeof(leaves));
+    };
+
+    Octree(uint32_t nThreads, uint32_t nNodes) {
+        // assume posix
+        static_assert(__unix__);
+        size_t size = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+        if (size != sizeof(Node)) std::cerr << "cache line size mismatch\n";
+
+        // alignment according to cache line size, which should be 64
+        void* pRaw = std::aligned_alloc(size, nNodes * size);
+        pNodes = static_cast<Node*>(pRaw);
+
+        // keep track of allocation size
+        nCapacity = nNodes;
+        perThreadNodes.resize(nThreads, 0);
+        perThreadOffset.reserve(nThreads);
+        for (uint_fast32_t i = 0; i < nThreads; i++) {
+            uint_fast32_t span = nNodes / nThreads;
+            perThreadOffset.push_back(i * span);
+        }
+
+        // create root node (push onto mem of first thread)
+        perThreadNodes.front()++;
+        std::memset(pNodes, 0, sizeof(Node));
+    }
+    ~Octree() {
+        free(pNodes);
+    }
+
+    void insert(Key key, Leaf value, uint_fast32_t threadIndex) {
+        auto offset = perThreadOffset[threadIndex];
+        auto nNodes = perThreadNodes[threadIndex];
+        std::cout << offset << '\n';
+
+        constexpr uint_fast32_t root = 63;
+        constexpr uint_fast32_t levelBits = 3;
+        auto level = root - levelBits; // one level below root
+        Node* pNode = pNodes;
+        while (level > 0) {
+            // extract the 3 relevant bits for current level
+            auto index = (key >> level) & 0b111;
+            // index into children of current node
+            auto& pChild = pNode->children[index];
+            // create child if nonexistant
+            if (pChild == nullptr) {
+                pChild = pNodes + offset + nNodes++; // todo: adjust for per-thread mem block
+                std::memset(pChild, 0, sizeof(Node));
+            }
+            pNode = pChild;
+            level -= levelBits;
+        }
+
+        // update node count for current thread
+        perThreadNodes[threadIndex] = nNodes;
+        
+        // this last node contains values
+        auto index = (key >> level * 3) & 0b111;
+        pNode->leaves[index] = value;
+    }
+
+private:
+    // best one so far:
+    std::mutex threadKeysMutex;
+    std::vector<Key> threadKeys;
+
+    std::vector<int> voteForHighestLevelWhereSingleMutexGovernsAllChildren;
+
+    Node* pNodes;
+    uint_fast32_t nCapacity; // total node capacity
+    // partition block of memory between threads
+    std::vector<uint_fast32_t> perThreadOffset; // each thread starts index 0 at this offset
+    std::vector<uint_fast32_t> perThreadNodes; // each thread occupies data starting from offset
+};
 
 class Trie {
 public:
@@ -109,7 +193,6 @@ private:
     size_t nNodes;
     Path cache;
     static constexpr size_t nMax = 10'000'000;
-    static constexpr size_t msb = 63; // the most significant bit of a key
 public:
     // the default value of an uninitialized node/leaf
     static constexpr uintptr_t defVal = std::numeric_limits<uintptr_t>::max();
