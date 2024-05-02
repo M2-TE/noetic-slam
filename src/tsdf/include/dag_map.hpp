@@ -1,5 +1,6 @@
 #pragma once
 
+#include <execution>
 #include <iostream>
 #include <vector>
 #include <array>
@@ -115,12 +116,11 @@ namespace DAG {
                 sorted.emplace_back(vPos, *pCur, i++);
             }
             // sort via morton codes
+            // std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b){
             // __gnu_parallel::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b){
-            std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b){
+            std::sort(std::execution::par_unseq, sorted.begin(), sorted.end(), [](const auto& a, const auto& b){
                 return std::get<0>(a) > std::get<0>(b);
             });
-            // std::vector<int> nums(100000);
-            // std::sort(std::execution::par, nums.begin(), nums.end());
 
             // sort original points via sorted vector (redundant for now, helpful later on)
             auto pOut = points.begin();
@@ -208,14 +208,54 @@ namespace DAG {
             }
             return normals;
         }
-        auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) {
+        auto get_trie2(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) {
             auto beg = std::chrono::steady_clock::now();
 
+            Octree octree(10'000'000);
+
+            for (size_t i = 0; i < 100; i++) {
+                for (auto pCur = points.cbegin(); pCur != points.cend(); pCur++) {
+                    // for testing purposes
+                    Eigen::Vector3f clusterPos = *pCur * (0.5f / leafResolution);
+                    Eigen::Vector3i voxelPos = clusterPos.cast<int32_t>();
+                    MortonCode mc(voxelPos);
+                    // octree.find(mc.val);
+                    octree.find_cached(mc.val);
+                }
+            }
+            
+            // set up threads
+            std::vector<std::jthread> threads;
             size_t nThreads = std::jthread::hardware_concurrency();
-            Octree trie2(nThreads, 10'000'000);
-            trie2.insert(0x7fffffffffffffff, 42, 1);
+            threads.reserve(nThreads);
+            // todo: nThreads should be f(x)=x^2
 
 
+            // estimate normals based on nearest morton code neighbours
+            size_t progress = 0;
+            for (size_t i = 0; i < nThreads; i++) {
+                size_t nElements = points.size() / std::jthread::hardware_concurrency();
+                if (i == nThreads - 1) nElements = 0; // special value for final thread to read the rest
+
+                // launch thread
+                threads.emplace_back([](){
+                    // auto pCur = points.cbegin() + progress;
+                    // auto pEnd = (nElements == 0) ? (points.cend()) : (pCur + nElements);
+                    // for (; pCur != pEnd; pCur++) {
+                    // }
+                });
+                progress += nElements;
+            }
+
+            // join threads
+            threads.clear();
+            
+            auto end = std::chrono::steady_clock::now();
+            auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+            std::cout << "trie ctor: " << dur << " ms" << std::endl;
+        }
+        auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) {
+            auto beg = std::chrono::steady_clock::now();
             Trie trie;
             auto pNorm = normals.cbegin();
             for (auto p = points.cbegin(); p != points.cend(); p++, pNorm++) {
@@ -351,10 +391,11 @@ namespace DAG {
             return *pIndex;
         }
         void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
+            auto full_beg = std::chrono::steady_clock::now();
             Pose pose = { position, rotation };
             auto normals = get_normals(pose, points);
+            get_trie2(points, normals);
             auto trie = get_trie(points, normals);
-            trie.printstuff();
             auto beg = std::chrono::steady_clock::now();
 
             // keep track of path
@@ -365,7 +406,6 @@ namespace DAG {
             std::array<Layer, nDagLevels> cache;
             std::array<Trie::Node*, nDagLevels - 1> path;
             size_t depth = 0;
-            gTimerA = gTimerB = gTimerC = 0.0;
             path[depth] = trie.get_root();
             do {
                 auto& cacheIndex = cache[depth].index;
@@ -375,7 +415,6 @@ namespace DAG {
                     if (cacheIndex == 8) {
                         // create normal node
                         uint32_t node = create_normal_node(cacheNodes, depth);
-                        gTimerA += 1.0;
                         // reset cache for this level
                         cacheIndex = 0;
                         // go up by one level
@@ -394,7 +433,6 @@ namespace DAG {
                     // child leaf: create new leaf node
                     else if (depth == nDagLevels - 2) {
                         cacheNodes[cacheIndex++] = create_leaf_node(pChild);
-                        gTimerB += 1.0;
                     }
                     // child normal: go to child node
                     else {
@@ -404,13 +442,13 @@ namespace DAG {
                 }
             }
             while (depth > 0);
-            // std::cout << "global timer a: " << gTimerA << '\n';
-            // std::cout << "global timer b: " << gTimerB << '\n';
-            // std::cout << "global timer c: " << gTimerC << '\n';
             if (bLog) {
                 auto end = std::chrono::steady_clock::now();
                 auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
                 std::cout << "trie iter: " << dur << " ms" << std::endl;
+
+                dur = std::chrono::duration<double, std::milli> (end - full_beg).count();
+                std::cout << "FULL: " << dur << " ms" << std::endl;
             }
 
             size_t nUniques = 0;
@@ -424,13 +462,13 @@ namespace DAG {
                 nDupes += dupes[i];
                 nBytes += dagLevels[i].data.size() * sizeof(uint32_t);
             }
-            std::cout << "Memory footprint: " << nBytes << " bytes (" << (double)nBytes / 1'000'000 << " MB)\n";
+            // std::cout << "Memory footprint: " << nBytes << " bytes (" << (double)nBytes / 1'000'000 << " MB)\n";
 
-            if (bLog) {
-                std::cout << "Total: " << nUniques << " uniques, " << nDupes << " dupes\n";
-                size_t pointsBytes = points.size() * sizeof(Eigen::Vector3f);
-                std::cout << "Pointcloud footprint: " << pointsBytes << " bytes (" << (double)pointsBytes / 1'000'000 << "MB)\n";
-            }
+            // if (bLog) {
+            //     std::cout << "Total: " << nUniques << " uniques, " << nDupes << " dupes\n";
+            //     size_t pointsBytes = points.size() * sizeof(Eigen::Vector3f);
+            //     std::cout << "Pointcloud footprint: " << pointsBytes << " bytes (" << (double)pointsBytes / 1'000'000 << "MB)\n";
+            // }
 
             // Eigen::Vector3d acc = {0, 0, 0};
             // for (auto& point: points) {

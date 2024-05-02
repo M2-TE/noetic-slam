@@ -1,13 +1,12 @@
 #pragma once
 #include <array>
+#include <bitset>
 #include <cstring>
 #include <limits>
 #include <cstdint>
 #include <iostream>
-#include <mutex>
 #include <unistd.h>
 #include <stdlib.h>
-#include <vector>
 
 struct Octree {
     typedef uint64_t Key; // only 63 bits in use
@@ -17,42 +16,36 @@ struct Octree {
         std::array<Leaf, 8> leaves;
         static_assert(sizeof(children) == sizeof(leaves));
     };
+    struct PathCache {
+        std::array<Node*, 63/3> nodes;
+        Key key;
+    };
 
-    Octree(uint32_t nThreads, uint32_t nNodes) {
+    Octree(uint32_t nMaxCapacity): nCapacity(nMaxCapacity), nNodes(0) {
         // assume posix
         static_assert(__unix__);
         size_t size = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
         if (size != sizeof(Node)) std::cerr << "cache line size mismatch\n";
 
         // alignment according to cache line size, which should be 64
-        void* pRaw = std::aligned_alloc(size, nNodes * size);
+        void* pRaw = std::aligned_alloc(size, nCapacity * size);
         pNodes = static_cast<Node*>(pRaw);
 
-        // keep track of allocation size
-        nCapacity = nNodes;
-        perThreadNodes.resize(nThreads, 0);
-        perThreadOffset.reserve(nThreads);
-        for (uint_fast32_t i = 0; i < nThreads; i++) {
-            uint_fast32_t span = nNodes / nThreads;
-            perThreadOffset.push_back(i * span);
-        }
-
         // create root node (push onto mem of first thread)
-        perThreadNodes.front()++;
-        std::memset(pNodes, 0, sizeof(Node));
+        std::memset(pNodes, -1, sizeof(Node));
+        nNodes++;
+        // create dummy node to fill path cache
+        cache.key = 0;
+        cache.nodes.back() = pNodes;
+        find(0x7fffffffffffffff);
     }
     ~Octree() {
         free(pNodes);
     }
 
-    void insert(Key key, Leaf value, uint_fast32_t threadIndex) {
-        auto offset = perThreadOffset[threadIndex];
-        auto nNodes = perThreadNodes[threadIndex];
-        std::cout << offset << '\n';
-
-        constexpr uint_fast32_t root = 63;
-        constexpr uint_fast32_t levelBits = 3;
-        auto level = root - levelBits; // one level below root
+    Leaf& find(Key key) {
+        constexpr int64_t filler = -1; // all bits set to one
+        auto level = 63 - 3; // one level below root
         Node* pNode = pNodes;
         while (level > 0) {
             // extract the 3 relevant bits for current level
@@ -60,34 +53,63 @@ struct Octree {
             // index into children of current node
             auto& pChild = pNode->children[index];
             // create child if nonexistant
-            if (pChild == nullptr) {
-                pChild = pNodes + offset + nNodes++; // todo: adjust for per-thread mem block
-                std::memset(pChild, 0, sizeof(Node));
+            if (pChild == (Node*)filler) {
+                pChild = pNodes + nNodes++;
+                std::memset(pChild, filler, sizeof(Node));
             }
             pNode = pChild;
-            level -= levelBits;
+            level -= 3;
         }
+        
+        // this last node contains leaves
+        auto index = (key >> level) & 0b111;
+        return pNode->leaves[index];
+    }
+    Leaf& find_cached(Key key) {
+        constexpr uint_fast32_t root = 63;
+        constexpr uint_fast32_t nLevelBits = 3;
+        constexpr int64_t filler = -1; // all bits set to one
+        
+        // read path cache
+        key &= 0x7fffffffffffffff; // just in case..
+        auto depth = read_cache(key);
+        cache.key = key;
 
-        // update node count for current thread
-        perThreadNodes[threadIndex] = nNodes;
+        // begin traversal
+        Node* pNode = cache.nodes[depth];
+        while (depth > 0) {
+            auto index = (key >> depth * 3) & 0b111;
+            auto& pChild = pNode->children[index];
+            // create child if nonexistant
+            if (pChild == (Node*)filler) {
+                pChild = pNodes + nNodes++;
+                std::memset(pChild, filler, sizeof(Node));
+            }
+            pNode = pChild;
+            cache.nodes[--depth] = pNode;
+        }
         
         // this last node contains values
-        auto index = (key >> level * 3) & 0b111;
-        pNode->leaves[index] = value;
+        auto index = (key >> depth * 3) & 0b111;
+        return pNode->leaves[index];
+    }
+
+    inline auto leading_zeroes(unsigned long v) { return __builtin_clzl(v); }
+    inline auto leading_zeroes(unsigned long long v) { return __builtin_clzll(v); }
+    inline size_t read_cache(Key key) {
+        Key xorKey = cache.key ^ key;
+        if (xorKey == 0) return 0;
+        Key leadingBits = leading_zeroes(xorKey);
+        Key level = sizeof(Key) * 8 - leadingBits - 1;
+        level /= 3; // 3 bits per level
+        return level;
     }
 
 private:
-    // best one so far:
-    std::mutex threadKeysMutex;
-    std::vector<Key> threadKeys;
-
-    std::vector<int> voteForHighestLevelWhereSingleMutexGovernsAllChildren;
-
     Node* pNodes;
-    uint_fast32_t nCapacity; // total node capacity
-    // partition block of memory between threads
-    std::vector<uint_fast32_t> perThreadOffset; // each thread starts index 0 at this offset
-    std::vector<uint_fast32_t> perThreadNodes; // each thread occupies data starting from offset
+    uint_fast32_t nNodes;
+    uint_fast32_t nCapacity;
+    PathCache cache;
 };
 
 class Trie {
@@ -103,7 +125,7 @@ public:
     
 private:
     struct Path {
-        std::array<Node*, 21> nodes;
+        std::array<Node*, 63/3> nodes;
         Key key;
     };
 
@@ -176,8 +198,6 @@ public:
     }
     
 private:
-    inline size_t leading_zeroes(unsigned long v) { return __builtin_clzl(v); }
-    inline size_t leading_zeroes(unsigned long long v) { return __builtin_clzll(v); }
     // find depth of lowest common node
     inline size_t read_cache(Key key) {
         auto xorKey = cache.key ^ key;
@@ -187,6 +207,8 @@ private:
         depth /= 3;
         return depth;
     }
+    inline size_t leading_zeroes(unsigned long v) { return __builtin_clzl(v); }
+    inline size_t leading_zeroes(unsigned long long v) { return __builtin_clzll(v); }
 
 private:
     Node* pNodes;

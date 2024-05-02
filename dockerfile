@@ -18,26 +18,31 @@ RUN apt-get install -y libomp-dev libpcl-dev
 # extra utils
 RUN apt-get install -y iputils-ping mesa-utils
 
-# OpenVDB
-RUN apt-get install --no-install-recommends -y libblosc-dev libboost-iostreams-dev libboost-system-dev libboost-system-dev 
-RUN apt-get install -y libjemalloc-dev libtbb-dev
-RUN git clone --depth 1 https://github.com/nachovizzo/openvdb.git -b nacho/vdbfusion
-RUN cd openvdb && mkdir build && cd build && cmake  -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DUSE_ZLIB=OFF .. &&  sudo make -j$(nproc) all install
-#VDBfusion
-RUN apt-get install -y ros-noetic-tf2-sensor-msgs
-RUN git clone --depth 1 https://github.com/PRBonn/vdbfusion.git
-RUN cd vdbfusion && mkdir build && cd build && cmake .. &&  sudo make -j$(nproc) all install
+# Use gcc-11 instead of standard gcc-9
+RUN apt-get install -y software-properties-common
+RUN add-apt-repository -y ppa:ubuntu-toolchain-r/test
+RUN apt-get install -y gcc-11 g++-11
+ENV CXX "/usr/bin/g++-11"
+ENV CC "/usr/bin/gcc-11"
 
 # Boost 1.84.0
 RUN apt-get install -y wget
 RUN wget https://boostorg.jfrog.io/artifactory/main/release/1.84.0/source/boost_1_84_0.tar.gz
 RUN tar -xf boost_1_84_0.tar.gz
 RUN cd boost_1_84_0 && ./bootstrap.sh && ./b2 install
+RUN rm -r /boost_1_84_0 /boost_1_84_0.tar.gz
 
-# Use gcc-10 instead of standard gcc-9
-RUN apt-get install -y gcc-10 g++-10
-ENV CXX "/usr/bin/g++-10"
-ENV CC "/usr/bin/gcc-10"
+# OpenVDB
+RUN apt-get install --no-install-recommends -y libblosc-dev libboost-iostreams-dev libboost-system-dev libboost-system-dev 
+RUN apt-get install -y libjemalloc-dev libtbb-dev
+RUN git clone --depth 1 https://github.com/nachovizzo/openvdb.git -b nacho/vdbfusion
+RUN cd openvdb && mkdir build && cd build && cmake  -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DUSE_ZLIB=OFF .. &&  sudo make -j$(nproc) all install
+RUN rm -r /openvdb
+# VDBfusion
+RUN apt-get install -y ros-noetic-tf2-sensor-msgs
+RUN git clone --depth 1 https://github.com/PRBonn/vdbfusion.git
+RUN cd vdbfusion && mkdir build && cd build && cmake .. &&  sudo make -j$(nproc) all install
+RUN rm -r /vdbfusion
 
 WORKDIR /root/repo/
 RUN echo 'source /opt/ros/noetic/setup.bash' >> /root/.bashrc
