@@ -2,9 +2,13 @@
 
 if [ $NOETICSLAM_DOCKER ]
 then
+    if [ -z "$1" ]; then
+        echo "usage: scripts/ouster-record [bags/*.bag]"
+        exit -1
+    fi
     roslaunch ouster_ros record.launch \
         sensor_hostname:=${LIDAR_ADDR} \
-        bag_file:=/root/repo/bags/${FILENAME}.bag \
+        bag_file:=/root/repo/$1 \
         viz:=${RVIZ_OUSTER} \
         imu_port:=7008 \
         lidar_port:=7009

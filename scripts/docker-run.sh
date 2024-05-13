@@ -6,9 +6,9 @@ if [ $NOETICSLAM_DOCKER ]; then
 fi
 docker build -t noeticslam:latest $(dirname "$0")/..
 
-selected_mode="none"
-if [ -n "$1" ]; then
-    selected_mode=$1
+if [ -z "$1" ]; then
+    echo "usage: scripts/docker-run [none, integrated, nivida, amd]"
+    exit -1
 fi
 
 if [ $selected_mode = "none" ]; then
@@ -28,7 +28,7 @@ elif [ $selected_mode = "integrated" ]; then
         --name noeticslam \
         --publish 7008:7008/udp \
         --publish 7009:7009/udp \
-        --mount type=bind,source="$(pwd)/$(dirname "$0")"/..,target=/root/repo \
+        --volume $(pwd)/$(dirname "$0")/..:/root/repo/:Z \
         --device=/dev/dri:/dev/dri \
         --ulimit nofile=1024 \
         --env DISPLAY=${DISPLAY} \
@@ -42,7 +42,7 @@ elif [ $selected_mode = "nvidia" ]; then
         --name noeticslam \
         --publish 7008:7008/udp \
         --publish 7009:7009/udp \
-        --mount type=bind,source="$(pwd)/$(dirname "$0")"/..,target=/root/repo \
+        --volume $(pwd)/$(dirname "$0")/..:/root/repo/:Z \
         --ulimit nofile=1024 \
         --gpus all \
         --env DISPLAY=${DISPLAY} \

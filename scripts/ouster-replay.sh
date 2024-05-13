@@ -3,10 +3,9 @@
 if [ $NOETICSLAM_DOCKER ]
 then
     if [ -z "$1" ]; then
-        echo "error: give path to bag relative to repo root as first param"
+        echo "usage: scripts/ouster-replay [bags/*.bag]"
         exit -1
     fi
-
     roslaunch ouster_ros replay.launch \
         bag_file:=/root/repo/$1 \
         viz:=${RVIZ_OUSTER}

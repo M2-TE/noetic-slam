@@ -3,7 +3,7 @@
 if [ $NOETICSLAM_DOCKER ]
 then
     if [ -z "$1" ]; then
-        echo "error: give path to bag relative to repo root as first param"
+        echo "usage: scripts/rosbag-replay [bags/*.bag]"
         exit -1
     fi
     rosbag play /root/repo/bags/$1
