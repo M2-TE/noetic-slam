@@ -5,6 +5,7 @@ if [ $ROS_DISTRO = "noetic" ]; then
     SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
     source /opt/ros/noetic/setup.bash 
     source ${SCRIPT_DIR}/../devel/setup.bash
+
     # ensure roscore is up and running
     rostopic list &> /dev/null
     roscore_status=$?
@@ -20,7 +21,7 @@ if [ $ROS_DISTRO = "noetic" ]; then
     fi
 
     # handle selected mode
-    if [ $selected_mode = "replay" ]; then
+    if [ $1 = "replay" ]; then
         if [ -z "$2" ]; then
             echo "usage: scripts/compound-launch.sh replay [bags/*.bag]"
             exit -1
@@ -28,7 +29,7 @@ if [ $ROS_DISTRO = "noetic" ]; then
         scripts/dlio-launch.sh &
         scripts/rosbag-replay.sh $2
 
-    elif [ $selected_mode = "record" ]; then
+    elif [ $1 = "record" ]; then
         if [ -z "$2" ]; then
             echo "usage: scripts/compound-launch.sh record [bags/*.bag]"
             exit -1
@@ -36,7 +37,7 @@ if [ $ROS_DISTRO = "noetic" ]; then
         # rosbag record -O bags/${FILENAME}_generic.bag ${PCL_TOPIC} ${IMU_TOPIC} &
         scripts/ouster-record.sh $2
 
-    elif [ $selected_mode = "stream" ]; then
+    elif [ $1 = "stream" ]; then
         # stream the data and sic dlio on it
         scripts/dlio-launch.sh &
         scripts/ouster-stream.sh
