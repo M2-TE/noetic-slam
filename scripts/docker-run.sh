@@ -4,7 +4,10 @@ if [ $ROS_DISTRO = "noetic" ]; then
     echo "Use this script from the host, not the container!"
     exit 1
 fi
-docker build -t noeticslam:latest $(dirname "$0")/..
+
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+echo $SCRIPT_DIR
+docker build -t noeticslam:latest $(SCRIPT_DIR)/..
 
 if [ -z "$1" ]; then
     echo "usage: scripts/docker-run [none, integrated, nivida, amd]"
