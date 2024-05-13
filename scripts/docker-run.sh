@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [ $NOETICSLAM_DOCKER ]; then
+if [ $ROS_DISTRO = "noetic" ]; then
     echo "Use this script from the host, not the container!"
     exit 1
 fi
@@ -11,7 +11,7 @@ if [ -z "$1" ]; then
     exit -1
 fi
 
-if [ $selected_mode = "none" ]; then
+if [ $1 = "none" ]; then
     docker run -it \
         --rm \
         --name noeticslam \
@@ -20,7 +20,7 @@ if [ $selected_mode = "none" ]; then
         --volume $(pwd)/$(dirname "$0")/..:/root/repo/:Z \
         --ulimit nofile=1024 \
         noeticslam:latest
-elif [ $selected_mode = "integrated" ]; then
+elif [ $1 = "integrated" ]; then
     # with intel integrated gpu
     xhost +local:docker
     docker run -it \
@@ -34,7 +34,7 @@ elif [ $selected_mode = "integrated" ]; then
         --env DISPLAY=${DISPLAY} \
         --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
         noeticslam:latest
-elif [ $selected_mode = "nvidia" ]; then
+elif [ $1 = "nvidia" ]; then
     # with nvidia gpu
     xhost +local:docker
     docker run -it \
@@ -51,7 +51,7 @@ elif [ $selected_mode = "nvidia" ]; then
         --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
         --runtime nvidia \
         noeticslam:latest
-elif [ $selected_mode = "amd" ]; then
+elif [ $1 = "amd" ]; then
     # with amd gpu
     # xhost +local:docker
     echo "amd implementation not tested yet (need an amd gpu first)"

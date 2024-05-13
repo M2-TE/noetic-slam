@@ -1,7 +1,6 @@
 #!/bin/bash
 
-if [ $NOETICSLAM_DOCKER ]
-then
+if [ $ROS_DISTRO = "noetic" ]; then
     source /root/repo/devel/setup.bash
     roslaunch direct_lidar_inertial_odometry dlio.launch rviz:=${RVIZ_DLIO} pointcloud_topic:=${PCL_TOPIC} imu_topic:=${IMU_TOPIC}
 else

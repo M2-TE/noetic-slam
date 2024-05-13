@@ -1,7 +1,6 @@
 #!/bin/bash
 
-if [ $NOETICSLAM_DOCKER ]
-then
+if [ $ROS_DISTRO = "noetic" ]; then
     if [ -z "$1" ]; then
         echo "usage: scripts/ouster-record [bags/*.bag]"
         exit -1

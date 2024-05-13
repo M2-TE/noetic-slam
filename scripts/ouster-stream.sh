@@ -1,7 +1,6 @@
 #!/bin/bash
 
-if [ $NOETICSLAM_DOCKER ]
-then
+if [ $ROS_DISTRO = "noetic" ]; then
     roslaunch ouster_ros driver.launch \
         sensor_hostname:=${LIDAR_ADDR} \
         viz:=${RVIZ_OUSTER} \

@@ -1,7 +1,6 @@
 #!/bin/bash
 
-if [ $NOETICSLAM_DOCKER ]
-then
+if [ $ROS_DISTRO = "noetic" ]; then
     # ensure roscore is up and running
     rostopic list &> /dev/null
     roscore_status=$?
