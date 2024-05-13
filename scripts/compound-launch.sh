@@ -7,6 +7,7 @@ if [ $ROS_DISTRO = "noetic" ]; then
     source ${SCRIPT_DIR}/../devel/setup.bash
 
     # ensure roscore is up and running
+    roscore &
     rostopic list &> /dev/null
     roscore_status=$?
     while [ $roscore_status -ne 0 ]; do
