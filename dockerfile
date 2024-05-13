@@ -16,7 +16,10 @@ RUN apt-get install -y ros-noetic-rviz libeigen3-dev libjsoncpp-dev libspdlog-de
 # DLIO dependencies
 RUN apt-get install -y libomp-dev libpcl-dev
 # extra utils
-RUN apt-get install -y iputils-ping mesa-utils
+RUN apt-get install -y iputils-ping mesa-utils gnuplot
+# fonts
+RUN echo ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true | debconf-set-selections 
+RUN apt-get install -y ttf-mscorefonts-installer
 
 # Use gcc-11 instead of standard gcc-9
 RUN apt-get install -y software-properties-common
@@ -50,17 +53,10 @@ RUN echo 'source /root/repo/devel/setup.bash' >> /root/.bashrc
 RUN echo 'PATH=$PATH:/root/repo/scripts' >> /root/.bashrc
 ENTRYPOINT [ "/bin/bash", "/root/repo/scripts/.entrypoint.sh" ]
 ENV ROSCONSOLE_FORMAT='[ROS${severity}]: ${message}'
-ENV NOETICSLAM_DOCKER=1
 
-## configurable env vars
-ENV AUTOSTART=false
+# Environment
 ENV LIDAR_ADDR=192.168.168.128
-ENV FILENAME=hsfd_nov2023_testing
-
-# Topics (Pointcloud and IMU)
 ENV PCL_TOPIC=/ouster/points
 ENV IMU_TOPIC=/ouster/imu
-
-# RVIZ
 ENV RVIZ_OUSTER=false
 ENV RVIZ_DLIO=false
