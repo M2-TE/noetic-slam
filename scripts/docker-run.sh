@@ -3,6 +3,7 @@
 if [ $ROS_DISTRO = "noetic" ]; then
     catkin config --init --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=/usr/bin/gcc-11 -DCMAKE_CXX_COMPILER=/usr/bin/g++-11
     catkin build
+    exit 0
 else
     echo "Use this script from the host, not the container!"
     exit 1
