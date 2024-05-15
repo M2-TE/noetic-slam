@@ -16,7 +16,7 @@ RUN apt-get install -y ros-noetic-rviz libeigen3-dev libjsoncpp-dev libspdlog-de
 # DLIO dependencies
 RUN apt-get install -y libomp-dev libpcl-dev
 # extra utils
-RUN apt-get install -y iputils-ping mesa-utils gnuplot
+RUN apt-get install -y iputils-ping gnuplot
 # fonts
 RUN echo ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true | debconf-set-selections 
 RUN apt-get install -y ttf-mscorefonts-installer

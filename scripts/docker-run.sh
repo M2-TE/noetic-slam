@@ -20,8 +20,8 @@ if [ $1 = "none" ]; then
         --name noeticslam \
         --publish 7008:7008/udp \
         --publish 7009:7009/udp \
-        --volume $(pwd)/$(dirname "$0")/..:/root/repo/:Z \
         --ulimit nofile=1024 \
+        --volume $(pwd)/$(dirname "$0")/..:/root/repo/:Z \
         noeticslam:latest
 elif [ $1 = "integrated" ]; then
     # with intel integrated gpu
@@ -31,11 +31,11 @@ elif [ $1 = "integrated" ]; then
         --name noeticslam \
         --publish 7008:7008/udp \
         --publish 7009:7009/udp \
-        --volume $(pwd)/$(dirname "$0")/..:/root/repo/:Z \
         --device=/dev/dri:/dev/dri \
         --ulimit nofile=1024 \
         --env DISPLAY=${DISPLAY} \
         --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
+        --volume $(pwd)/$(dirname "$0")/..:/root/repo/:Z \
         noeticslam:latest
 elif [ $1 = "nvidia" ]; then
     # with nvidia gpu
@@ -45,14 +45,16 @@ elif [ $1 = "nvidia" ]; then
         --name noeticslam \
         --publish 7008:7008/udp \
         --publish 7009:7009/udp \
-        --volume $(pwd)/$(dirname "$0")/..:/root/repo/:Z \
         --ulimit nofile=1024 \
+        --runtime nvidia \
         --gpus all \
         --env DISPLAY=${DISPLAY} \
         --env __NV_PRIME_RENDER_OFFLOAD=1 \
         --env __GLX_VENDOR_LIBRARY_NAME=nvidia \
+        --env NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all} \
+        --env NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:+$NVIDIA_DRIVER_CAPABILITIES,}graphics \
         --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
-        --runtime nvidia \
+        --volume $(pwd)/$(dirname "$0")/..:/root/repo/:Z \
         noeticslam:latest
 elif [ $1 = "amd" ]; then
     # with amd gpu
