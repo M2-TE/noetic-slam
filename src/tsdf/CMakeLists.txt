@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(tsdf LANGUAGES CXX)
+project(tsdf LANGUAGES C CXX)
 
 list(APPEND CMAKE_CXX_FLAGS "-march=native -ltbb")
 set(CMAKE_CXX_STANDARD 20)
@@ -28,12 +28,20 @@ find_package(Boost 1.84 REQUIRED)
 ## Find VDBFusion
 list(APPEND CMAKE_MODULE_PATH "/usr/local/lib/cmake/OpenVDB")
 find_package(VDBFusion REQUIRED)
+# # Matplot++
+# include(FetchContent)
+# set(MATPLOTPP_BUILD_EXAMPLES OFF)
+# set(MATPLOTPP_BUILD_TESTS OFF)
+# FetchContent_Declare(matplot GIT_REPOSITORY "https://github.com/alandefreitas/matplotplusplus.git" GIT_TAG "master" GIT_SHALLOW ON)
+# FetchContent_MakeAvailable(matplot)
+
 
 add_executable(tsdf_node "src/tsdf_node.cpp")
 target_link_libraries(tsdf_node PRIVATE ${catkin_LIBRARIES})
 target_link_libraries(tsdf_node PRIVATE Eigen3::Eigen)
 target_link_libraries(tsdf_node PRIVATE Boost::headers)
 target_link_libraries(tsdf_node PRIVATE VDBFusion::vdbfusion)
+# target_link_libraries(tsdf_node PRIVATE matplot)
 target_include_directories(tsdf_node PRIVATE ${catkin_INCLUDE_DIRS})
 target_include_directories(tsdf_node PRIVATE include)
 target_include_directories(tsdf_node PRIVATE ext/phmap)

@@ -21,7 +21,7 @@ struct Octree {
         Key key;
     };
 
-    Octree(uint32_t nMaxCapacity): nCapacity(nMaxCapacity), nNodes(0) {
+    Octree(uint32_t nMaxCapacity): nCapacity(nMaxCapacity) {
         // assume posix
         static_assert(__unix__);
         size_t size = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
@@ -32,30 +32,28 @@ struct Octree {
         pNodes = static_cast<Node*>(pRaw);
 
         // create root node (push onto mem of first thread)
-        std::memset(pNodes, -1, sizeof(Node));
+        std::memset(pNodes, 0, sizeof(Node));
         nNodes++;
         // create dummy node to fill path cache
         cache.key = 0;
         cache.nodes.back() = pNodes;
-        find(0x7fffffffffffffff);
     }
     ~Octree() {
         free(pNodes);
     }
 
     Leaf& find(Key key) {
-        constexpr int64_t filler = -1; // all bits set to one
         auto level = 63 - 3; // one level below root
         Node* pNode = pNodes;
         while (level > 0) {
             // extract the 3 relevant bits for current level
             auto index = (key >> level) & 0b111;
-            // index into children of current node
             auto& pChild = pNode->children[index];
             // create child if nonexistant
-            if (pChild == (Node*)filler) {
+            if (pChild == nullptr) {
                 pChild = pNodes + nNodes++;
-                std::memset(pChild, filler, sizeof(Node));
+                if (nNodes >= nCapacity) std::cout << "capacity reached\n";
+                std::memset(pChild, 0, sizeof(Node));
             }
             pNode = pChild;
             level -= 3;
@@ -66,31 +64,33 @@ struct Octree {
         return pNode->leaves[index];
     }
     Leaf& find_cached(Key key) {
-        constexpr uint_fast32_t root = 63;
-        constexpr uint_fast32_t nLevelBits = 3;
-        constexpr int64_t filler = -1; // all bits set to one
-        
         // read path cache
         key &= 0x7fffffffffffffff; // just in case..
-        auto depth = read_cache(key);
-        cache.key = key;
-
+        auto startingDepth = read_cache(key);
+        auto startingNode = cache.nodes[startingDepth];
+        
         // begin traversal
-        Node* pNode = cache.nodes[depth];
-        while (depth > 0) {
-            auto index = (key >> depth * 3) & 0b111;
+        auto rDepth = startingDepth;
+        Node* pNode = startingNode;
+        while (rDepth > 0) {
+            // extract the 3 relevant bits for current depth
+            auto index = (key >> rDepth * 3) & 0b111;
             auto& pChild = pNode->children[index];
             // create child if nonexistant
-            if (pChild == (Node*)filler) {
+            if (pChild == nullptr) {
                 pChild = pNodes + nNodes++;
-                std::memset(pChild, filler, sizeof(Node));
+                if (nNodes >= nCapacity) std::cout << "capacity reached\n";
+                std::memset(pChild, 0, sizeof(Node));
             }
             pNode = pChild;
-            cache.nodes[--depth] = pNode;
+            cache.nodes[--rDepth] = pNode;
         }
+
+        // update cache key to the current path
+        cache.key = key;
         
         // this last node contains values
-        auto index = (key >> depth * 3) & 0b111;
+        auto index = (key >> rDepth * 3) & 0b111;
         return pNode->leaves[index];
     }
 
@@ -99,16 +99,16 @@ struct Octree {
     inline size_t read_cache(Key key) {
         Key xorKey = cache.key ^ key;
         if (xorKey == 0) return 0;
+        if (cache.key == 0) return 60/3;
         Key leadingBits = leading_zeroes(xorKey);
         Key level = sizeof(Key) * 8 - leadingBits - 1;
         level /= 3; // 3 bits per level
         return level;
     }
 
-private:
-    Node* pNodes;
-    uint_fast32_t nNodes;
-    uint_fast32_t nCapacity;
+    Node* pNodes = nullptr;
+    uint_fast32_t nNodes = 0;
+    uint_fast32_t nCapacity = 0;
     PathCache cache;
 };
 
@@ -164,7 +164,6 @@ public:
         find(key) = value;
     }
     inline Value& find(Key key) {
-
         auto depth = read_cache(key);
         cache.key = key;
         Node* pNode = cache.nodes[depth];
