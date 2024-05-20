@@ -202,13 +202,86 @@ namespace DAG {
             measurements.emplace_back(dur, "normals");
             return normals;
         }
+        static auto build_trie_whatnot(Octree& octree, const Eigen::Vector3f inputPos, const Eigen::Vector3f& inputNorm) {
+            // leaf cluster position that p belongs to
+            Eigen::Vector3f clusterPos = inputPos * (0.5f / leafResolution);
+            Eigen::Vector3i voxelPos = clusterPos.cast<int32_t>();
+            
+            // calculate signed distances for neighbours of current leaf cluster as well
+            constexpr int32_t off = 1; // offset (1 = 3x3x3)
+            for (int32_t x = -off; x <= +off; x++) {
+                for (int32_t y = -off; y <= +off; y++) {
+                    for (int32_t z = -off; z <= +off; z++) {
+                        // this is be a leaf cluster containing 8 individual leaves
+                        Eigen::Vector3i cPos = voxelPos + Eigen::Vector3i(x, y, z);
+                        // actual floating position of cluster
+                        Eigen::Vector3f fPos = cPos.cast<float>() * 2.0f * leafResolution;
+
+                        // offsets of leaves within
+                        std::array<float, 8> leaves;
+                        auto pLeaf = leaves.begin();
+                        for (auto xl = 0; xl < 2; xl++) {
+                            for (auto yl = 0; yl < 2; yl++) {
+                                for (auto zl = 0; zl < 2; zl++) {
+                                    // leaf position
+                                    Eigen::Vector3f offset = Eigen::Vector3f(xl, yl, zl) * leafResolution;
+                                    Eigen::Vector3f lPos = fPos + offset;
+                                    *pLeaf = inputNorm.dot(inputPos - lPos);
+                                    pLeaf++;
+                                }
+                            }
+                        }
+
+                        // sd max should be turned into a parameter
+                        // constexpr double sdMax = boost::math::ccmath::sqrt(3.0*3.0*3.0) * leafResolution;
+                        // constexpr float sdMaxRecip = 1.0 / sdMax;
+                        double sdMax = std::sqrt(3.0*3.0*3.0) * leafResolution;
+                        float sdMaxRecip = 1.0 / sdMax;
+
+                        MortonCode code(cPos);
+                        // auto& cluster = octree.find(code.val);
+                        auto& cluster = octree.find_cached(code.val);
+
+                        // pack all leaves into 32 bits
+                        typedef uint32_t pack;
+                        pack packedLeaves = 0;
+                        for (auto i = 0; i < leaves.size(); i++) {
+                            float sd = leaves[i];
+                            // normalize between -1.0 and 1.0 (not yet clamped)
+                            sd = sd * sdMaxRecip;
+
+                            constexpr pack sdBits = 4;
+                            constexpr pack sdMask = (1 << (sdBits - 1)) - 1;
+                            constexpr float sdConv = static_cast<float>(sdMask);
+                            // expand for int conversion
+                            sd = sd * sdConv;
+                            // convert absolute value, copy sign manually
+                            pack sdInt = static_cast<int>(std::abs(sd));
+                            pack signBit = std::signbit(sd) << (sdBits - 1);
+                            sdInt |= signBit;
+                            
+                            // check if signed distance is smaller than saved one
+                            if (cluster != 0) {
+                                    // 0 is default (unwritten) value in trie
+                                    // 0 is also largest negative signed distance
+                                constexpr pack mask = (1 << sdBits) - 1;
+                                // extract relevant portion
+                                pack part = (cluster >> i * sdBits) & mask;
+                                // < comparison works if treating sign bit as data
+                                if (part < sdInt) sdInt = part;
+                            }
+                            packedLeaves |= sdInt << i * sdBits;
+                        }
+                        cluster = packedLeaves;
+                    }
+                }
+            }
+        }
         auto get_trie2(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) {
             auto beg = std::chrono::steady_clock::now();
             
-            // set up threads
-            uint32_t nThreadsTemp = std::jthread::hardware_concurrency();
-            // round down to nearest power of two
-            uint32_t lz = __builtin_clz(nThreadsTemp);
+            // round threads down to nearest power of two
+            uint32_t lz = __builtin_clz(std::jthread::hardware_concurrency());
             size_t nThreads = 1 << (32 - lz - 1);
             std::cout << "Using " << nThreads << " threads for trie ctor\n";
             std::vector<std::jthread> threads;
@@ -220,89 +293,23 @@ namespace DAG {
             for (size_t i = 0; i < nThreads; i++) {
                 size_t nElements = points.size() / nThreads;
                 if (i == nThreads - 1) nElements = 0; // special value for final thread to read the rest
-                auto* pOctree = &octrees.emplace_back(100'000);
+                octrees.emplace_back(100'000);
 
                 // phase 1: build sub-trees per thread
-                threads.emplace_back([&points, &normals, pOctree, progress, nElements](){
+                // phase 2: merge sub-trees
+                // phase N: repeat 2 until fully merged
+                threads.emplace_back([&points, &normals, &octrees, i, progress, nElements, nThreads](){
                     auto pCur = points.cbegin() + progress;
                     auto pEnd = (nElements == 0) ? (points.cend()) : (pCur + nElements);
                     auto pNorm = normals.cbegin() + progress;
-                    auto& octree = *pOctree;
-                    // Trie trie;
-                    for (; pCur != pEnd; pCur++) {
-                        // leaf cluster position that p belongs to
-                        Eigen::Vector3f clusterPos = *pCur * (0.5f / leafResolution);
-                        Eigen::Vector3i voxelPos = clusterPos.cast<int32_t>();
-                        
-                        // calculate signed distances for neighbours of current leaf cluster as well
-                        constexpr int32_t off = 1; // offset (1 = 3x3x3)
-                        for (int32_t x = -off; x <= +off; x++) {
-                            for (int32_t y = -off; y <= +off; y++) {
-                                for (int32_t z = -off; z <= +off; z++) {
-                                    // this is be a leaf cluster containing 8 individual leaves
-                                    Eigen::Vector3i cPos = voxelPos + Eigen::Vector3i(x, y, z);
-                                    // actual floating position of cluster
-                                    Eigen::Vector3f fPos = cPos.cast<float>() * 2.0f * leafResolution;
+                    
+                    // build one octree per thread
+                    for (; pCur != pEnd; pCur++) build_trie_whatnot(octrees[i], *pCur, *pNorm);
 
-                                    // offsets of leaves within
-                                    std::array<float, 8> leaves;
-                                    auto pLeaf = leaves.begin();
-                                    for (auto xl = 0; xl < 2; xl++) {
-                                        for (auto yl = 0; yl < 2; yl++) {
-                                            for (auto zl = 0; zl < 2; zl++) {
-                                                // leaf position
-                                                Eigen::Vector3f offset = Eigen::Vector3f(xl, yl, zl) * leafResolution;
-                                                Eigen::Vector3f lPos = fPos + offset;
-                                                *pLeaf = pNorm->dot(*pCur - lPos);
-                                                pLeaf++;
-                                            }
-                                        }
-                                    }
-
-                                    // sd max should be turned into a parameter
-                                    // constexpr double sdMax = boost::math::ccmath::sqrt(3.0*3.0*3.0) * leafResolution;
-                                    // constexpr float sdMaxRecip = 1.0 / sdMax;
-                                    double sdMax = std::sqrt(3.0*3.0*3.0) * leafResolution;
-                                    float sdMaxRecip = 1.0 / sdMax;
-
-                                    MortonCode code(cPos);
-                                    // auto& cluster = octree.find(code.val);
-                                    auto& cluster = octree.find_cached(code.val);
-
-                                    // pack all leaves into 32 bits
-                                    typedef uint32_t pack;
-                                    pack packedLeaves = 0;
-                                    for (auto i = 0; i < leaves.size(); i++) {
-                                        float sd = leaves[i];
-                                        // normalize between -1.0 and 1.0 (not yet clamped)
-                                        sd = sd * sdMaxRecip;
-
-                                        constexpr pack sdBits = 4;
-                                        constexpr pack sdMask = (1 << (sdBits - 1)) - 1;
-                                        constexpr float sdConv = static_cast<float>(sdMask);
-                                        // expand for int conversion
-                                        sd = sd * sdConv;
-                                        // convert absolute value, copy sign manually
-                                        pack sdInt = static_cast<int>(std::abs(sd));
-                                        pack signBit = std::signbit(sd) << (sdBits - 1);
-                                        sdInt |= signBit;
-                                        
-                                        // check if signed distance is smaller than saved one
-                                        if (cluster != 0) {
-                                             // 0 is default (unwritten) value in trie
-                                             // 0 is also largest negative signed distance
-                                            constexpr pack mask = (1 << sdBits) - 1;
-                                            // extract relevant portion
-                                            pack part = (cluster >> i * sdBits) & mask;
-                                            // < comparison works if treating sign bit as data
-                                            if (part < sdInt) sdInt = part;
-                                        }
-                                        packedLeaves |= sdInt << i * sdBits;
-                                    }
-                                    cluster = packedLeaves;
-                                }
-                            }
-                        }
+                    // todo: under construction!
+                    uint32_t nStages = std::sqrt(nThreads); // nThreads is power of two
+                    for (uint32_t iStage = 0; iStage < nStages; iStage++) {
+                        if (i == 0) std::cout << iStage << '\n';
                     }
                 });
                 progress += nElements;
@@ -521,6 +528,7 @@ namespace DAG {
                 // matplot::pie(times, labels);
                 // matplot::save("/root/repo/test2.jpg");
             }
+            measurements.clear();
 
             size_t nUniques = 0;
             size_t nDupes = 0;

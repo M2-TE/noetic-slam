@@ -1,6 +1,6 @@
 // // VDBFusion (benchmarking)
-// #include <openvdb/openvdb.h>
-// #include <vdbfusion/VDBVolume.h>
+#include <openvdb/openvdb.h>
+#include <vdbfusion/VDBVolume.h>
 // #include <matplot/matplot.h>
 
 // ROS
@@ -42,7 +42,7 @@ public:
         // insert into tsdf DAG
         Eigen::Vector3f position = {};
         Eigen::Quaternionf rotation = {};
-        for (size_t i = 0; i < 10; i++) {
+        for (size_t i = 0; i < 1; i++) {
             for (auto& point: points) {
                 point = {
                     dis(gen),
@@ -61,7 +61,7 @@ public:
         // openvdb::initialize();
         // vdbfusion::VDBVolume tsdf_volume(0.02, 0.06, true);
         // Eigen::Vector3d origin(0.0, 0.0, 0.0);
-        // for (size_t i = 0; i < 0; i++) {
+        // for (size_t i = 0; i < 10; i++) {
         //     for (auto& point: pointsD) {
         //         point = {
         //             disD(gen),
@@ -77,11 +77,6 @@ public:
         //     auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
         //     std::cout << "VDBFusion: " << dur << " ms" << std::endl;
         // }
-
-        // TODO: pie chart
-        // matplot::bar(benchmarks);
-        // matplot::gca()->x_axis().ticklabels(labels);
-        // matplot::show();
         exit(0);
     }
 
