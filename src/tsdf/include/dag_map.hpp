@@ -1,7 +1,11 @@
 #pragma once
 
+#include <algorithm>
+#include <atomic>
 #include <execution>
 #include <iostream>
+#include <memory>
+#include <unistd.h>
 #include <vector>
 #include <array>
 #include <cmath>
@@ -289,27 +293,92 @@ namespace DAG {
             std::vector<Octree> octrees;
             octrees.reserve(nThreads);
 
-            size_t progress = 0;
-            for (size_t i = 0; i < nThreads; i++) {
-                size_t nElements = points.size() / nThreads;
-                if (i == nThreads - 1) nElements = 0; // special value for final thread to read the rest
-                octrees.emplace_back(100'000);
+            // thread groups throughout the stages
+            struct ThreadGroup {
+                uint32_t iLeadThread;
+                std::array<Octree*, 2> trees;
+                std::unique_ptr<std::atomic_bool> bPrepared;
+                std::unique_ptr<std::atomic_bool> bCompleted;
+            };
+            struct Stage {
+                uint32_t groupSize; // threads per group
+                std::vector<ThreadGroup> groups;
+            };
+            // calc number of total stages
+            uint32_t nStages = std::sqrt(nThreads);
+            std::vector<Stage> stages(nStages);
+            // prepare thread groups for each stage
+            for (uint32_t i = 0; i < nStages; i++) {
+                auto& stage = stages[i];
 
-                // phase 1: build sub-trees per thread
-                // phase 2: merge sub-trees
-                // phase N: repeat 2 until fully merged
-                threads.emplace_back([&points, &normals, &octrees, i, progress, nElements, nThreads](){
+                // figure out how many groups there are
+                stage.groupSize = 2 << i;
+                uint32_t nGroups = nThreads / stage.groupSize;
+
+                // fill each group with info data
+                stage.groups.resize(nGroups);
+                for (uint32_t iGrp = 0; iGrp < nGroups; iGrp++) {
+                    auto& grp = stage.groups[iGrp];
+                    grp.iLeadThread = iGrp * stage.groupSize;
+                    grp.bPrepared = std::make_unique<std::atomic_bool>(false);
+                    grp.bCompleted = std::make_unique<std::atomic_bool>(false);
+                }
+            }
+            size_t progress = 0;
+            for (size_t id = 0; id < nThreads; id++) {
+                size_t nElements = points.size() / nThreads;
+                if (id == nThreads - 1) nElements = 0; // special value for final thread to read the rest
+                octrees.emplace_back(100'000); // hardcoded for now
+                threads.emplace_back([&points, &normals, &octrees, &stages, id, progress, nElements](){
                     auto pCur = points.cbegin() + progress;
                     auto pEnd = (nElements == 0) ? (points.cend()) : (pCur + nElements);
                     auto pNorm = normals.cbegin() + progress;
                     
                     // build one octree per thread
-                    for (; pCur != pEnd; pCur++) build_trie_whatnot(octrees[i], *pCur, *pNorm);
+                    for (; pCur != pEnd; pCur++) {
+                        build_trie_whatnot(octrees[id], *pCur, *pNorm);
+                    }
 
-                    // todo: under construction!
-                    uint32_t nStages = std::sqrt(nThreads); // nThreads is power of two
-                    for (uint32_t iStage = 0; iStage < nStages; iStage++) {
-                        if (i == 0) std::cout << iStage << '\n';
+                    // combine octree via multiple stages using thread groups
+                    uint32_t debugInt = 0;
+                    for (uint32_t iStage = 0; iStage < stages.size(); iStage++) {
+                        auto& stage = stages[iStage];
+                        uint32_t iGrp = id / stage.groupSize;
+                        auto& grp = stage.groups[iGrp];
+                        uint32_t idx = id % stage.groupSize; // group local index
+
+                        if (grp.iLeadThread == id) { // leader thread
+                            std::cout << debugInt++ << ": " << id << '\n';
+                            
+                            // wait for previous stage to finish
+                            if (iStage > 0) {
+                                stages[iStage - 1].groups[iGrp].bCompleted->wait(false);
+                            }
+
+                            // todo
+                            sleep(1);
+
+                            // signal that this group thread is fully prepared
+                            grp.bPrepared->store(true);
+                            grp.bPrepared->notify_all();
+                        }
+                        
+                        grp.bPrepared->wait(false);
+                        
+                        // now we do the fun stuff
+
+                        if (grp.iLeadThread == id) { // leader thread
+                            // wait for all threads to finish, then signal completion
+                            grp.bCompleted->store(true);
+                            grp.bCompleted->notify_all();
+                        }
+
+
+                        // 2. iterate both trees to find a node where they can be "split"
+                        //      -> each thread will be responsible for a sub-portion
+                        // 3. nodes that are not found in the other tree can simply have the node pointer copied
+                        //      -> need to move node data block ownership to merged octree!
+                        // 4. profit
                     }
                 });
                 progress += nElements;
