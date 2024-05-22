@@ -5,8 +5,10 @@
 #include <limits>
 #include <cstdint>
 #include <iostream>
+#include <map>
 #include <unistd.h>
 #include <stdlib.h>
+#include <vector>
 
 struct Octree {
     typedef uint64_t Key; // only 63 bits in use
@@ -42,7 +44,7 @@ struct Octree {
         free(pNodes);
     }
 
-    Leaf& find(Key key) {
+    Leaf& find_deprecated(Key key) {
         auto level = 63 - 3; // one level below root
         Node* pNode = pNodes;
         while (level > 0) {
@@ -94,6 +96,83 @@ struct Octree {
         return pNode->leaves[index];
     }
 
+    std::pair<std::vector<Key>, uint32_t> find_collisions(Octree& other, uint32_t minCollisions) {
+        std::vector<Key> collisions;
+        std::map<Key, Node*> layerA, layerB;
+        uint32_t depth;
+        uint32_t prevCollisions = 0;
+
+        // todo: maybe already merge the missing nodes of these two? its a very quick op
+
+        // find collisions until collision target is met
+        for (depth = 1; depth < 63/3; depth++) {
+            collisions.clear();
+            // get octree layers
+            if (depth == 1) {
+                // get the first layer after root for both trees
+                for (uint64_t i = 0; i < 8; i++) {
+                    Node* pChild = nullptr;
+                    pChild = pNodes->children[i];
+                    if (pChild != nullptr) layerA[i << (63 - depth*3)] = pChild;
+                    pChild = other.pNodes->children[i];
+                    if (pChild != nullptr) layerB[i << (63 - depth*3)] = pChild;
+                }
+            }
+            else {
+                // create new layers from the current one's children
+                decltype(layerA) newA;
+                decltype(layerB) newB;
+
+                for (auto& node: layerA) {
+                    for (uint64_t i = 0; i < 8; i++) {
+                        Node* pChild = node.second->children[i];
+                        if (pChild != nullptr) {
+                            // construct key for this child node
+                            uint64_t key = i << (63 - depth*3);
+                            key |= node.first;
+                            // insert into layer
+                            newA[key] = pChild;
+                        }
+                    }
+                }
+                for (auto& node: layerB) {
+                    for (uint64_t i = 0; i < 8; i++) {
+                        Node* pChild = node.second->children[i];
+                        if (pChild != nullptr) {
+                            // construct key for this child node
+                            uint64_t key = i << (63 - depth*3);
+                            key |= node.first;
+                            // insert into layer
+                            newB[key] = pChild;
+                        }
+                    }
+                }
+                // overwrite old layers
+                layerA = std::move(newA);
+                layerB = std::move(newB);
+            }
+            // check for collisions, when both trees write to the same node
+            for (auto& node: layerA) {
+                if (layerB.contains(node.first)) {
+                    collisions.emplace_back(node.first);
+                }
+            }
+            std::cout << layerA.size() << ' ' << layerB.size() << ' ';
+            std::cout << "Collisions: " << collisions.size();
+            std::cout << " (target: " << minCollisions << ")\n";
+
+            // only check for break condition if collision count has changed
+            // compared to previous depth
+            if (depth > 1 && collisions.size() != prevCollisions) {
+                // break if collision target is met
+                if (collisions.size() >= minCollisions) break;
+            }
+            prevCollisions = collisions.size();
+        }
+        std::cout << "Done. Depth: " << depth << '\n';
+        return { collisions, depth };
+    }
+
     inline auto leading_zeroes(unsigned long v) { return __builtin_clzl(v); }
     inline auto leading_zeroes(unsigned long long v) { return __builtin_clzll(v); }
     inline size_t read_cache(Key key) {
@@ -107,6 +186,7 @@ struct Octree {
     }
 
     Node* pNodes = nullptr;
+    std::vector<Node*> mergedNodes;
     uint_fast32_t nNodes = 0;
     uint_fast32_t nCapacity = 0;
     PathCache cache;

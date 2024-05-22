@@ -5,6 +5,7 @@
 #include <execution>
 #include <iostream>
 #include <memory>
+#include <set>
 #include <unistd.h>
 #include <vector>
 #include <array>
@@ -208,8 +209,7 @@ namespace DAG {
         }
         static auto build_trie_whatnot(Octree& octree, const Eigen::Vector3f inputPos, const Eigen::Vector3f& inputNorm) {
             // leaf cluster position that p belongs to
-            Eigen::Vector3f clusterPos = inputPos * (0.5f / leafResolution);
-            Eigen::Vector3i voxelPos = clusterPos.cast<int32_t>();
+            Eigen::Vector3i voxelPos = (inputPos * (0.5f/leafResolution)).cast<int32_t>();
             
             // calculate signed distances for neighbours of current leaf cluster as well
             constexpr int32_t off = 1; // offset (1 = 3x3x3)
@@ -237,14 +237,14 @@ namespace DAG {
                         }
 
                         // sd max should be turned into a parameter
-                        // constexpr double sdMax = boost::math::ccmath::sqrt(3.0*3.0*3.0) * leafResolution;
-                        // constexpr float sdMaxRecip = 1.0 / sdMax;
                         double sdMax = std::sqrt(3.0*3.0*3.0) * leafResolution;
                         float sdMaxRecip = 1.0 / sdMax;
 
                         MortonCode code(cPos);
                         // auto& cluster = octree.find(code.val);
                         auto& cluster = octree.find_cached(code.val);
+                        // std::cout << cPos.x() << ' ' << cPos.y() << ' ' << cPos.z() << '\n';
+                        // std::cout << std::bitset<64>(code.val) << '\n';
 
                         // pack all leaves into 32 bits
                         typedef uint32_t pack;
@@ -295,10 +295,10 @@ namespace DAG {
 
             // thread groups throughout the stages
             struct ThreadGroup {
-                uint32_t iLeadThread;
                 std::array<Octree*, 2> trees;
                 std::unique_ptr<std::atomic_bool> bPrepared;
                 std::unique_ptr<std::atomic_bool> bCompleted;
+                uint32_t iLeadThread;
             };
             struct Stage {
                 uint32_t groupSize; // threads per group
@@ -339,46 +339,48 @@ namespace DAG {
                         build_trie_whatnot(octrees[id], *pCur, *pNorm);
                     }
 
-                    // combine octree via multiple stages using thread groups
+                    // combine octrees via multiple stages using thread groups
                     uint32_t debugInt = 0;
                     for (uint32_t iStage = 0; iStage < stages.size(); iStage++) {
                         auto& stage = stages[iStage];
                         uint32_t iGrp = id / stage.groupSize;
                         auto& grp = stage.groups[iGrp];
-                        uint32_t idx = id % stage.groupSize; // group local index
 
                         if (grp.iLeadThread == id) { // leader thread
                             std::cout << debugInt++ << ": " << id << '\n';
                             
                             // wait for previous stage to finish
-                            if (iStage > 0) {
-                                stages[iStage - 1].groups[iGrp].bCompleted->wait(false);
-                            }
+                            if (iStage > 0) stages[iStage - 1].groups[iGrp].bCompleted->wait(false);
 
+                            // set up pointers for group trees
+                            grp.trees[0] = &octrees[id];
+                            grp.trees[1] = &octrees[id+1]; // DEBUG
+                            
                             // todo
-                            sleep(1);
+                            if (id == 0) { // DEBUG
+                                // in order to keep a balanced load, have N collisions per thread
+                                grp.trees[0]->find_collisions(*grp.trees[1], stage.groupSize);
+                            }
+                            // sleep(1);
 
                             // signal that this group thread is fully prepared
                             grp.bPrepared->store(true);
                             grp.bPrepared->notify_all();
                         }
-                        
                         grp.bPrepared->wait(false);
                         
                         // now we do the fun stuff
+                        // 2. iterate both trees to find a node where they can be "split"
+                        //      -> each thread will be responsible for a sub-portion
+                        // 3. nodes that are not found in the other tree can simply have the node pointer copied
+                        //      -> need to move node data block ownership to merged octree!
+                        // 4. profit
 
                         if (grp.iLeadThread == id) { // leader thread
                             // wait for all threads to finish, then signal completion
                             grp.bCompleted->store(true);
                             grp.bCompleted->notify_all();
                         }
-
-
-                        // 2. iterate both trees to find a node where they can be "split"
-                        //      -> each thread will be responsible for a sub-portion
-                        // 3. nodes that are not found in the other tree can simply have the node pointer copied
-                        //      -> need to move node data block ownership to merged octree!
-                        // 4. profit
                     }
                 });
                 progress += nElements;
@@ -599,25 +601,23 @@ namespace DAG {
             }
             measurements.clear();
 
-            size_t nUniques = 0;
-            size_t nDupes = 0;
-            size_t nBytes = 0;
-            for (size_t i = 0; i < uniques.size(); i++) {
-                // std::cout << "Level " << i << ": "
-                //     << dagLevels[i].data.size() * sizeof(uint32_t) << " bytes, "
-                //     << uniques[i] << " uniques, " << dupes[i] << " dupes\n";
-                nUniques += uniques[i];
-                nDupes += dupes[i];
-                nBytes += dagLevels[i].data.size() * sizeof(uint32_t);
-            }
-            // std::cout << "Memory footprint: " << nBytes << " bytes (" << (double)nBytes / 1'000'000 << " MB)\n";
-
-            // if (bLog) {
-            //     std::cout << "Total: " << nUniques << " uniques, " << nDupes << " dupes\n";
-            //     size_t pointsBytes = points.size() * sizeof(Eigen::Vector3f);
-            //     std::cout << "Pointcloud footprint: " << pointsBytes << " bytes (" << (double)pointsBytes / 1'000'000 << "MB)\n";
+            // size_t nUniques = 0;
+            // size_t nDupes = 0;
+            // size_t nBytes = 0;
+            // for (size_t i = 0; i < uniques.size(); i++) {
+            //     std::cout << "Level " << i << ": "
+            //         << dagLevels[i].data.size() * sizeof(uint32_t) << " bytes, "
+            //         << uniques[i] << " uniques, " << dupes[i] << " dupes\n";
+            //     nUniques += uniques[i];
+            //     nDupes += dupes[i];
+            //     nBytes += dagLevels[i].data.size() * sizeof(uint32_t);
             // }
-
+            // // std::cout << "Memory footprint: " << nBytes << " bytes (" << (double)nBytes / 1'000'000 << " MB)\n";
+            // std::cout << "Total: " << nUniques << " uniques, " << nDupes << " dupes\n";
+            // size_t pointsBytes = points.size() * sizeof(Eigen::Vector3f);
+            // std::cout << "Pointcloud footprint: " << pointsBytes << " bytes (" << (double)pointsBytes / 1'000'000 << "MB)\n";
+            
+            //// find the average of all points
             // Eigen::Vector3d acc = {0, 0, 0};
             // for (auto& point: points) {
             //     acc += point.cast<double>();
