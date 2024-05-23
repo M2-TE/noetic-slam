@@ -354,27 +354,19 @@ namespace DAG {
 
                             // set up pointers for group trees
                             grp.trees[0] = &octrees[id];
-                            grp.trees[1] = &octrees[id+1]; // DEBUG
+                            grp.trees[1] = &octrees[id + stage.groupSize/2];
                             
-                            // todo
-                            if (id == 0) { // DEBUG
-                                // in order to keep a balanced load, have N collisions per thread
-                                grp.trees[0]->find_collisions(*grp.trees[1], stage.groupSize);
-                            }
-                            // sleep(1);
+                            // in order to keep a balanced load, have N collisions per thread
+                            auto collisions = grp.trees[0]->find_collisions_and_merge_partial(*grp.trees[1], stage.groupSize);
+                            std::cout << debugInt-1 << ": Depth: " << collisions.second << " with " << collisions.first.size() << " collisions";
+                            std::cout << " (target: " << stage.groupSize << ")\n";
+                            sleep(1);
 
                             // signal that this group thread is fully prepared
                             grp.bPrepared->store(true);
                             grp.bPrepared->notify_all();
                         }
                         grp.bPrepared->wait(false);
-                        
-                        // now we do the fun stuff
-                        // 2. iterate both trees to find a node where they can be "split"
-                        //      -> each thread will be responsible for a sub-portion
-                        // 3. nodes that are not found in the other tree can simply have the node pointer copied
-                        //      -> need to move node data block ownership to merged octree!
-                        // 4. profit
 
                         if (grp.iLeadThread == id) { // leader thread
                             // wait for all threads to finish, then signal completion

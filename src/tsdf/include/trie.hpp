@@ -96,18 +96,21 @@ struct Octree {
         return pNode->leaves[index];
     }
 
-    std::pair<std::vector<Key>, uint32_t> find_collisions(Octree& other, uint32_t minCollisions) {
+    std::pair<std::vector<Key>, uint32_t> find_collisions_and_merge_partial(Octree& other, uint32_t minCollisions) {
         std::vector<Key> collisions;
+        std::map<Key, Node*> parentsA;
         std::map<Key, Node*> layerA, layerB;
-        uint32_t depth;
         uint32_t prevCollisions = 0;
+        uint32_t depth;
 
-        // todo: maybe already merge the missing nodes of these two? its a very quick op
+        // pass ownership of memory block from other octree to this one
+        mergedNodes.push_back(other.pNodes);
+        mergedNodes.insert(mergedNodes.begin(), other.mergedNodes.cbegin(), other.mergedNodes.cend());
 
         // find collisions until collision target is met
         for (depth = 1; depth < 63/3; depth++) {
             collisions.clear();
-            // get octree layers
+            // get node layers via root node
             if (depth == 1) {
                 // get the first layer after root for both trees
                 for (uint64_t i = 0; i < 8; i++) {
@@ -118,11 +121,10 @@ struct Octree {
                     if (pChild != nullptr) layerB[i << (63 - depth*3)] = pChild;
                 }
             }
+            // get node layers via prev layer nodes
             else {
                 // create new layers from the current one's children
                 decltype(layerA) newA;
-                decltype(layerB) newB;
-
                 for (auto& node: layerA) {
                     for (uint64_t i = 0; i < 8; i++) {
                         Node* pChild = node.second->children[i];
@@ -135,6 +137,7 @@ struct Octree {
                         }
                     }
                 }
+                decltype(layerB) newB;
                 for (auto& node: layerB) {
                     for (uint64_t i = 0; i < 8; i++) {
                         Node* pChild = node.second->children[i];
@@ -148,18 +151,48 @@ struct Octree {
                     }
                 }
                 // overwrite old layers
+                parentsA = std::move(layerA);
                 layerA = std::move(newA);
                 layerB = std::move(newB);
             }
-            // check for collisions, when both trees write to the same node
-            for (auto& node: layerA) {
-                if (layerB.contains(node.first)) {
-                    collisions.emplace_back(node.first);
+            // check for collisions
+            std::vector<Key> queuedRemovals;
+            for (auto& node: layerB) {
+                // on collision, save to vector
+                if (layerA.contains(node.first)) {
+                    collisions.push_back(node.first);
+                }
+                // when node is missing from main octree, simply give it the pointer
+                else {
+                    // get only last 3 bits for child index
+                    Key key = node.first >> (63 - depth*3);
+                    key &= 0b111;
+
+                    if (depth == 1) {
+                        // use pNode as parent
+                        pNodes->children[key] = node.second;
+                    }
+                    else {
+                        // scrape the last 3 bits off the key
+                        auto parentDepth = depth - 1;
+                        Key mask = (1ull << parentDepth*3) - 1;
+                        mask = mask << (63 - parentDepth*3);
+                        // use it to find parent and insert into its children
+                        Node* pParent = parentsA[node.first & mask];
+                        pParent->children[key] = node.second;
+                    }
+                    
+                    // queue node for removal (in the temp layerB)
+                    queuedRemovals.push_back(node.first);
                 }
             }
-            std::cout << layerA.size() << ' ' << layerB.size() << ' ';
-            std::cout << "Collisions: " << collisions.size();
-            std::cout << " (target: " << minCollisions << ")\n";
+
+            // remove already inserted keys from layerB
+            for (auto& key: queuedRemovals) layerB.erase(key);
+            if (layerB.empty()) {
+                std::cout << "Breaking out of merge early\n";
+                return { {}, 0 }; // no need for merging at all
+            }
 
             // only check for break condition if collision count has changed
             // compared to previous depth
@@ -169,7 +202,6 @@ struct Octree {
             }
             prevCollisions = collisions.size();
         }
-        std::cout << "Done. Depth: " << depth << '\n';
         return { collisions, depth };
     }
 
