@@ -1,5 +1,4 @@
 #pragma once
-
 #include <algorithm>
 #include <atomic>
 #include <execution>
@@ -363,10 +362,12 @@ namespace DAG {
                             // wait for all dependent groups to finish
                             if (iStage > 0) {
                                 auto& prevStage = stages[iStage - 1];
-                                auto& grpA = prevStage.groups[iGrp];
-                                auto& grpB = prevStage.groups[iGrp + 1];
+                                uint32_t iPrevGrp = id / prevStage.groupSize;
+                                auto& grpA = prevStage.groups[iPrevGrp];
+                                auto& grpB = prevStage.groups[iPrevGrp + 1];
+                                uint8_t res = 0;
                                 // wait for group A to be done
-                                auto res = grpA.nCompletedThreads->load();
+                                res = grpA.nCompletedThreads->load();
                                 while (res < prevStage.groupSize) {
                                     res = grpA.nCompletedThreads->load();
                                 }
@@ -389,15 +390,11 @@ namespace DAG {
                             grp.bPrepared->notify_all();
                         }
                         grp.bPrepared->wait(false);
-
                         // resolve assigned collisions
-                        if (grp.collisions.size() > 0) {
-                            std::vector<Octree::Key> collisions;
-                            // TODO: need to assign all collisions to the threads
-                            // basically necessary when nCollisions > nThreadPerBlock
-                            // DONT FORGET TO DO THE ACTUAL SIGNED DISTANCE COMP FUNC!
-                            collisions.push_back(grp.collisions[iLocal]);
-                            grp.trees[0]->resolve_collisions(*grp.trees[1], collisions, grp.collisionDepth);
+                        uint32_t colIndex = iLocal;
+                        while (colIndex < grp.collisions.size()) {
+                            grp.trees[0]->resolve_collisions(*grp.trees[1], grp.collisions[colIndex], grp.collisionDepth);
+                            colIndex += stage.groupSize;
                         }
                         // increment completion atomic
                         (*grp.nCompletedThreads)++;
@@ -410,7 +407,7 @@ namespace DAG {
             end = std::chrono::steady_clock::now();
             dur = std::chrono::duration<double, std::milli> (end - beg).count();
             measurements.emplace_back(dur, "trie mrge");
-            // return octrees[0];
+            return octrees[0];
         }
         auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) {
             auto beg = std::chrono::steady_clock::now();
@@ -494,13 +491,13 @@ namespace DAG {
             measurements.emplace_back(dur, "trie ctor");
             return trie;
         }
-        uint32_t create_leaf_node(Trie::Node* pNode) {
+        uint32_t create_leaf_node(Octree::Node* pNode) {
             // construct a DAG node
             Node<8> newNode = {};
             size_t nClusters = 0;
             // go over all children
             for (ChildMask i = 0; i < 8; i++) {
-                auto cluster = pNode->leafClusters[i];
+                auto cluster = pNode->leaves[i];
                 if (cluster == Trie::defVal) continue;
                 // add to node and insert into mask
                 newNode.children[nClusters++] = cluster;
@@ -553,9 +550,13 @@ namespace DAG {
             auto full_beg = std::chrono::steady_clock::now();
             Pose pose = { position, rotation };
             auto normals = get_normals(pose, points);
-            get_trie2(points, normals);
-            auto trie = get_trie(points, normals);
+            auto trie = get_trie2(points, normals);
+            // auto trie = get_trie(points, normals);
             auto beg = std::chrono::steady_clock::now();
+
+            // TODO: REWORK ALL THIS.
+            // it is based on the assumption that Trie has a default value in leaves
+            // also the iteration really sucks in this one. do something similar to octree merge!
 
             // keep track of path
             struct Layer {
@@ -563,44 +564,44 @@ namespace DAG {
                 size_t index = 0;
             };
             std::array<Layer, nDagLevels> cache;
-            std::array<Trie::Node*, nDagLevels - 1> path;
+            std::array<Octree::Node*, nDagLevels - 1> path;
             size_t depth = 0;
-            path[depth] = trie.get_root();
-            do {
-                auto& cacheIndex = cache[depth].index;
-                auto& cacheNodes = cache[depth].nodeIndices;
-                while (true) {
-                    // retrace to parent when all children were checked
-                    if (cacheIndex == 8) {
-                        // create normal node
-                        uint32_t node = create_normal_node(cacheNodes, depth);
-                        // reset cache for this level
-                        cacheIndex = 0;
-                        // go up by one level
-                        depth--;
-                        // update parent level
-                        auto& parentLevel = cache[depth];
-                        parentLevel.nodeIndices[parentLevel.index++] = node;
-                        break;
-                    }
+            // path[depth] = trie.pNodes;
+            // do {
+            //     auto& cacheIndex = cache[depth].index;
+            //     auto& cacheNodes = cache[depth].nodeIndices;
+            //     while (true) {
+            //         // retrace to parent when all children were checked
+            //         if (cacheIndex == 8) {
+            //             // create normal node
+            //             uint32_t node = create_normal_node(cacheNodes, depth);
+            //             // reset cache for this level
+            //             cacheIndex = 0;
+            //             // go up by one level
+            //             depth--;
+            //             // update parent level
+            //             auto& parentLevel = cache[depth];
+            //             parentLevel.nodeIndices[parentLevel.index++] = node;
+            //             break;
+            //         }
 
-                    // child invalid: invalidate cache entry
-                    auto* pChild = path[depth]->children[cacheIndex];
-                    if (pChild == (Trie::Node*)Trie::defVal) {
-                        cacheNodes[cacheIndex++] = 0;
-                    }
-                    // child leaf: create new leaf node
-                    else if (depth == nDagLevels - 2) {
-                        cacheNodes[cacheIndex++] = create_leaf_node(pChild);
-                    }
-                    // child normal: go to child node
-                    else {
-                        path[++depth] = pChild;
-                        break;
-                    }
-                }
-            }
-            while (depth > 0);
+            //         // child invalid: invalidate cache entry
+            //         auto* pChild = path[depth]->children[cacheIndex];
+            //         if (pChild == nullptr) {
+            //             cacheNodes[cacheIndex++] = 0;
+            //         }
+            //         // child leaf: create new leaf node
+            //         else if (depth == nDagLevels - 2) {
+            //             cacheNodes[cacheIndex++] = create_leaf_node(pChild);
+            //         }
+            //         // child normal: go to child node
+            //         else {
+            //             path[++depth] = pChild;
+            //             break;
+            //         }
+            //     }
+            // }
+            // while (depth > 0);
             auto end = std::chrono::steady_clock::now();
             auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
             measurements.emplace_back(dur, "trie iter");

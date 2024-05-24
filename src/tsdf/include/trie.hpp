@@ -22,7 +22,34 @@ struct Octree {
         std::array<Node*, 63/3> nodes;
         Key key;
     };
-
+    Octree& operator=(Octree& other) = delete;
+    Octree& operator=(Octree&& other) = delete;
+    Octree(Octree& other) {
+        pNodes = other.pNodes;
+        mergedNodes = other.mergedNodes;
+        nNodes = other.nNodes;
+        nCapacity = other.nCapacity;
+        // init path cache
+        cache.key = 0;
+        cache.nodes.back() = pNodes;
+        // clear out relevant data from other octree
+        other.pNodes = nullptr;
+        other.bOwnsRoot = false;
+        other.mergedNodes.clear();
+    }
+    Octree(Octree&& other) {
+        pNodes = other.pNodes;
+        mergedNodes = other.mergedNodes;
+        nNodes = other.nNodes;
+        nCapacity = other.nCapacity;
+        // init path cache
+        cache.key = 0;
+        cache.nodes.back() = pNodes;
+        // clear out relevant data from other octree
+        other.pNodes = nullptr;
+        other.bOwnsRoot = false;
+        other.mergedNodes.clear();
+    }
     Octree(uint32_t nMaxCapacity): nCapacity(nMaxCapacity) {
         // assume posix
         static_assert(__unix__);
@@ -36,12 +63,15 @@ struct Octree {
         // create root node (push onto mem of first thread)
         std::memset(pNodes, 0, sizeof(Node));
         nNodes++;
-        // create dummy node to fill path cache
+        // init path cache
         cache.key = 0;
         cache.nodes.back() = pNodes;
     }
     ~Octree() {
+        if (!bOwnsRoot) return;
         free(pNodes);
+        for (Node* root: mergedNodes) free(root);
+        // std::cout << mergedNodes.size() << '\n';
     }
 
     Leaf& find_deprecated(Key key) {
@@ -108,6 +138,12 @@ struct Octree {
         return pNode;
     }
 
+    void temp_merge_function(Node* pA, Node* pB) {
+        // TODO:
+        // compare the contents of the two nodes' children
+        // of each child, compare the 4/8 bit parts that represent signed distances
+    }
+
     std::pair<std::vector<Key>, uint32_t> find_collisions_and_merge(Octree& other, uint32_t minCollisions) {
         std::vector<Key> collisions;
         std::map<Key, Node*> parentsA;
@@ -117,7 +153,8 @@ struct Octree {
 
         // pass ownership of memory block from other octree to this one
         mergedNodes.push_back(other.pNodes);
-        mergedNodes.insert(mergedNodes.begin(), other.mergedNodes.cbegin(), other.mergedNodes.cend());
+        other.bOwnsRoot = false;
+        mergedNodes.insert(mergedNodes.end(), other.mergedNodes.cbegin(), other.mergedNodes.cend());
 
         // find collisions until collision target is met
         for (depth = 1; depth < 63/3; depth++) {
@@ -218,55 +255,52 @@ struct Octree {
         }
         return { collisions, depth };
     }
-    void resolve_collisions(Octree& other, std::vector<Key>& collisions, uint32_t depth) {
+    void resolve_collisions(Octree& other, Key key, uint32_t depth) {
         uint32_t pathLength = 63/3 - depth;
         uint32_t leafDepth = pathLength - 1;
         std::vector<uint8_t> path(pathLength);
         std::vector<Node*> nodesA(pathLength);
         std::vector<Node*> nodesB(pathLength);
 
-        for (Key key: collisions) {
-            path[0] = 0;
-            nodesA[0] = find_node(key, depth);
-            nodesB[0] = other.find_node(key, depth);
-            uint32_t pathDepth = 0;
+        path[0] = 0;
+        nodesA[0] = find_node(key, depth);
+        nodesB[0] = other.find_node(key, depth);
+        uint32_t pathDepth = 0;
 
-            // begin traversal
-            while (path[0] <= 8) {
-                auto iChild = path[pathDepth]++;
-                if (iChild >= 8) {
-                    // go back up to parent
-                    pathDepth--;
-                    continue;
-                }
-                // A
-                Node* pParentA = nodesA[pathDepth];
-                Node* pA = pParentA->children[iChild];
-                // B
-                Node* pParentB = nodesB[pathDepth];
-                Node* pB = pParentB->children[iChild];
-                
-                if (pA != nullptr) {
-                    // if this node is missing from B, simply skip it
-                    if (pB == nullptr) continue;
+        // begin traversal
+        while (path[0] <= 8) {
+            auto iChild = path[pathDepth]++;
+            if (iChild >= 8) {
+                // go back up to parent
+                pathDepth--;
+                continue;
+            }
+            // A
+            Node* pParentA = nodesA[pathDepth];
+            Node* pA = pParentA->children[iChild];
+            // B
+            Node* pParentB = nodesB[pathDepth];
+            Node* pB = pParentB->children[iChild];
+            
+            if (pA != nullptr) {
+                // if this node is missing from B, simply skip it
+                if (pB == nullptr) continue;
 
-                    if (pathDepth >= leafDepth) {
-                        // leaf reached
-                        // std::cout << pathDepth << " LEAF REACHED\n";
-                        // TODO: some kinda merge funtion
-                    }
-                    else {
-                        // walk down path
-                        pathDepth++;
-                        path[pathDepth] = 0;
-                        nodesA[pathDepth] = pA;
-                        nodesB[pathDepth] = pB;
-                    }
+                if (pathDepth >= leafDepth) {
+                    // leaf reached
+                    temp_merge_function(pA, pB);
                 }
-                else if (pB != nullptr) {
-                    // if this node is missing from A, add it
-                    pParentA->children[iChild] = pB;
+                else {
+                    // walk down path
+                    pathDepth++;
+                    path[pathDepth] = 0;
+                    nodesA[pathDepth] = pA;
+                    nodesB[pathDepth] = pB;
                 }
+            }
+            else if (pB != nullptr) {
+                // if this node is missing from A, add it
+                pParentA->children[iChild] = pB;
             }
         }
     }
@@ -284,6 +318,7 @@ struct Octree {
     }
 
     Node* pNodes = nullptr;
+    bool bOwnsRoot = true;
     std::vector<Node*> mergedNodes;
     uint_fast32_t nNodes = 0;
     uint_fast32_t nCapacity = 0;
