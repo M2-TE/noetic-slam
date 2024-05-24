@@ -5,6 +5,7 @@
 #include <execution>
 #include <iostream>
 #include <memory>
+#include <semaphore>
 #include <set>
 #include <unistd.h>
 #include <vector>
@@ -143,7 +144,7 @@ namespace DAG {
 
             auto end = std::chrono::steady_clock::now();
             auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-            measurements.emplace_back(dur, "sorting");
+            measurements.emplace_back(dur, "norm sort");
             beg = std::chrono::steady_clock::now();
             
             // set up threads
@@ -204,7 +205,7 @@ namespace DAG {
 
             end = std::chrono::steady_clock::now();
             dur = std::chrono::duration<double, std::milli> (end - beg).count();
-            measurements.emplace_back(dur, "normals");
+            measurements.emplace_back(dur, "norm calc");
             return normals;
         }
         static auto build_trie_whatnot(Octree& octree, const Eigen::Vector3f inputPos, const Eigen::Vector3f& inputNorm) {
@@ -295,10 +296,12 @@ namespace DAG {
 
             // thread groups throughout the stages
             struct ThreadGroup {
-                std::array<Octree*, 2> trees;
+                std::unique_ptr<std::atomic_uint8_t> nCompletedThreads;
                 std::unique_ptr<std::atomic_bool> bPrepared;
-                std::unique_ptr<std::atomic_bool> bCompleted;
+                std::vector<Octree::Key> collisions;
+                std::array<Octree*, 2> trees;
                 uint32_t iLeadThread;
+                uint32_t collisionDepth;
             };
             struct Stage {
                 uint32_t groupSize; // threads per group
@@ -321,7 +324,7 @@ namespace DAG {
                     auto& grp = stage.groups[iGrp];
                     grp.iLeadThread = iGrp * stage.groupSize;
                     grp.bPrepared = std::make_unique<std::atomic_bool>(false);
-                    grp.bCompleted = std::make_unique<std::atomic_bool>(false);
+                    grp.nCompletedThreads = std::make_unique<std::atomic_uint8_t>(0);
                 }
             }
             size_t progress = 0;
@@ -329,38 +332,57 @@ namespace DAG {
                 size_t nElements = points.size() / nThreads;
                 if (id == nThreads - 1) nElements = 0; // special value for final thread to read the rest
                 octrees.emplace_back(100'000); // hardcoded for now
-                threads.emplace_back([&points, &normals, &octrees, &stages, id, progress, nElements](){
+                threads.emplace_back([&points, &normals, &octrees, id, progress, nElements](){
                     auto pCur = points.cbegin() + progress;
                     auto pEnd = (nElements == 0) ? (points.cend()) : (pCur + nElements);
                     auto pNorm = normals.cbegin() + progress;
-                    
                     // build one octree per thread
                     for (; pCur != pEnd; pCur++) {
                         build_trie_whatnot(octrees[id], *pCur, *pNorm);
                     }
+                });
+                progress += nElements;
+            }
+            // join all threads
+            threads.clear();
+            auto end = std::chrono::steady_clock::now();
+            auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+            measurements.emplace_back(dur, "trie ctor");
 
+            beg = std::chrono::steady_clock::now();
+            for (size_t id = 0; id < nThreads; id++) {
+                threads.emplace_back([&octrees, &stages, id]() {
                     // combine octrees via multiple stages using thread groups
-                    uint32_t debugInt = 0;
                     for (uint32_t iStage = 0; iStage < stages.size(); iStage++) {
                         auto& stage = stages[iStage];
                         uint32_t iGrp = id / stage.groupSize;
+                        uint32_t iLocal = id % stage.groupSize; // block-local index
                         auto& grp = stage.groups[iGrp];
 
                         if (grp.iLeadThread == id) { // leader thread
-                            std::cout << debugInt++ << ": " << id << '\n';
-                            
-                            // wait for previous stage to finish
-                            if (iStage > 0) stages[iStage - 1].groups[iGrp].bCompleted->wait(false);
-
+                            // wait for all dependent groups to finish
+                            if (iStage > 0) {
+                                auto& prevStage = stages[iStage - 1];
+                                auto& grpA = prevStage.groups[iGrp];
+                                auto& grpB = prevStage.groups[iGrp + 1];
+                                // wait for group A to be done
+                                auto res = grpA.nCompletedThreads->load();
+                                while (res < prevStage.groupSize) {
+                                    res = grpA.nCompletedThreads->load();
+                                }
+                                // wait for group B to be done
+                                res = grpB.nCompletedThreads->load();
+                                while (res < prevStage.groupSize) {
+                                    res = grpB.nCompletedThreads->load();
+                                }
+                            }
                             // set up pointers for group trees
                             grp.trees[0] = &octrees[id];
                             grp.trees[1] = &octrees[id + stage.groupSize/2];
                             
                             // in order to keep a balanced load, have N collisions per thread
-                            auto collisions = grp.trees[0]->find_collisions_and_merge_partial(*grp.trees[1], stage.groupSize);
-                            std::cout << debugInt-1 << ": Depth: " << collisions.second << " with " << collisions.first.size() << " collisions";
-                            std::cout << " (target: " << stage.groupSize << ")\n";
-                            sleep(1);
+                            uint32_t nTargetCollisions = stage.groupSize;
+                            std::tie(grp.collisions, grp.collisionDepth) = grp.trees[0]->find_collisions_and_merge(*grp.trees[1], nTargetCollisions);
 
                             // signal that this group thread is fully prepared
                             grp.bPrepared->store(true);
@@ -368,22 +390,27 @@ namespace DAG {
                         }
                         grp.bPrepared->wait(false);
 
-                        if (grp.iLeadThread == id) { // leader thread
-                            // wait for all threads to finish, then signal completion
-                            grp.bCompleted->store(true);
-                            grp.bCompleted->notify_all();
+                        // resolve assigned collisions
+                        if (grp.collisions.size() > 0) {
+                            std::vector<Octree::Key> collisions;
+                            // TODO: need to assign all collisions to the threads
+                            // basically necessary when nCollisions > nThreadPerBlock
+                            // DONT FORGET TO DO THE ACTUAL SIGNED DISTANCE COMP FUNC!
+                            collisions.push_back(grp.collisions[iLocal]);
+                            grp.trees[0]->resolve_collisions(*grp.trees[1], collisions, grp.collisionDepth);
                         }
+                        // increment completion atomic
+                        (*grp.nCompletedThreads)++;
                     }
                 });
-                progress += nElements;
             }
-
             // join threads
             threads.clear();
             
-            auto end = std::chrono::steady_clock::now();
-            auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-            measurements.emplace_back(dur, "trie ctor");
+            end = std::chrono::steady_clock::now();
+            dur = std::chrono::duration<double, std::milli> (end - beg).count();
+            measurements.emplace_back(dur, "trie mrge");
+            // return octrees[0];
         }
         auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) {
             auto beg = std::chrono::steady_clock::now();

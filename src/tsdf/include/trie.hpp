@@ -95,8 +95,20 @@ struct Octree {
         auto index = (key >> rDepth * 3) & 0b111;
         return pNode->leaves[index];
     }
+    Node* find_node(Key key, uint32_t targetDepth) {
+        uint32_t depth = 0;
+        Node* pNode = pNodes;
 
-    std::pair<std::vector<Key>, uint32_t> find_collisions_and_merge_partial(Octree& other, uint32_t minCollisions) {
+        // no need to insert or check for validity
+        while (depth < targetDepth) {
+            Key index = (key >> (60 - depth*3)) & 0b111;
+            pNode = pNode->children[index];
+            depth++;
+        }
+        return pNode;
+    }
+
+    std::pair<std::vector<Key>, uint32_t> find_collisions_and_merge(Octree& other, uint32_t minCollisions) {
         std::vector<Key> collisions;
         std::map<Key, Node*> parentsA;
         std::map<Key, Node*> layerA, layerB;
@@ -199,10 +211,64 @@ struct Octree {
             if (depth > 1 && collisions.size() != prevCollisions) {
                 // break if collision target is met
                 if (collisions.size() >= minCollisions) break;
+                // also break if the number of collisions is shrinking before reaching target
+                if (collisions.size() < prevCollisions) break;
             }
             prevCollisions = collisions.size();
         }
         return { collisions, depth };
+    }
+    void resolve_collisions(Octree& other, std::vector<Key>& collisions, uint32_t depth) {
+        uint32_t pathLength = 63/3 - depth;
+        uint32_t leafDepth = pathLength - 1;
+        std::vector<uint8_t> path(pathLength);
+        std::vector<Node*> nodesA(pathLength);
+        std::vector<Node*> nodesB(pathLength);
+
+        for (Key key: collisions) {
+            path[0] = 0;
+            nodesA[0] = find_node(key, depth);
+            nodesB[0] = other.find_node(key, depth);
+            uint32_t pathDepth = 0;
+
+            // begin traversal
+            while (path[0] <= 8) {
+                auto iChild = path[pathDepth]++;
+                if (iChild >= 8) {
+                    // go back up to parent
+                    pathDepth--;
+                    continue;
+                }
+                // A
+                Node* pParentA = nodesA[pathDepth];
+                Node* pA = pParentA->children[iChild];
+                // B
+                Node* pParentB = nodesB[pathDepth];
+                Node* pB = pParentB->children[iChild];
+                
+                if (pA != nullptr) {
+                    // if this node is missing from B, simply skip it
+                    if (pB == nullptr) continue;
+
+                    if (pathDepth >= leafDepth) {
+                        // leaf reached
+                        // std::cout << pathDepth << " LEAF REACHED\n";
+                        // TODO: some kinda merge funtion
+                    }
+                    else {
+                        // walk down path
+                        pathDepth++;
+                        path[pathDepth] = 0;
+                        nodesA[pathDepth] = pA;
+                        nodesB[pathDepth] = pB;
+                    }
+                }
+                else if (pB != nullptr) {
+                    // if this node is missing from A, add it
+                    pParentA->children[iChild] = pB;
+                }
+            }
+        }
     }
 
     inline auto leading_zeroes(unsigned long v) { return __builtin_clzl(v); }
