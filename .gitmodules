@@ -10,6 +10,3 @@
 [submodule "src/tsdf/ext/morton-nd"]
 	path = src/tsdf/ext/morton-nd
 	url = https://github.com/morton-nd/morton-nd.git
-[submodule "src/vdbfusion"]
-	path = src/vdbfusion
-	url = https://github.com/PRBonn/vdbfusion_ros.git
