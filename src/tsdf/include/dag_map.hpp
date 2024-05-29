@@ -247,12 +247,9 @@ namespace DAG {
                         typedef uint32_t pack;
                         pack packedLeaves = 0;
                         for (auto i = 0; i < 8; i++) {
-                            float sd = leaves[i];
-                            // normalize between -1.0 and 1.0 (not yet clamped)
-
                             // todo: sd max should be turned into a parameter
                             constexpr double sdMax = leafResolution * 2; // max range of 2 voxels
-                            float sdNormalized = sd * (1.0 / sdMax); // normalize signed distance (not clipped between -1 and 1)
+                            float sdNormalized = leaves[i] * (1.0 / sdMax); // normalize signed distance (not clipped between -1 and 1)
                             constexpr size_t nBits = 4; // 1b sign, 3b data
                             constexpr float range = (float)(1 << (nBits-2));
                             float sdScaled = sdNormalized * range;
@@ -262,34 +259,10 @@ namespace DAG {
                             // add offset such that values are represented linearly
                             // 0 = -range, 8 = +range (both of these should be seen as "too far away" and discarded)
                             uint8_t sdScaledUint = (uint8_t)(sdScaledInt + (int8_t)range);
-                            // DEBUG
-                            std::cout << "Signed Distance: " << sd << ' ' << sdScaled;
-                            std::cout << " as int: " << (int32_t)sdScaledInt << " as uint: " << (uint32_t)sdScaledUint << '\n';
-
-
-                            // TODO
-                            constexpr pack sdBits = 4;
-                            constexpr pack sdMask = (1 << (sdBits - 1)) - 1;
-                            constexpr float sdConv = static_cast<float>(sdMask);
-                            // expand for int conversion
-                            sd = sd * (1.0/sdMax);
-                            sd = sd * sdConv;
-                            // convert absolute value, copy sign manually
-                            pack sdInt = static_cast<int>(std::abs(sd));
-                            pack signBit = std::signbit(sd) << (sdBits - 1);
-                            sdInt |= signBit;
+                            // pack the 4 bits of this value into the leaf cluster
+                            packedLeaves |= sdScaledUint << i*4;
                             
-                            // check if signed distance is smaller than saved one
-                            if (cluster != 0) {
-                                    // 0 is default (unwritten) value in trie
-                                    // 0 is also largest negative signed distance
-                                constexpr pack mask = (1 << sdBits) - 1;
-                                // extract relevant portion
-                                pack part = (cluster >> i * sdBits) & mask;
-                                // < comparison works if treating sign bit as data
-                                if (part < sdInt) sdInt = part;
-                            }
-                            packedLeaves |= sdInt << i * sdBits;
+                            // TODO: compare to current value of cluster, if it is NOT 0!
                         }
                         cluster = packedLeaves;
                         std::cout << '\n';
