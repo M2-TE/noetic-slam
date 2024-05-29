@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <atomic>
 #include <execution>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <semaphore>
@@ -149,7 +150,7 @@ namespace DAG {
             std::vector<std::jthread> threads;
             size_t nThreads = std::jthread::hardware_concurrency();
             threads.reserve(nThreads);
-            std::cout << "Using " << nThreads << " threads for normal calc\n";
+            // std::cout << "Using " << nThreads << " threads for normal calc\n";
 
             // estimate normals based on nearest morton code neighbours
             size_t progress = 0;
@@ -291,7 +292,7 @@ namespace DAG {
             // round threads down to nearest power of two
             uint32_t lz = __builtin_clz(std::jthread::hardware_concurrency());
             size_t nThreads = 1 << (32 - lz - 1);
-            std::cout << "Using " << nThreads << " threads for trie ctor\n";
+            // std::cout << "Using " << nThreads << " threads for trie ctor\n";
             std::vector<std::jthread> threads;
             threads.reserve(nThreads);
             std::vector<Octree> octrees;
@@ -563,14 +564,16 @@ namespace DAG {
             if (true) {
                 std::vector<double> times;
                 std::vector<std::string> labels;
+                std::cout << std::setprecision(2);
                 for (auto& pair: measurements) {
-                    std::cout << pair.second << " " << pair.first << "ms\n";
+                    // std::cout << pair.second << " " << pair.first << " ms\n";
+                    std::cout << pair.first << '\t';
                     if (pair.second == "FULL") continue;
                     times.push_back(pair.first);
                     labels.push_back(pair.second);
                 }
-                // matplot::pie(times, labels);
-                // matplot::save("/root/repo/test2.jpg");
+                std::cout << std::setprecision(6);
+                std::cout << "\n";
             }
             measurements.clear();
 

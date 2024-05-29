@@ -30,8 +30,8 @@
 class TSDF_Node {
 public:
     TSDF_Node(ros::NodeHandle nh) {
-        // subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
-        subPcl = nh.subscribe("/camera/depth_registered/points", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
+        subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
+        // subPcl = nh.subscribe("/camera/depth_registered/points", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
 
         // generate random point data
         std::vector<Eigen::Vector3f> points(100'000);
@@ -42,7 +42,7 @@ public:
         // insert into tsdf DAG
         Eigen::Vector3f position = {};
         Eigen::Quaternionf rotation = {};
-        for (size_t i = 0; i < 10; i++) {
+        for (size_t i = 0; i < 100; i++) {
             for (auto& point: points) {
                 point = {
                     dis(gen),
@@ -92,18 +92,18 @@ public:
         for (auto cur = pointcloud.begin(); cur != pointcloud.end(); cur++) {
             points.emplace_back(cur->getVector3fMap());
         }
+        pointcloud.clear();
 
         auto now = std::chrono::steady_clock::now();
-        std::cout << pointcloud.size() << " points with a window of ";
-        pointcloud.clear();
-        std::cout << std::chrono::duration<double, std::milli>(now - prev).count() << " ms" << std::endl;
+        // std::cout << pointcloud.size() << " points with a window of ";
+        // std::cout << std::chrono::duration<double, std::milli>(now - prev).count() << " ms" << std::endl;
         prev = now;
 
         // insert into tsdf DAG
         Eigen::Vector3f position = {};
         Eigen::Quaternionf rotation = {};
         // auto start = std::chrono::steady_clock::now();
-        // dagMap.insert_scan(position, rotation, points);
+        dagMap.insert_scan(position, rotation, points);
         // auto end = std::chrono::steady_clock::now();
         // std::cout << std::chrono::duration<double, std::milli>(end - start).count() << " ms" << std::endl;
         // exit(0);
