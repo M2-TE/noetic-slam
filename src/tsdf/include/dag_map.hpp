@@ -19,7 +19,6 @@
 #include <parallel_hashmap/phmap.h>
 #include <parallel_hashmap/btree.h>
 #include <morton-nd/mortonND_BMI2.h>
-#include <boost/math/ccmath/ccmath.hpp>
 //
 #include "dag_structs.hpp"
 #include "trie.hpp"
@@ -221,6 +220,10 @@ namespace DAG {
                         // actual floating position of cluster
                         Eigen::Vector3f fPos = cPos.cast<float>() * 2.0f * leafResolution;
 
+                        MortonCode code(cPos);
+                        // auto& cluster = octree.find(code.val);
+                        auto& cluster = octree.find_cached(code.val);
+
                         // offsets of leaves within
                         std::array<float, 8> leaves;
                         auto pLeaf = leaves.begin();
@@ -231,33 +234,45 @@ namespace DAG {
                                     Eigen::Vector3f offset = Eigen::Vector3f(xl, yl, zl) * leafResolution;
                                     Eigen::Vector3f lPos = fPos + offset;
                                     *pLeaf = inputNorm.dot(inputPos - lPos);
+                                    // std::cout << inputPos.x() << ' ' << inputPos.y() << ' ' << inputPos.z() << '\n';
+                                    // std::cout << lPos.x() << ' ' << lPos.y() << ' ' << lPos.z() << "\n";
+                                    // std::cout << *pLeaf << "\n\n";
                                     pLeaf++;
                                 }
                             }
                         }
 
-                        // sd max should be turned into a parameter
-                        double sdMax = std::sqrt(3.0*3.0*3.0) * leafResolution;
-                        float sdMaxRecip = 1.0 / sdMax;
-
-                        MortonCode code(cPos);
-                        // auto& cluster = octree.find(code.val);
-                        auto& cluster = octree.find_cached(code.val);
-                        // std::cout << cPos.x() << ' ' << cPos.y() << ' ' << cPos.z() << '\n';
-                        // std::cout << std::bitset<64>(code.val) << '\n';
 
                         // pack all leaves into 32 bits
                         typedef uint32_t pack;
                         pack packedLeaves = 0;
-                        for (auto i = 0; i < leaves.size(); i++) {
+                        for (auto i = 0; i < 8; i++) {
                             float sd = leaves[i];
                             // normalize between -1.0 and 1.0 (not yet clamped)
-                            sd = sd * sdMaxRecip;
 
+                            // todo: sd max should be turned into a parameter
+                            constexpr double sdMax = leafResolution * 2; // max range of 2 voxels
+                            float sdNormalized = sd * (1.0 / sdMax); // normalize signed distance (not clipped between -1 and 1)
+                            constexpr size_t nBits = 4; // 1b sign, 3b data
+                            constexpr float range = (float)(1 << (nBits-2));
+                            float sdScaled = sdNormalized * range;
+                            // cast to 8-bit integer and clamp between given range
+                            int8_t sdScaledInt = (int8_t)sdScaled;
+                            sdScaledInt = std::clamp<int8_t>(sdScaledInt, -range, range);
+                            // add offset such that values are represented linearly
+                            // 0 = -range, 8 = +range (both of these should be seen as "too far away" and discarded)
+                            uint8_t sdScaledUint = (uint8_t)(sdScaledInt + (int8_t)range);
+                            // DEBUG
+                            std::cout << "Signed Distance: " << sd << ' ' << sdScaled;
+                            std::cout << " as int: " << (int32_t)sdScaledInt << " as uint: " << (uint32_t)sdScaledUint << '\n';
+
+
+                            // TODO
                             constexpr pack sdBits = 4;
                             constexpr pack sdMask = (1 << (sdBits - 1)) - 1;
                             constexpr float sdConv = static_cast<float>(sdMask);
                             // expand for int conversion
+                            sd = sd * (1.0/sdMax);
                             sd = sd * sdConv;
                             // convert absolute value, copy sign manually
                             pack sdInt = static_cast<int>(std::abs(sd));
@@ -277,6 +292,7 @@ namespace DAG {
                             packedLeaves |= sdInt << i * sdBits;
                         }
                         cluster = packedLeaves;
+                        std::cout << '\n';
                     }
                 }
             }
@@ -337,11 +353,13 @@ namespace DAG {
                     auto pNorm = normals.cbegin() + progress;
                     // build one octree per thread
                     for (; pCur != pEnd; pCur++) {
+                        if (id != 0) continue;
                         build_trie_whatnot(octrees[id], *pCur, *pNorm);
                     }
                 });
                 progress += nElements;
             }
+            exit(0);
             // join all threads
             threads.clear();
             auto end = std::chrono::steady_clock::now();
@@ -393,7 +411,20 @@ namespace DAG {
                         // resolve assigned collisions
                         uint32_t colIndex = iLocal;
                         while (colIndex < grp.collisions.size()) {
-                            grp.trees[0]->resolve_collisions(*grp.trees[1], grp.collisions[colIndex], grp.collisionDepth);
+                            grp.trees[0]->resolve_collisions(*grp.trees[1], grp.collisions[colIndex], grp.collisionDepth, 
+                                [](Octree::Node* pA, Octree::Node* pB) {
+                                // compare two nodes a and b during collision
+                                // merge results into node a
+
+                                // iterate over every leaf cluster
+                                for (uint32_t i = 0; i < 8; i++) {
+                                    auto& leafA = pA->leaves[i];
+                                    auto& leafB = pB->leaves[i];
+                                    
+                                    // TODO
+                                    leafA = leafB; // DEBUG
+                                }
+                            });
                             colIndex += stage.groupSize;
                         }
                         // increment completion atomic

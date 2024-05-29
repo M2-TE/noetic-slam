@@ -138,12 +138,6 @@ struct Octree {
         return pNode;
     }
 
-    void temp_merge_function(Node* pA, Node* pB) {
-        // TODO:
-        // compare the contents of the two nodes' children
-        // of each child, compare the 4/8 bit parts that represent signed distances
-    }
-
     std::pair<std::vector<Key>, uint32_t> find_collisions_and_merge(Octree& other, uint32_t minCollisions) {
         std::vector<Key> collisions;
         std::map<Key, Node*> parentsA;
@@ -255,9 +249,9 @@ struct Octree {
         }
         return { collisions, depth };
     }
-    void resolve_collisions(Octree& other, Key key, uint32_t depth) {
+    void resolve_collisions(Octree& other, Key key, uint32_t depth, void(*resolver)(Node*,Node*)) {
         uint32_t pathLength = 63/3 - depth;
-        uint32_t leafDepth = pathLength - 1;
+        uint32_t leafDepth = pathLength - 2;
         std::vector<uint8_t> path(pathLength);
         std::vector<Node*> nodesA(pathLength);
         std::vector<Node*> nodesB(pathLength);
@@ -288,7 +282,7 @@ struct Octree {
 
                 if (pathDepth >= leafDepth) {
                     // leaf reached
-                    temp_merge_function(pA, pB);
+                    resolver(pA, pB);
                 }
                 else {
                     // walk down path

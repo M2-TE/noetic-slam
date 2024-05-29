@@ -17,9 +17,8 @@ RUN apt-get install -y ros-noetic-rviz libeigen3-dev libjsoncpp-dev libspdlog-de
 RUN apt-get install -y libomp-dev libpcl-dev
 # extra utils
 RUN apt-get install -y iputils-ping gnuplot
-# fonts
-RUN echo ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true | debconf-set-selections 
-RUN apt-get install -y ttf-mscorefonts-installer
+RUN apt-get install -y libboost-dev libboost-iostreams-dev libboost-system-dev libboost-system-dev
+RUN apt-get install -y libtbb-dev
 
 # Use gcc-11 instead of standard gcc-9
 RUN apt-get install -y software-properties-common
@@ -28,24 +27,29 @@ RUN apt-get install -y gcc-11 g++-11
 ENV CXX "/usr/bin/g++-11"
 ENV CC "/usr/bin/gcc-11"
 
+RUN git clone --depth 1 https://github.com/rui314/mold.git -b stable
+RUN cd mold && ./install-build-deps.sh
+RUN cd mold && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-11 -B build
+RUN cd mold && cmake --build build -j$(nproc) && sudo cmake --build build --target install
+
 # Boost 1.84.0
 RUN apt-get install -y wget
 RUN wget https://boostorg.jfrog.io/artifactory/main/release/1.84.0/source/boost_1_84_0.tar.gz
 RUN tar -xf boost_1_84_0.tar.gz
-RUN cd boost_1_84_0 && ./bootstrap.sh && ./b2 install
+RUN cd boost_1_84_0 && mold -run ./bootstrap.sh && mold -run ./b2 install
 RUN rm -r /boost_1_84_0 /boost_1_84_0.tar.gz
 
-# OpenVDB
-RUN apt-get install --no-install-recommends -y libblosc-dev libboost-iostreams-dev libboost-system-dev libboost-system-dev 
-RUN apt-get install -y libjemalloc-dev libtbb-dev
-RUN git clone --depth 1 https://github.com/nachovizzo/openvdb.git -b nacho/vdbfusion
-RUN cd openvdb && mkdir build && cd build && cmake  -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DUSE_ZLIB=OFF .. &&  sudo make -j$(nproc) all install
-RUN rm -r /openvdb
-# VDBfusion
-RUN apt-get install -y ros-noetic-tf2-sensor-msgs
-RUN git clone --depth 1 https://github.com/PRBonn/vdbfusion.git
-RUN cd vdbfusion && mkdir build && cd build && cmake .. &&  sudo make -j$(nproc) all install
-RUN rm -r /vdbfusion
+# # OpenVDB
+# RUN apt-get install --no-install-recommends -y libblosc-dev libboost-iostreams-dev libboost-system-dev libboost-system-dev 
+# RUN apt-get install -y libjemalloc-dev libtbb-dev
+# RUN git clone --depth 1 https://github.com/nachovizzo/openvdb.git -b nacho/vdbfusion
+# RUN cd openvdb && mkdir build && cd build && cmake  -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DUSE_ZLIB=OFF .. &&  sudo make -j$(nproc) all install
+# RUN rm -r /openvdb
+# # VDBfusion
+# RUN apt-get install -y ros-noetic-tf2-sensor-msgs
+# RUN git clone --depth 1 https://github.com/PRBonn/vdbfusion.git
+# RUN cd vdbfusion && mkdir build && cd build && cmake .. &&  sudo make -j$(nproc) all install
+# RUN rm -r /vdbfusion
 
 WORKDIR /root/repo/
 RUN echo 'source /opt/ros/noetic/setup.bash' >> /root/.bashrc

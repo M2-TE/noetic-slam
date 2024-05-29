@@ -5,6 +5,7 @@
 #include <cstring>
 #include <iostream>
 #include <vector>
+//
 #include <parallel_hashmap/phmap.h>
 #include <morton-nd/mortonND_BMI2.h>
 #include <Eigen/Eigen>
@@ -57,6 +58,16 @@ namespace DAG {
             return val;
         }
         uint64_t val;
+    };
+    struct LeafCluster {
+        static uint32_t pack32() {
+            return 0;
+        }
+        static uint64_t pack64() {
+            return 0;
+        }
+
+        uint32_t packed;
     };
 
     struct HashFunctor {
