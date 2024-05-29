@@ -209,6 +209,7 @@ namespace DAG {
         static auto build_trie_whatnot(Octree& octree, const Eigen::Vector3f inputPos, const Eigen::Vector3f& inputNorm) {
             // leaf cluster position that p belongs to
             Eigen::Vector3i voxelPos = (inputPos * (0.5f/leafResolution)).cast<int32_t>();
+            Octree::PathCache cache(octree);
             
             // calculate signed distances for neighbours of current leaf cluster as well
             constexpr int32_t off = 1; // offset (1 = 3x3x3)
@@ -221,8 +222,7 @@ namespace DAG {
                         Eigen::Vector3f fPos = cPos.cast<float>() * 2.0f * leafResolution;
 
                         MortonCode code(cPos);
-                        // auto& cluster = octree.find(code.val);
-                        auto& cluster = octree.find_cached(code.val);
+                        auto& cluster = octree.find_cached(code.val, cache);
 
                         // offsets of leaves within
                         std::array<float, 8> leaves;
@@ -285,7 +285,7 @@ namespace DAG {
                 }
             }
         }
-        auto get_trie2(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) {
+        auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) {
             auto beg = std::chrono::steady_clock::now();
             
             // round threads down to nearest power of two
@@ -340,7 +340,7 @@ namespace DAG {
                     auto pEnd = (nElements == 0) ? (points.cend()) : (pCur + nElements);
                     auto pNorm = normals.cbegin() + progress;
                     // build one octree per thread
-                    for (; pCur != pEnd; pCur++) {
+                    for (; pCur < pEnd; pCur++) {
                         build_trie_whatnot(octrees[id], *pCur, *pNorm);
                     }
                 });
@@ -445,88 +445,6 @@ namespace DAG {
             measurements.emplace_back(dur, "trie mrge");
             return octrees[0];
         }
-        auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) {
-            auto beg = std::chrono::steady_clock::now();
-            Trie trie;
-            // Octree octree(10'000'000);
-            auto pNorm = normals.cbegin();
-            for (auto p = points.cbegin(); p != points.cend(); p++, pNorm++) {
-                // leaf cluster position that p belongs to
-                Eigen::Vector3f clusterPos = *p * (0.5f / leafResolution);
-                Eigen::Vector3i voxelPos = clusterPos.cast<int32_t>();
-                
-                // calculate signed distances for neighbours of current leaf cluster as well
-                constexpr int32_t off = 1; // offset (1 = 3x3x3)
-                for (auto x = -off; x <= +off; x++) {
-                    for (auto y = -off; y <= +off; y++) {
-                        for (auto z = -off; z <= +off; z++) {
-                            // this is be a leaf cluster containing 8 individual leaves
-                            Eigen::Vector3i cPos = voxelPos + Eigen::Vector3i(x, y, z);
-                            // actual floating position of cluster
-                            Eigen::Vector3f fPos = cPos.cast<float>() * 2.0f * leafResolution;
-
-                            // offsets of leaves within
-                            std::array<float, 8> leaves;
-                            auto pLeaf = leaves.begin();
-                            for (auto xl = 0; xl < 2; xl++) {
-                                for (auto yl = 0; yl < 2; yl++) {
-                                    for (auto zl = 0; zl < 2; zl++) {
-                                        // leaf position
-                                        Eigen::Vector3f offset = Eigen::Vector3f(xl, yl, zl) * leafResolution;
-                                        Eigen::Vector3f lPos = fPos + offset;
-                                        *pLeaf = pNorm->dot(*p - lPos);
-                                        pLeaf++;
-                                    }
-                                }
-                            }
-
-                            // sd max should be turned into a parameter
-                            // constexpr double sdMax = boost::math::ccmath::sqrt(3.0*3.0*3.0) * leafResolution;
-                            // constexpr float sdMaxRecip = 1.0 / sdMax;
-                            double sdMax = std::sqrt(3.0*3.0*3.0) * leafResolution;
-                            float sdMaxRecip = 1.0 / sdMax;
-
-                            MortonCode code(cPos);
-                            auto& cluster = trie.find(code.val);
-
-                            // pack all leaves into 32 bits
-                            typedef uint32_t pack;
-                            pack packedLeaves = 0;
-                            for (auto i = 0; i < leaves.size(); i++) {
-                                float sd = leaves[i];
-                                // normalize between -1.0 and 1.0 (not yet clamped)
-                                sd = sd * sdMaxRecip;
-
-                                constexpr pack sdBits = 4;
-                                constexpr pack sdMask = (1 << (sdBits - 1)) - 1;
-                                constexpr float sdConv = static_cast<float>(sdMask);
-                                // expand for int conversion
-                                sd = sd * sdConv;
-                                // convert absolute value, copy sign manually
-                                pack sdInt = static_cast<int>(std::abs(sd));
-                                pack signBit = std::signbit(sd) << (sdBits - 1);
-                                sdInt |= signBit;
-                                
-                                // check if signed distance is smaller than saved one
-                                if (cluster != Trie::defVal) {
-                                    constexpr pack mask = (1 << sdBits) - 1;
-                                    // extract relevant portion
-                                    pack part = (cluster >> i * sdBits) & mask;
-                                    // < comparison works if treating sign bit as data
-                                    if (part < sdInt) sdInt = part;
-                                }
-                                packedLeaves |= sdInt << i * sdBits;
-                            }
-                            cluster = packedLeaves;
-                        }
-                    }
-                }
-            }
-            auto end = std::chrono::steady_clock::now();
-            auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-            measurements.emplace_back(dur, "trie ctor");
-            return trie;
-        }
         uint32_t create_leaf_node(Octree::Node* pNode) {
             // construct a DAG node
             Node<8> newNode = {};
@@ -534,7 +452,7 @@ namespace DAG {
             // go over all children
             for (ChildMask i = 0; i < 8; i++) {
                 auto cluster = pNode->leaves[i];
-                if (cluster == Trie::defVal) continue;
+                // if (cluster == Trie::defVal) continue; // DEPRECATED
                 // add to node and insert into mask
                 newNode.children[nClusters++] = cluster;
                 newNode.childMask |= 1 << i;
@@ -586,8 +504,7 @@ namespace DAG {
             auto full_beg = std::chrono::steady_clock::now();
             Pose pose = { position, rotation };
             auto normals = get_normals(pose, points);
-            auto trie = get_trie2(points, normals);
-            // auto trie = get_trie(points, normals);
+            auto trie = get_trie(points, normals);
             auto beg = std::chrono::steady_clock::now();
 
             // TODO: REWORK ALL THIS.
