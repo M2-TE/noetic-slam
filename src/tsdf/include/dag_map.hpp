@@ -234,19 +234,14 @@ namespace DAG {
                                     Eigen::Vector3f offset = Eigen::Vector3f(xl, yl, zl) * leafResolution;
                                     Eigen::Vector3f lPos = fPos + offset;
                                     *pLeaf = inputNorm.dot(inputPos - lPos);
-                                    // std::cout << inputPos.x() << ' ' << inputPos.y() << ' ' << inputPos.z() << '\n';
-                                    // std::cout << lPos.x() << ' ' << lPos.y() << ' ' << lPos.z() << "\n";
-                                    // std::cout << *pLeaf << "\n\n";
                                     pLeaf++;
                                 }
                             }
                         }
 
-
-                        // pack all leaves into 32 bits
-                        typedef uint32_t pack;
-                        pack packedLeaves = 0;
-                        for (auto i = 0; i < 8; i++) {
+                        // pack all leaves into 32/64 bits
+                        uint64_t packedLeaves = 0;
+                        for (uint64_t i = 0; i < 8; i++) {
                             // todo: sd max should be turned into a parameter
                             constexpr double sdMax = leafResolution * 2; // max range of 2 voxels
                             float sdNormalized = leaves[i] * (1.0 / sdMax); // normalize signed distance (not clipped between -1 and 1)
@@ -260,12 +255,32 @@ namespace DAG {
                             // 0 = -range, 8 = +range (both of these should be seen as "too far away" and discarded)
                             uint8_t sdScaledUint = (uint8_t)(sdScaledInt + (int8_t)range);
                             // pack the 4 bits of this value into the leaf cluster
-                            packedLeaves |= sdScaledUint << i*4;
-                            
-                            // TODO: compare to current value of cluster, if it is NOT 0!
+                            packedLeaves |= (uint64_t)sdScaledUint << i*4;
                         }
-                        cluster = packedLeaves;
-                        std::cout << '\n';
+                        // when cluster already contains data, resolve collision
+                        if (cluster != 0) {
+                            for (uint64_t i = 0; i < 8; i++) {
+                                uint64_t baseMask = 0b1111;
+                                uint8_t a = (cluster      >> i*4) & baseMask;
+                                uint8_t b = (packedLeaves >> i*4) & baseMask;
+                                int8_t ai = (int8_t)a - 4;
+                                int8_t bi = (int8_t)b - 4;
+                                // ruleset (in order of priority):
+                                // 1. positive signed distance takes precedence over negative
+                                // 2. smaller value takes precedence over larger value
+                                bool bOverwrite = false;
+                                if (std::signbit(bi) < std::signbit(ai)) bOverwrite = true;
+                                else if (std::signbit(bi) == std::signbit(ai) && std::abs(bi) < std::abs(ai)) bOverwrite = true;
+                                if (bOverwrite) {
+                                    // mask out the relevant bits
+                                    uint64_t mask = baseMask << i*4;
+                                    mask = ~mask;
+                                    // overwrite cluster bits with new value
+                                    cluster = (cluster & mask) | (b << i*4);
+                                }
+                            }
+                        }
+                        else cluster = packedLeaves;
                     }
                 }
             }
@@ -326,13 +341,12 @@ namespace DAG {
                     auto pNorm = normals.cbegin() + progress;
                     // build one octree per thread
                     for (; pCur != pEnd; pCur++) {
-                        if (id != 0) continue;
                         build_trie_whatnot(octrees[id], *pCur, *pNorm);
                     }
                 });
                 progress += nElements;
             }
-            exit(0);
+            
             // join all threads
             threads.clear();
             auto end = std::chrono::steady_clock::now();
@@ -386,16 +400,34 @@ namespace DAG {
                         while (colIndex < grp.collisions.size()) {
                             grp.trees[0]->resolve_collisions(*grp.trees[1], grp.collisions[colIndex], grp.collisionDepth, 
                                 [](Octree::Node* pA, Octree::Node* pB) {
-                                // compare two nodes a and b during collision
+                                // compare two leaf clusters a and b during collision
                                 // merge results into node a
 
-                                // iterate over every leaf cluster
+                                // iterate over leaf cluster parents
                                 for (uint32_t i = 0; i < 8; i++) {
                                     auto& leafA = pA->leaves[i];
                                     auto& leafB = pB->leaves[i];
-                                    
-                                    // TODO
-                                    leafA = leafB; // DEBUG
+                                    // iterate over leaf clusters
+                                    for (uint64_t i = 0; i < 8; i++) {
+                                        uint64_t baseMask = 0b1111;
+                                        uint8_t a = (leafA >> i*4) & baseMask;
+                                        uint8_t b = (leafB >> i*4) & baseMask;
+                                        int8_t ai = (int8_t)a - 4;
+                                        int8_t bi = (int8_t)b - 4;
+                                        // ruleset (in order of priority):
+                                        // 1. positive signed distance takes precedence over negative
+                                        // 2. smaller value takes precedence over larger value
+                                        bool bOverwrite = false;
+                                        if (std::signbit(bi) < std::signbit(ai)) bOverwrite = true;
+                                        else if (std::signbit(bi) == std::signbit(ai) && std::abs(bi) < std::abs(ai)) bOverwrite = true;
+                                        if (bOverwrite) {
+                                            // mask out the relevant bits
+                                            uint64_t mask = baseMask << i*4;
+                                            mask = ~mask;
+                                            // overwrite cluster bits with new value
+                                            leafA = (leafA & mask) | (b << i*4);
+                                        }
+                                    }
                                 }
                             });
                             colIndex += stage.groupSize;
