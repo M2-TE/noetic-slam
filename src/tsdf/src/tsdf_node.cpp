@@ -1,27 +1,24 @@
+#include <chrono>
+#include <random>
+#include <iostream>
+
 // // VDBFusion (benchmarking)
 // #include <openvdb/openvdb.h>
 // #include <vdbfusion/VDBVolume.h>
 // #include <matplot/matplot.h>
 
-// ROS
+#include <Eigen/Eigen>
 #include <ros/ros.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseArray.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
-
-// PCL
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/ply_io.h>
-
-#include <Eigen/Eigen>
-#include <chrono>
-#include <random>
-#include <iostream>
 //
 #include "dlio_stuff.hpp"
 #include "dag_map.hpp"

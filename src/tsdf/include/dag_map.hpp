@@ -20,9 +20,11 @@
 #include <parallel_hashmap/phmap.h>
 #include <parallel_hashmap/btree.h>
 #include <morton-nd/mortonND_BMI2.h>
-#include <highfive/highfive.hpp>
-#include <highfive/boost.hpp>
-#include <highfive/eigen.hpp>
+// #include <highfive/highfive.hpp>
+// #include <highfive/boost.hpp>
+// #include <highfive/eigen.hpp>
+#include <highfive/H5File.hpp>
+#include <lvr2/reconstruction/HashGrid.hpp>
 //
 #include "dag_structs.hpp"
 #include "trie.hpp"
@@ -606,16 +608,15 @@ namespace DAG {
         void save_h5() {
             HighFive::File file("test.h5", HighFive::File::Truncate);
             for (uint32_t i = 0; i < dagLevels.size(); i++) {
-                size_t size = dagLevels[i].data.size();
-                std::vector<size_t> dims(size);
-                HighFive::DataSet dataset = file.createDataSet<uint32_t>(std::to_string(i), HighFive::DataSpace(size));
+                HighFive::DataSet dataset = file.createDataSet<uint32_t>(std::to_string(i), HighFive::DataSpace::From(dagLevels[i].data));
                 dataset.write(dagLevels[i].data);
             }
 
             HighFive::File reader("test.h5", HighFive::File::ReadOnly);
             for (uint32_t i = 0; i < dagLevels.size(); i++) {
                 HighFive::DataSet dataset = file.getDataSet(std::to_string(i));
-                auto data = dataset.read<std::vector<uint32_t>>();
+                std::vector<uint32_t> data;
+                dataset.read(data);
                 std::cout << data.size() << '\n';
             }
         }

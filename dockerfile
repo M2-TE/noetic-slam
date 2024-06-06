@@ -39,6 +39,12 @@ RUN tar -xf boost_1_84_0.tar.gz
 RUN cd boost_1_84_0 && mold -run ./bootstrap.sh && mold -run ./b2 install
 RUN rm -r boost_1_84_0 boost_1_84_0.tar.gz
 
+# LVR2
+RUN apt-get install -y ninja-build build-essential cmake cmake-curses-gui libflann-dev libgsl-dev libeigen3-dev
+RUN apt-get install -y libopenmpi-dev openmpi-bin opencl-c-headers ocl-icd-opencl-dev
+RUN apt-get install -y libvtk7-dev libvtk7-qt-dev libboost-all-dev freeglut3-dev libhdf5-dev qtbase5-dev 
+RUN apt-get install -y qt5-default libqt5opengl5-dev liblz4-dev libopencv-dev libyaml-cpp-dev libspdlog-dev
+
 # # OpenVDB
 # RUN apt-get install --no-install-recommends -y libblosc-dev libboost-iostreams-dev libboost-system-dev libboost-system-dev 
 # RUN apt-get install -y libjemalloc-dev libtbb-dev

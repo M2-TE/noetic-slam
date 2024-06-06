@@ -23,23 +23,33 @@ find_package(Boost 1.84 REQUIRED)
 # list(APPEND CMAKE_MODULE_PATH "/usr/local/lib/cmake/OpenVDB")
 # find_package(Threads REQUIRED)
 # find_package(VDBFusion REQUIRED)
-find_package(HDF5 REQUIRED COMPONENTS CXX)
-add_subdirectory("ext/highfive")
-
+find_package(HDF5 REQUIRED COMPONENTS C CXX HL)
+# add_subdirectory("ext/highfive/")
+# add_subdirectory("ext/lvr2/ext/HighFive/")
+find_package(OpenCV REQUIRED)
+add_subdirectory("ext/lvr2/")
+message("${OpenCV_INCLUDE_DIRS}")
 
 
 add_executable(tsdf_node "src/tsdf_node.cpp")
 target_include_directories(tsdf_node PRIVATE 
     "include/"
-    "ext/phmap"
-    "ext/morton-nd/include"
+    "ext/phmap/"
+    "ext/lvr2/include/"
+    "ext/morton-nd/include/"
+    "ext/lvr2/ext/HighFive/include/"
     "${HDF5_CXX_INCLUDE_DIRS}"
+    "${OpenCV_INCLUDE_DIRS}"
     "${catkin_INCLUDE_DIRS}")
 target_link_libraries(tsdf_node PRIVATE
     Eigen3::Eigen
     Boost::boost
     # VDBFusion::vdbfusion
-    HighFive::Include
+    # HighFive::Include
+    lvr2_static
+    lvr2las_static
+    lvr2rply_static
+    ${LVR2_LIB_DEPENDENCIES}
     ${HDF5_CXX_LIBRARIES}
     ${catkin_LIBRARIES})
 target_compile_definitions(tsdf_node PRIVATE BOOST_BIND_GLOBAL_PLACEHOLDERS)

@@ -4,5 +4,6 @@ CompileFlags:
         --include-directory=src/tsdf/include/,
         --include-directory=src/tsdf/ext/phmap/,
         --include-directory=src/tsdf/ext/morton-nd/include/,
-        --include-directory=src/tsdf/ext/highfive/include/,
+        --include-directory=src/tsdf/ext/lvr2/include/,
+        --include-directory=src/tsdf/ext/lvr2/ext/HighFive/include/,
     ]
