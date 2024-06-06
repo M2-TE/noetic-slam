@@ -5,6 +5,8 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <sstream>
+#include <string>
 #include <unistd.h>
 #include <vector>
 #include <array>
@@ -19,6 +21,8 @@
 #include <parallel_hashmap/btree.h>
 #include <morton-nd/mortonND_BMI2.h>
 #include <highfive/highfive.hpp>
+#include <highfive/boost.hpp>
+#include <highfive/eigen.hpp>
 //
 #include "dag_structs.hpp"
 #include "trie.hpp"
@@ -452,7 +456,7 @@ namespace DAG {
             // go over all children
             for (ChildMask i = 0; i < 8; i++) {
                 auto cluster = pNode->leaves[i];
-                if (cluster == 0) continue; // DEPRECATED
+                if (cluster == 0) continue;
                 // add to node and insert into mask
                 newNode.children[nClusters++] = cluster;
                 newNode.childMask |= 1 << i;
@@ -591,7 +595,6 @@ namespace DAG {
             // std::cout << "Total: " << nUniques << " uniques, " << nDupes << " dupes\n";
             // size_t pointsBytes = points.size() * sizeof(Eigen::Vector3f);
             // std::cout << "Pointcloud footprint: " << pointsBytes << " bytes (" << (double)pointsBytes / 1'000'000 << "MB)\n";
-            
             //// find the average of all points
             // Eigen::Vector3d acc = {0, 0, 0};
             // for (auto& point: points) {
@@ -599,6 +602,22 @@ namespace DAG {
             // }
             // acc /= (double)points.size();
             // std::cout << acc << std::endl;
+        }
+        void save_h5() {
+            HighFive::File file("test.h5", HighFive::File::Truncate);
+            for (uint32_t i = 0; i < dagLevels.size(); i++) {
+                size_t size = dagLevels[i].data.size();
+                std::vector<size_t> dims(size);
+                HighFive::DataSet dataset = file.createDataSet<uint32_t>(std::to_string(i), HighFive::DataSpace(size));
+                dataset.write(dagLevels[i].data);
+            }
+
+            HighFive::File reader("test.h5", HighFive::File::ReadOnly);
+            for (uint32_t i = 0; i < dagLevels.size(); i++) {
+                HighFive::DataSet dataset = file.getDataSet(std::to_string(i));
+                auto data = dataset.read<std::vector<uint32_t>>();
+                std::cout << data.size() << '\n';
+            }
         }
 
     private:

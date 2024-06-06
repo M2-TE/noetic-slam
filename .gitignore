@@ -6,6 +6,7 @@
 *.bag.active
 *.ply
 *.pcd
+*.h5
 
 # catkin build files
 .catkin_tools

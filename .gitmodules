@@ -13,3 +13,8 @@
 [submodule "src/tsdf/ext/highfive"]
 	path = src/tsdf/ext/highfive
 	url = https://github.com/BlueBrain/HighFive.git
+	branch = v2.9.0
+[submodule "src/tsdf/ext/lvr2"]
+	path = src/tsdf/ext/lvr2
+	url = https://gitlab.informatik.uni-osnabrueck.de/Las_Vegas_Reconstruction/Develop.git
+	branch = develop

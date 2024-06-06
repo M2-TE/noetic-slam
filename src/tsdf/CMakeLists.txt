@@ -39,8 +39,6 @@ target_link_libraries(tsdf_node PRIVATE
     Eigen3::Eigen
     Boost::boost
     # VDBFusion::vdbfusion
-    # HDF5::HDF5
-    # hdf5::hdf5_cpp
     HighFive::Include
     ${HDF5_CXX_LIBRARIES}
     ${catkin_LIBRARIES})

@@ -77,6 +77,7 @@ public:
         //     auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
         //     std::cout << "VDBFusion: " << dur << " ms" << std::endl;
         // }
+        dagMap.save_h5();
         exit(0);
     }
 
