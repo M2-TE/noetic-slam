@@ -17,7 +17,6 @@ RUN apt-get install -y ros-noetic-rviz libeigen3-dev libjsoncpp-dev libspdlog-de
 RUN apt-get install -y libomp-dev libpcl-dev
 # extra utils
 RUN apt-get install -y iputils-ping gnuplot
-RUN apt-get install -y libboost-dev libboost-iostreams-dev libboost-system-dev libboost-system-dev
 RUN apt-get install -y libtbb-dev
 
 # Use gcc-11 instead of standard gcc-9
@@ -30,14 +29,15 @@ ENV CC "/usr/bin/gcc-11"
 RUN git clone --depth 1 https://github.com/rui314/mold.git -b stable
 RUN cd mold && ./install-build-deps.sh
 RUN cd mold && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-11 -B build
-RUN cd mold && cmake --build build -j$(nproc) && sudo cmake --build build --target install
+RUN cd mold && cmake --build build -j$(nproc) && cmake --build build --target install
+RUN rm -r mold
 
 # Boost 1.84.0
 RUN apt-get install -y wget
 RUN wget https://boostorg.jfrog.io/artifactory/main/release/1.84.0/source/boost_1_84_0.tar.gz
 RUN tar -xf boost_1_84_0.tar.gz
 RUN cd boost_1_84_0 && mold -run ./bootstrap.sh && mold -run ./b2 install
-RUN rm -r /boost_1_84_0 /boost_1_84_0.tar.gz
+RUN rm -r boost_1_84_0 boost_1_84_0.tar.gz
 
 # # OpenVDB
 # RUN apt-get install --no-install-recommends -y libblosc-dev libboost-iostreams-dev libboost-system-dev libboost-system-dev 

@@ -18,32 +18,32 @@ list(APPEND CATKIN_PACKAGES pcl_conversions)
 find_package(catkin REQUIRED COMPONENTS ${CATKIN_PACKAGES})
 catkin_package(CATKIN_DEPENDS ${CATKIN_PACKAGES})
 
-## Find Eigen
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
-## Find Boost
 find_package(Boost 1.84 REQUIRED)
-## Find VDBFusion
 # list(APPEND CMAKE_MODULE_PATH "/usr/local/lib/cmake/OpenVDB")
 # find_package(Threads REQUIRED)
 # find_package(VDBFusion REQUIRED)
-# # Matplot++
-# include(FetchContent)
-# set(MATPLOTPP_BUILD_EXAMPLES OFF)
-# set(MATPLOTPP_BUILD_TESTS OFF)
-# FetchContent_Declare(matplot GIT_REPOSITORY "https://github.com/alandefreitas/matplotplusplus.git" GIT_TAG "master" GIT_SHALLOW ON)
-# FetchContent_MakeAvailable(matplot)
+find_package(HDF5 REQUIRED COMPONENTS CXX)
+add_subdirectory("ext/highfive")
+
 
 
 add_executable(tsdf_node "src/tsdf_node.cpp")
-target_link_libraries(tsdf_node PRIVATE ${catkin_LIBRARIES})
-target_link_libraries(tsdf_node PRIVATE Eigen3::Eigen)
-# target_link_libraries(tsdf_node PRIVATE Boost::headers)
-# target_link_libraries(tsdf_node PRIVATE VDBFusion::vdbfusion)
-# target_link_libraries(tsdf_node PRIVATE matplot)
-target_include_directories(tsdf_node PRIVATE ${catkin_INCLUDE_DIRS})
-target_include_directories(tsdf_node PRIVATE include)
-target_include_directories(tsdf_node PRIVATE ext/phmap)
-target_include_directories(tsdf_node PRIVATE ext/morton-nd/include)
+target_include_directories(tsdf_node PRIVATE 
+    "include/"
+    "ext/phmap"
+    "ext/morton-nd/include"
+    "${HDF5_CXX_INCLUDE_DIRS}"
+    "${catkin_INCLUDE_DIRS}")
+target_link_libraries(tsdf_node PRIVATE
+    Eigen3::Eigen
+    Boost::boost
+    # VDBFusion::vdbfusion
+    # HDF5::HDF5
+    # hdf5::hdf5_cpp
+    HighFive::Include
+    ${HDF5_CXX_LIBRARIES}
+    ${catkin_LIBRARIES})
 target_compile_definitions(tsdf_node PRIVATE BOOST_BIND_GLOBAL_PLACEHOLDERS)
 
 install(TARGETS tsdf_node DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION} )

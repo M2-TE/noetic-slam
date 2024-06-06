@@ -5,8 +5,6 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
-#include <semaphore>
-#include <set>
 #include <unistd.h>
 #include <vector>
 #include <array>
@@ -20,6 +18,7 @@
 #include <parallel_hashmap/phmap.h>
 #include <parallel_hashmap/btree.h>
 #include <morton-nd/mortonND_BMI2.h>
+#include <highfive/highfive.hpp>
 //
 #include "dag_structs.hpp"
 #include "trie.hpp"
@@ -453,7 +452,7 @@ namespace DAG {
             // go over all children
             for (ChildMask i = 0; i < 8; i++) {
                 auto cluster = pNode->leaves[i];
-                // if (cluster == Trie::defVal) continue; // DEPRECATED
+                if (cluster == 0) continue; // DEPRECATED
                 // add to node and insert into mask
                 newNode.children[nClusters++] = cluster;
                 newNode.childMask |= 1 << i;
@@ -508,7 +507,7 @@ namespace DAG {
             auto trie = get_trie(points, normals);
             auto beg = std::chrono::steady_clock::now();
 
-            // TODO: REWORK ALL THIS.
+            // TODO: REWORK THIS LAST STEP.
             // it is based on the assumption that Trie has a default value in leaves
             // also the iteration really sucks in this one. do something similar to octree merge!
 
@@ -520,42 +519,42 @@ namespace DAG {
             std::array<Layer, nDagLevels> cache;
             std::array<Octree::Node*, nDagLevels - 1> path;
             size_t depth = 0;
-            // path[depth] = trie.pNodes;
-            // do {
-            //     auto& cacheIndex = cache[depth].index;
-            //     auto& cacheNodes = cache[depth].nodeIndices;
-            //     while (true) {
-            //         // retrace to parent when all children were checked
-            //         if (cacheIndex == 8) {
-            //             // create normal node
-            //             uint32_t node = create_normal_node(cacheNodes, depth);
-            //             // reset cache for this level
-            //             cacheIndex = 0;
-            //             // go up by one level
-            //             depth--;
-            //             // update parent level
-            //             auto& parentLevel = cache[depth];
-            //             parentLevel.nodeIndices[parentLevel.index++] = node;
-            //             break;
-            //         }
+            path[depth] = trie.pNodes;
+            do {
+                auto& cacheIndex = cache[depth].index;
+                auto& cacheNodes = cache[depth].nodeIndices;
+                while (true) {
+                    // retrace to parent when all children were checked
+                    if (cacheIndex == 8) {
+                        // create normal node
+                        uint32_t node = create_normal_node(cacheNodes, depth);
+                        // reset cache for this level
+                        cacheIndex = 0;
+                        // go up by one level
+                        depth--;
+                        // update parent level
+                        auto& parentLevel = cache[depth];
+                        parentLevel.nodeIndices[parentLevel.index++] = node;
+                        break;
+                    }
 
-            //         // child invalid: invalidate cache entry
-            //         auto* pChild = path[depth]->children[cacheIndex];
-            //         if (pChild == nullptr) {
-            //             cacheNodes[cacheIndex++] = 0;
-            //         }
-            //         // child leaf: create new leaf node
-            //         else if (depth == nDagLevels - 2) {
-            //             cacheNodes[cacheIndex++] = create_leaf_node(pChild);
-            //         }
-            //         // child normal: go to child node
-            //         else {
-            //             path[++depth] = pChild;
-            //             break;
-            //         }
-            //     }
-            // }
-            // while (depth > 0);
+                    // child invalid: invalidate cache entry
+                    auto* pChild = path[depth]->children[cacheIndex];
+                    if (pChild == nullptr) {
+                        cacheNodes[cacheIndex++] = 0;
+                    }
+                    // child leaf: create new leaf node
+                    else if (depth == nDagLevels - 2) {
+                        cacheNodes[cacheIndex++] = create_leaf_node(pChild);
+                    }
+                    // child normal: go to child node
+                    else {
+                        path[++depth] = pChild;
+                        break;
+                    }
+                }
+            }
+            while (depth > 0);
             auto end = std::chrono::steady_clock::now();
             auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
             measurements.emplace_back(dur, "trie iter");

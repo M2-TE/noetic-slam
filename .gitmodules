@@ -10,3 +10,6 @@
 [submodule "src/tsdf/ext/morton-nd"]
 	path = src/tsdf/ext/morton-nd
 	url = https://github.com/morton-nd/morton-nd.git
+[submodule "src/tsdf/ext/highfive"]
+	path = src/tsdf/ext/highfive
+	url = https://github.com/BlueBrain/HighFive.git

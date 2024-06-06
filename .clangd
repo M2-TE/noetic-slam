@@ -3,5 +3,6 @@ CompileFlags:
     Add: [
         --include-directory=src/tsdf/include/,
         --include-directory=src/tsdf/ext/phmap/,
-        --include-directory=src/tsdf/ext/morton-nd/include/
+        --include-directory=src/tsdf/ext/morton-nd/include/,
+        --include-directory=src/tsdf/ext/highfive/include/,
     ]
