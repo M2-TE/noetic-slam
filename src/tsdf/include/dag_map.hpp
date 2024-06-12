@@ -623,11 +623,10 @@ namespace DAG {
 			// }
 
 			lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox(lowerLeft, upperRight);
-			// std::vector<std::vector<uint32_t>*> dagRef;
-			// for (auto& level: dagLevels) {
-			// 	dagRef.push_back(&level.data);
-			// }
-			// auto grid = lvr2::HashGrid<lvr2::BaseVector<float>, lvr2::FastBox<lvr2::BaseVector<float>>>(boundingBox, dagRef);
+			std::vector<std::vector<uint32_t>*> nodeLevelRef;
+			for (auto& level: nodeLevels) nodeLevelRef.push_back(&level.data);
+			nodeLevelRef.push_back(&leafLevel.data);
+			auto grid = lvr2::HashGrid<lvr2::BaseVector<float>, lvr2::FastBox<lvr2::BaseVector<float>>>(boundingBox, nodeLevelRef);
 		}
 
 	private:
