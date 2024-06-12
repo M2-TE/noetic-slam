@@ -487,11 +487,16 @@ namespace DAG {
 			depth = 0; // depth 0 being the root
 			
 			// begin insertion into hashDAG (bottom-up)
-			while (path[0] < 8) {
+			while (true) {
 				auto iChild = path[depth]++;
 				if (iChild >= 8) {
+					// insert root node
+					if (depth == 0) {
+						
+						break;
+					}
 					// insert normal node
-					if (depth < nDagLevels - 2) {
+					else if (depth < nDagLevels - 2) {
 						// gather all children for this new node
 						std::vector<uint32_t> children(1);
 						for (auto i = 0; i < 8; i++) {
@@ -501,6 +506,8 @@ namespace DAG {
 						}
 						// add child count to mask
 						children[0] |= (children.size() - 1) << 8;
+						// reset node tracker for used-up nodes
+						nodes[depth+1].fill(0);
 						
 						// resize data if necessary and then copy over
 						auto& level = nodeLevels[depth];
@@ -558,13 +565,10 @@ namespace DAG {
 				else {
 					depth++;
 					octNodes[depth] = pChild;
-					// reset trackers for next level
-					nodes[depth].fill(0);
+					// reset child tracker
 					path[depth] = 0;
 				}
 			}
-			// TODO: create root node for current scan right here
-			std::cout << "done\n";
 
 			auto end = std::chrono::steady_clock::now();
 			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();

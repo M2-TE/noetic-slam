@@ -39,7 +39,7 @@ public:
         // insert into tsdf DAG
         Eigen::Vector3f position = {};
         Eigen::Quaternionf rotation = {};
-        for (size_t i = 0; i < 10; i++) {
+        for (size_t i = 0; i < 1; i++) {
             for (auto& point: points) {
                 point = {
                     dis(gen),
