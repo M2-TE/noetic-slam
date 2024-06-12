@@ -490,13 +490,8 @@ namespace DAG {
 			while (true) {
 				auto iChild = path[depth]++;
 				if (iChild >= 8) {
-					// insert root node
-					if (depth == 0) {
-						
-						break;
-					}
-					// insert normal node
-					else if (depth < nDagLevels - 2) {
+					// insert normal/root node
+					if (depth < nDagLevels - 2) {
 						// gather all children for this new node
 						std::vector<uint32_t> children(1);
 						for (auto i = 0; i < 8; i++) {
@@ -519,19 +514,19 @@ namespace DAG {
 						// check if the same node existed previously
 						uint32_t temporary = level.nOccupied;
 						auto [pIndex, bNew] = level.hashSet.emplace(temporary);
+						uint32_t indexInParent = depth > 0 ? path[depth - 1] - 1 : 0;
 						if (bNew) {
-							uint32_t indexInParent = path[depth - 1] - 1;
 							level.nOccupied += children.size();
 							uniques[depth]++;
 							nodes[depth][indexInParent] = temporary;
 						}
 						else {
-							uint32_t indexInParent = path[depth - 1] - 1;
 							dupes[depth]++;
 							nodes[depth][indexInParent] = *pIndex;
 						}
 					}
 					// go back up to parent
+					if (depth == 0) break;
 					depth--;
 					continue;
 				}
@@ -627,7 +622,7 @@ namespace DAG {
 			//     std::cout << data.size() << '\n';
 			// }
 
-			// lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox(lowerLeft, upperRight);
+			lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox(lowerLeft, upperRight);
 			// std::vector<std::vector<uint32_t>*> dagRef;
 			// for (auto& level: dagLevels) {
 			// 	dagRef.push_back(&level.data);
