@@ -1,12 +1,14 @@
 # vscode settings
 .vscode/
 
-# input/output for ros slam
+# input/output files
 *.bag
 *.bag.active
 *.ply
 *.pcd
 *.h5
+*.mtl
+*.obj
 
 # catkin build files
 .catkin_tools
