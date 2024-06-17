@@ -27,7 +27,9 @@
 #include <lvr2/reconstruction/HashGrid.hpp>
 //
 #include "dag_structs.hpp"
+#include "lvr2/geometry/PMPMesh.hpp"
 #include "lvr2/reconstruction/FastBox.hpp"
+#include "lvr2/reconstruction/FastReconstruction.hpp"
 #include "trie.hpp"
 
 
@@ -253,7 +255,7 @@ namespace DAG {
 							constexpr double sdMax = leafResolution * 2; // max range of 2 voxels
 							float sdNormalized = leaves[i] * (1.0 / sdMax); // normalize signed distance (not clipped between -1 and 1)
 							constexpr size_t nBits = 4; // 1b sign, 3b data
-							constexpr float range = (float)(1 << (nBits-2));
+							constexpr float range = (float)(1 << (nBits-1));
 							float sdScaled = sdNormalized * range;
 							// cast to 8-bit integer and clamp between given range
 							int8_t sdScaledInt = (int8_t)sdScaled;
@@ -590,11 +592,12 @@ namespace DAG {
 			size_t nDupes = 0;
 			size_t nBytes = 0;
 			for (size_t i = 0; i < uniques.size(); i++) {
-				std::cout << "Level " << i << ": "
-					<< uniques[i] << " uniques, " << dupes[i] << " dupes\n";
+				std::cout << "Level " << i << ": " << uniques[i] << " uniques, " << dupes[i] << " dupes, ";
+				std::cout << static_cast<double>(uniques[i] * sizeof(uint32_t)) / 1024.0 / 1024.0 << " MiB \n";
 				nUniques += uniques[i];
 				nDupes += dupes[i];
 			}
+			std::cout << static_cast<double>(nUniques * sizeof(uint32_t)) / 1024.0 / 1024.0 << " MiB used in total\n";
 			// // std::cout << "Memory footprint: " << nBytes << " bytes (" << (double)nBytes / 1'000'000 << " MB)\n";
 			// std::cout << "Total: " << nUniques << " uniques, " << nDupes << " dupes\n";
 			// size_t pointsBytes = points.size() * sizeof(Eigen::Vector3f);
@@ -626,7 +629,23 @@ namespace DAG {
 			std::vector<std::vector<uint32_t>*> nodeLevelRef;
 			for (auto& level: nodeLevels) nodeLevelRef.push_back(&level.data);
 			nodeLevelRef.push_back(&leafLevel.data);
-			auto grid = lvr2::HashGrid<lvr2::BaseVector<float>, lvr2::FastBox<lvr2::BaseVector<float>>>(boundingBox, nodeLevelRef);
+			
+			// auto grid = lvr2::HashGrid<lvr2::BaseVector<float>, lvr2::FastBox<lvr2::BaseVector<float>>>(boundingBox, nodeLevelRef);
+			auto pGrid = std::make_shared<lvr2::HashGrid<lvr2::BaseVector<float>, lvr2::FastBox<lvr2::BaseVector<float>>>>(boundingBox, nodeLevelRef);
+			
+			// generate mesh from hash grid
+			lvr2::FastReconstruction<lvr2::BaseVector<float>, lvr2::FastBox<lvr2::BaseVector<float>>> reconstruction(pGrid);
+			lvr2::PMPMesh<lvr2::BaseVector<float>> mesh{};
+			reconstruction.getMesh(mesh);
+			
+			// generate mesh buffer from reconstructed mesh
+			// lvr2::TextureFinalizer<lvr2::BaseVector<float>> finalizer;
+			lvr2::SimpleFinalizer<lvr2::BaseVector<float>> finalizer;
+			auto meshBuffer = finalizer.apply(mesh);
+			
+			// save to disk
+			auto model = std::make_shared<lvr2::Model>(meshBuffer);
+			lvr2::ModelFactory::saveModel(model, "yeehaw.obj");
 		}
 
 	private:

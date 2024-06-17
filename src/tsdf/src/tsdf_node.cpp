@@ -46,8 +46,8 @@ public:
                     dis(gen),
                     dis(gen)
                 };
-                // point.normalize();
-                // point *= 10.0f;
+                point.normalize();
+                point *= 10.0f;
             }
             dagMap.insert_scan(position, rotation, points);
         }

@@ -19,6 +19,8 @@ namespace DAG {
         MortonCode(int x, int y, int z): MortonCode(Eigen::Vector3i(x, y, z)) {}
         MortonCode(uint64_t code): val(code) {}
         MortonCode(Eigen::Vector3i vec) {
+            // TODO: this can be massively simplified using simple addition (see hashgrid impl)
+            
             // from two's completent to simple uint21_t
             Eigen::Matrix<uint32_t, 3, 1> res = vec.cast<uint32_t>();
             res = res.unaryExpr([](uint32_t i) {
@@ -58,16 +60,6 @@ namespace DAG {
             return val;
         }
         uint64_t val;
-    };
-    struct LeafCluster {
-        static uint32_t pack32() {
-            return 0;
-        }
-        static uint64_t pack64() {
-            return 0;
-        }
-
-        uint32_t packed;
     };
 
     struct NodeLevel {
