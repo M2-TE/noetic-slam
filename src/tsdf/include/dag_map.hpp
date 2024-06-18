@@ -630,7 +630,7 @@ namespace DAG {
 			for (auto& level: nodeLevels) nodeLevelRef.push_back(&level.data);
 			nodeLevelRef.push_back(&leafLevel.data);
 			
-			// auto grid = lvr2::HashGrid<lvr2::BaseVector<float>, lvr2::FastBox<lvr2::BaseVector<float>>>(boundingBox, nodeLevelRef);
+			// create hash grid from entire tree
 			auto pGrid = std::make_shared<lvr2::HashGrid<lvr2::BaseVector<float>, lvr2::FastBox<lvr2::BaseVector<float>>>>(boundingBox, nodeLevelRef);
 			
 			// generate mesh from hash grid
