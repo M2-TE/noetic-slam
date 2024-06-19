@@ -30,6 +30,7 @@
 #include "lvr2/geometry/PMPMesh.hpp"
 #include "lvr2/reconstruction/FastBox.hpp"
 #include "lvr2/reconstruction/FastReconstruction.hpp"
+#include "lvr2/algorithm/NormalAlgorithms.hpp"
 #include "trie.hpp"
 
 
@@ -503,6 +504,7 @@ namespace DAG {
 						}
 						// add child count to mask
 						children[0] |= (children.size() - 1) << 8;
+						if (depth == 0) std::cout << std::bitset<32>(children[0]) << '\n';
 						// reset node tracker for used-up nodes
 						nodes[depth+1].fill(0);
 						
@@ -630,22 +632,42 @@ namespace DAG {
 			for (auto& level: nodeLevels) nodeLevelRef.push_back(&level.data);
 			nodeLevelRef.push_back(&leafLevel.data);
 			
+			///////////////////////// LVR2 ///////////////////////////
+			typedef lvr2::BaseVector<float> VecT;
+			
 			// create hash grid from entire tree
-			auto pGrid = std::make_shared<lvr2::HashGrid<lvr2::BaseVector<float>, lvr2::FastBox<lvr2::BaseVector<float>>>>(boundingBox, nodeLevelRef);
+			auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::FastBox<VecT>>>(boundingBox, nodeLevelRef);
 			
 			// generate mesh from hash grid
-			lvr2::FastReconstruction<lvr2::BaseVector<float>, lvr2::FastBox<lvr2::BaseVector<float>>> reconstruction(pGrid);
-			lvr2::PMPMesh<lvr2::BaseVector<float>> mesh{};
-			reconstruction.getMesh(mesh);
+			lvr2::FastReconstruction<VecT, lvr2::FastBox<VecT>> reconstruction(pGrid);
+			lvr2::PMPMesh<VecT> mesh{};
+			reconstruction.getMesh(mesh);			
+			// lvr2::reconstruct::Options options(0, "");
+			// optimizeMesh(options, mesh);
 			
 			// generate mesh buffer from reconstructed mesh
-			// lvr2::TextureFinalizer<lvr2::BaseVector<float>> finalizer;
-			lvr2::SimpleFinalizer<lvr2::BaseVector<float>> finalizer;
-			auto meshBuffer = finalizer.apply(mesh);
+			auto faceNormals = lvr2::calcFaceNormals(mesh);
+    		auto clusterBiMap = lvr2::planarClusterGrowing(mesh, faceNormals, 0.85);
+			lvr2::ClusterPainter painter(clusterBiMap);
+    		lvr2::ColorGradient::GradientType t = lvr2::ColorGradient::gradientFromString("GREY");
+			auto clusterColors = boost::optional<lvr2::DenseClusterMap<lvr2::RGB8Color>>(painter.colorize(mesh, t));
+			auto vertexNormals = lvr2::calcVertexNormals(mesh, faceNormals);
+			// auto matResult = lvr2::Materializer<VecT>(mesh, clusterBiMap, faceNormals, *surface).generateMaterials();
+
+			// Calc normals for vertices
+			// lvr2::SimpleFinalizer<lvr2::BaseVector<float>> finalizer;
+			// finalizer.setNormalData(vertexNormals);
+			// finalizer.setColorData(const VertexMap<RGB8Color> &colorData);
+			
+			lvr2::TextureFinalizer<lvr2::BaseVector<float>> finalizer(clusterBiMap);
+			finalizer.setClusterColors(*clusterColors);
+			finalizer.setVertexNormals(vertexNormals);
+			// finalizer.setMaterializerResult(matResult);
 			
 			// save to disk
+			auto meshBuffer = finalizer.apply(mesh);
 			auto model = std::make_shared<lvr2::Model>(meshBuffer);
-			lvr2::ModelFactory::saveModel(model, "yeehaw.obj");
+			lvr2::ModelFactory::saveModel(model, "yeehaw.ply");
 		}
 
 	private:

@@ -34,20 +34,21 @@ public:
         std::vector<Eigen::Vector3f> points(100'000);
         std::random_device rd;
         std::mt19937 gen(420);
-        std::uniform_real_distribution<float> dis(-10.0f, 10.0f);
+        std::uniform_real_distribution<double> dis(-1.0f, 1.0f);
 
         // insert into tsdf DAG
         Eigen::Vector3f position = {};
         Eigen::Quaternionf rotation = {};
         for (size_t i = 0; i < 1; i++) {
             for (auto& point: points) {
-                point = {
+                Eigen::Vector3d pointd = {
                     dis(gen),
                     dis(gen),
-                    dis(gen)
+                    dis(gen)  
                 };
-                point.normalize();
-                point *= 10.0f;
+                pointd.normalize();
+                pointd *= 10.0f;
+                point = pointd.cast<float>();
             }
             dagMap.insert_scan(position, rotation, points);
         }
