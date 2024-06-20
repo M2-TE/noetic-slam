@@ -19,33 +19,12 @@ namespace DAG {
         MortonCode(int x, int y, int z): MortonCode(Eigen::Vector3i(x, y, z)) {}
         MortonCode(uint64_t code): val(code) {}
         MortonCode(Eigen::Vector3i vec) {
-            // TODO: this can be massively simplified using simple addition (see hashgrid impl)
-            
-            // from two's completent to simple uint21_t
-            Eigen::Matrix<uint32_t, 3, 1> res = vec.cast<uint32_t>();
-            res = res.unaryExpr([](uint32_t i) {
-                constexpr uint32_t mask = (1 << 20) - 1;
-                uint32_t val = i + (1u << 31u);
-                uint32_t sign = val & (1u << 31u);
-                val &= mask; // mask out the first 20 bits
-                val |= sign >> 11; // shift sign to bit 21
-                return val;
-            });
-            // other method:
-            // Eigen::Matrix<int32_t, 3, 1> res2 = vec.unaryExpr([](const int32_t i) {
-            //     constexpr uint signBit = 1 << 31;
-            //     constexpr uint signMask = signBit - 1;
-            //     constexpr uint mask = (1 << 20) - 1;
-            //     // invert sign
-            //     uint32_t sign = (i & signBit) ^ signBit;
-            //     // shift sign to 21st bit
-            //     sign = sign >> 11;
-            //     // combine sign with i
-            //     uint32_t res = (i & mask) | sign;
-            //     return (int32_t)res;
-            // });
-
-            val = mortonnd::MortonNDBmi_3D_64::Encode(res.x(), res.y(), res.z());
+            // truncate from two's complement 32-bit to 21-bit integer
+            uint32_t x, y, z;
+            x = (1 << 20) + (uint32_t)vec.x();
+            y = (1 << 20) + (uint32_t)vec.y();
+            z = (1 << 20) + (uint32_t)vec.z();
+            val = mortonnd::MortonNDBmi_3D_64::Encode(x, y, z);
         }
         inline bool operator==(const MortonCode& other) const {
             return val == other.val;

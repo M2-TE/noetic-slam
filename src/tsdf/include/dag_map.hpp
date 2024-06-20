@@ -120,7 +120,9 @@ namespace DAG {
 			uint32_t i = 0;
 			for (auto pCur = points.begin(); pCur != points.end(); pCur++) {
 				// calculate leaf voxel position
-				Eigen::Matrix<int32_t, 3, 1> vPos = (*pCur * (1.0 / leafResolution)).cast<int32_t>();
+				Eigen::Vector3f fPos = *pCur * (1.0 / leafResolution);
+				Eigen::Vector3f safetyOffset = Eigen::Vector3f(leafResolution, leafResolution, leafResolution) / 2.0;
+				Eigen::Vector3i vPos = (fPos + safetyOffset).cast<int32_t>();
 				// assign to voxel chunk
 				vPos /= (int32_t)dagSizes[mortonVolume];
 				// create 63-bit morton code from 3x21-bit fields
@@ -216,22 +218,25 @@ namespace DAG {
 			measurements.emplace_back(dur, "norm calc");
 			return normals;
 		}
-		static auto build_trie_whatnot(Octree& octree, const Eigen::Vector3f inputPos, const Eigen::Vector3f& inputNorm) {
-			// leaf cluster position that p belongs to
-			Eigen::Vector3i voxelPos = (inputPos * (0.5f/leafResolution)).cast<int32_t>();
-			Octree::PathCache cache(octree);
+		static auto build_trie_whatnot(Octree& octree, Octree::PathCache& cache, const Eigen::Vector3f inputPos, const Eigen::Vector3f& inputNorm, uint32_t tid) {
+			// voxels per unit at leaf level
+			constexpr float nVoxelsPerUnit = 1.0 / leafResolution;
+			// morton code will be generated using leaf cluster position, not the leaves themselves
+			Eigen::Vector3f safetyOffset = Eigen::Vector3f(leafResolution, leafResolution, leafResolution) / 2.0;
+			Eigen::Vector3i mainClusterPos = (nVoxelsPerUnit * inputPos + safetyOffset).cast<int32_t>();
+			mainClusterPos = mainClusterPos.unaryExpr([](int32_t val) { return val - val%2; });
 
 			// calculate signed distances for neighbours of current leaf cluster as well
-			constexpr int32_t off = 1; // offset (1 = 3x3x3)
-			for (int32_t x = -off; x <= +off; x++) {
-				for (int32_t y = -off; y <= +off; y++) {
-					for (int32_t z = -off; z <= +off; z++) {
+			for (int32_t x = -1; x <= +1; x++) {
+				for (int32_t y = -1; y <= +1; y++) {
+					for (int32_t z = -1; z <= +1; z++) {
 						// this is be a leaf cluster containing 8 individual leaves
-						Eigen::Vector3i cPos = voxelPos + Eigen::Vector3i(x, y, z);
-						// actual floating position of cluster
-						Eigen::Vector3f fPos = cPos.cast<float>() * 2.0f * leafResolution;
-
-						MortonCode code(cPos);
+						Eigen::Vector3i clusterPos = mainClusterPos + Eigen::Vector3i(x, y, z) * 2;
+						Eigen::Vector3f clusterOffset = clusterPos.cast<float>() * leafResolution;
+						
+						// the cluster pos will not have the least significant bit set, as that one indicates leaf position.
+						// therefore, we divide it by 2 to populate this first bit to properly store the voxel pos into our octree
+						MortonCode code(clusterPos / 2);
 						auto& cluster = octree.find_cached(code.val, cache);
 
 						// offsets of leaves within
@@ -241,15 +246,15 @@ namespace DAG {
 							for (auto yl = 0; yl < 2; yl++) {
 								for (auto zl = 0; zl < 2; zl++) {
 									// leaf position
-									Eigen::Vector3f offset = Eigen::Vector3f(xl, yl, zl) * leafResolution;
-									Eigen::Vector3f lPos = fPos + offset;
-									*pLeaf = inputNorm.dot(inputPos - lPos);
+									Eigen::Vector3f leafOffset = Eigen::Vector3f(xl, yl, zl) * leafResolution;
+									Eigen::Vector3f pos = clusterOffset + leafOffset;
+									*pLeaf = inputNorm.dot(inputPos - pos);
 									pLeaf++;
 								}
 							}
 						}
 
-						// pack all leaves into 32/64 bits
+						// pack all leaves into 32/64 bits // TODO: wrap this into a struct for automatic conversion to ensure consistency both ways
 						uint64_t packedLeaves = 0;
 						for (uint64_t i = 0; i < 8; i++) {
 							// todo: sd max should be turned into a parameter
@@ -267,7 +272,7 @@ namespace DAG {
 							// pack the 4 bits of this value into the leaf cluster
 							packedLeaves |= (uint64_t)sdScaledUint << i*4;
 						}
-						// when cluster already contains data, resolve collision
+						// when cluster already contains data, resolve collision // TODO: also do this with said struct
 						if (cluster != 0) {
 							for (uint64_t i = 0; i < 8; i++) {
 								uint64_t baseMask = 0b1111;
@@ -345,13 +350,15 @@ namespace DAG {
 				size_t nElements = points.size() / nThreads;
 				if (id == nThreads - 1) nElements = 0; // special value for final thread to read the rest
 				octrees.emplace_back(100'000); // hardcoded for now
+				// build one octree per thread
 				threads.emplace_back([&points, &normals, &octrees, id, progress, nElements](){
 					auto pCur = points.cbegin() + progress;
 					auto pEnd = (nElements == 0) ? (points.cend()) : (pCur + nElements);
 					auto pNorm = normals.cbegin() + progress;
-					// build one octree per thread
+					Octree& octree = octrees[id];
+					Octree::PathCache cache(octree);
 					for (; pCur < pEnd; pCur++) {
-						build_trie_whatnot(octrees[id], *pCur, *pNorm);
+						build_trie_whatnot(octree, cache, *pCur, *pNorm, id);
 					}
 				});
 				progress += nElements;
@@ -504,7 +511,6 @@ namespace DAG {
 						}
 						// add child count to mask
 						children[0] |= (children.size() - 1) << 8;
-						if (depth == 0) std::cout << std::bitset<32>(children[0]) << '\n';
 						// reset node tracker for used-up nodes
 						nodes[depth+1].fill(0);
 						
@@ -636,7 +642,7 @@ namespace DAG {
 			typedef lvr2::BaseVector<float> VecT;
 			
 			// create hash grid from entire tree
-			auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::FastBox<VecT>>>(boundingBox, nodeLevelRef);
+			auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::FastBox<VecT>>>(boundingBox, nodeLevelRef, leafResolution);
 			
 			// generate mesh from hash grid
 			lvr2::FastReconstruction<VecT, lvr2::FastBox<VecT>> reconstruction(pGrid);
@@ -671,8 +677,11 @@ namespace DAG {
 		}
 
 	private:
-		lvr2::BaseVector<float> lowerLeft = {0, 0, 0};
-		lvr2::BaseVector<float> upperRight = {0, 0, 0};
+		static constexpr float min = -10000000;
+		static constexpr float max = +10000000;
+		
+		lvr2::BaseVector<float> lowerLeft = {max, max, max};
+		lvr2::BaseVector<float> upperRight = {min, min, min};
 		std::array<uint32_t, nDagLevels> uniques = {};
 		std::array<uint32_t, nDagLevels> dupes = {};
 
@@ -684,8 +693,8 @@ namespace DAG {
 		struct Scan {
 			Pose pose;
 			uint32_t root;
-			Eigen::Vector3f lowerLeft = {0,0,0};
-			Eigen::Vector3f upperRight = {0,0,0};
+			Eigen::Vector3f lowerLeft = {max, max, max};
+			Eigen::Vector3f upperRight = {min, min, min};
 		};
 		std::vector<Scan> scans;
 	};

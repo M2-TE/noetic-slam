@@ -47,7 +47,7 @@ public:
                     dis(gen)  
                 };
                 pointd.normalize();
-                pointd *= 10.0f;
+                pointd *= 5.0f;
                 point = pointd.cast<float>();
             }
             dagMap.insert_scan(position, rotation, points);
