@@ -40,6 +40,67 @@ namespace DAG {
         }
         uint64_t val;
     };
+    
+    struct LeafCluster {
+        LeafCluster(uint32_t other): cluster(other) {}
+        LeafCluster(std::array<float, 8>& leaves) {
+            for (uint32_t i = 0; i < 8; i++) {
+                // normalize sd to fit maxDist
+                float sdNormalized = leaves[i] * (1.0 / maxDist);
+                
+                // scale up to fit into nBit integers
+                float scale = (float)range;
+                float sdScaled = sdNormalized * scale;
+                
+                // cast to 8-bit integer and clamp between given range
+                int8_t sdScaledInt = (int8_t)sdScaled;
+                sdScaledInt = std::clamp<int8_t>(sdScaledInt, -scale, scale);
+                
+                // add offset such that values are represented linearly from 0 to max
+                // 0 = -range, 14 = +range (both of these should be seen as "too far away" and discarded)
+                uint8_t sdScaledUint = (uint8_t)(sdScaledInt + (int8_t)scale);
+                
+                // pack the 4 bits of this value into the leaf cluster
+                cluster |= (uint32_t)sdScaledUint << i*4;
+            }
+        }
+        void merge(LeafCluster& other) {
+            for (uint32_t i = 0; i < 8; i++) {
+                // mask out bits for current leaf
+                constexpr uint32_t mask = 0b1111;
+                int8_t maskedA = (this->cluster >> i*4) & mask;
+                int8_t maskedB = (other.cluster >> i*4) & mask;
+                
+                // convert back to standard readable int
+                int8_t a = maskedA - range;
+                int8_t b = maskedB - range;
+                
+                // ruleset (in order of priority):
+                // 1. positive signed distance takes precedence over negative
+                // 2. smaller value takes precedence over larger value
+                bool bOverwrite = false;
+                if (std::signbit(a) > std::signbit(b)) bOverwrite = true;
+                else if (std::signbit(a) == std::signbit(b) && std::abs(a) > std::abs(b)) bOverwrite = true;
+                
+                if (bOverwrite) {
+                    // mask out the relevant bits
+                    uint32_t submask = mask << i*4;
+                    submask = ~submask; // flip
+                    // overwrite result bits with new value
+                    cluster = (cluster & submask) | (maskedB << i*4);
+                }
+            }
+        }
+        float get_sd(uint8_t index) {
+            // TODO
+            return 0.0f;
+        }
+        
+        uint32_t cluster;
+        const float maxDist = leafResolution;
+        const size_t nBits = 4; // 1b sign, 3b data
+        const size_t range = (1 << (nBits-1)) - 1; // 7 with nBits = 4
+    };
 
     struct NodeLevel {
     private:

@@ -51,8 +51,8 @@ elif [ $1 = "nvidia" ]; then
         --env DISPLAY=${DISPLAY} \
         --env __NV_PRIME_RENDER_OFFLOAD=1 \
         --env __GLX_VENDOR_LIBRARY_NAME=nvidia \
-        --env NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all} \
-        --env NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:+$NVIDIA_DRIVER_CAPABILITIES,}graphics \
+        --env NVIDIA_VISIBLE_DEVICES=all \
+        --env NVIDIA_DRIVER_CAPABILITIES=all \
         --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
         --volume $(pwd)/$(dirname "$0")/..:/root/repo/:Z \
         noeticslam:latest

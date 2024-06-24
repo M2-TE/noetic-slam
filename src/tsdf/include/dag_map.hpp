@@ -253,49 +253,18 @@ namespace DAG {
 								}
 							}
 						}
-
-						// pack all leaves into 32/64 bits // TODO: wrap this into a struct for automatic conversion to ensure consistency both ways
-						uint64_t packedLeaves = 0;
-						for (uint64_t i = 0; i < 8; i++) {
-							// todo: sd max should be turned into a parameter
-							constexpr double sdMax = leafResolution * 2; // max range of 2 voxels
-							float sdNormalized = leaves[i] * (1.0 / sdMax); // normalize signed distance (not clipped between -1 and 1)
-							constexpr size_t nBits = 4; // 1b sign, 3b data
-							constexpr float range = (float)(1 << (nBits-1));
-							float sdScaled = sdNormalized * range;
-							// cast to 8-bit integer and clamp between given range
-							int8_t sdScaledInt = (int8_t)sdScaled;
-							sdScaledInt = std::clamp<int8_t>(sdScaledInt, -range, range);
-							// add offset such that values are represented linearly
-							// 0 = -range, 8 = +range (both of these should be seen as "too far away" and discarded)
-							uint8_t sdScaledUint = (uint8_t)(sdScaledInt + (int8_t)range);
-							// pack the 4 bits of this value into the leaf cluster
-							packedLeaves |= (uint64_t)sdScaledUint << i*4;
-						}
-						// when cluster already contains data, resolve collision // TODO: also do this with said struct
+						// compare to other existing leaves
 						if (cluster != 0) {
-							for (uint64_t i = 0; i < 8; i++) {
-								uint64_t baseMask = 0b1111;
-								uint8_t a = (cluster      >> i*4) & baseMask;
-								uint8_t b = (packedLeaves >> i*4) & baseMask;
-								int8_t ai = (int8_t)a - 4;
-								int8_t bi = (int8_t)b - 4;
-								// ruleset (in order of priority):
-								// 1. positive signed distance takes precedence over negative
-								// 2. smaller value takes precedence over larger value
-								bool bOverwrite = false;
-								if (std::signbit(bi) < std::signbit(ai)) bOverwrite = true;
-								else if (std::signbit(bi) == std::signbit(ai) && std::abs(bi) < std::abs(ai)) bOverwrite = true;
-								if (bOverwrite) {
-									// mask out the relevant bits
-									uint64_t mask = baseMask << i*4;
-									mask = ~mask;
-									// overwrite cluster bits with new value
-									cluster = (cluster & mask) | (b << i*4);
-								}
-							}
+							LeafCluster lc(leaves);
+							LeafCluster other((uint32_t)cluster);
+							lc.merge(other);
+							cluster = lc.cluster;
 						}
-						else cluster = packedLeaves;
+						// simply insert
+						else {
+							LeafCluster lc(leaves);
+							cluster = lc.cluster;
+						}
 					}
 				}
 			}
@@ -422,29 +391,10 @@ namespace DAG {
 
 								// iterate over leaf cluster parents
 								for (uint32_t i = 0; i < 8; i++) {
-									auto& leafA = pA->leaves[i];
-									auto& leafB = pB->leaves[i];
-									// iterate over leaf clusters
-									for (uint64_t i = 0; i < 8; i++) {
-										uint64_t baseMask = 0b1111;
-										uint8_t a = (leafA >> i*4) & baseMask;
-										uint8_t b = (leafB >> i*4) & baseMask;
-										int8_t ai = (int8_t)a - 4;
-										int8_t bi = (int8_t)b - 4;
-										// ruleset (in order of priority):
-										// 1. positive signed distance takes precedence over negative
-										// 2. smaller value takes precedence over larger value
-										bool bOverwrite = false;
-										if (std::signbit(bi) < std::signbit(ai)) bOverwrite = true;
-										else if (std::signbit(bi) == std::signbit(ai) && std::abs(bi) < std::abs(ai)) bOverwrite = true;
-										if (bOverwrite) {
-											// mask out the relevant bits
-											uint64_t mask = baseMask << i*4;
-											mask = ~mask;
-											// overwrite cluster bits with new value
-											leafA = (leafA & mask) | (b << i*4);
-										}
-									}
+									LeafCluster lcA(pA->leaves[i]);
+									LeafCluster lcB(pB->leaves[i]);
+									lcA.merge(lcB);
+									pA->leaves[i] = lcA.cluster;
 								}
 							});
 							colIndex += stage.groupSize;
@@ -632,7 +582,7 @@ namespace DAG {
 			//     dataset.read(data);
 			//     std::cout << data.size() << '\n';
 			// }
-
+			
 			lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox(lowerLeft, upperRight);
 			std::vector<std::vector<uint32_t>*> nodeLevelRef;
 			for (auto& level: nodeLevels) nodeLevelRef.push_back(&level.data);
