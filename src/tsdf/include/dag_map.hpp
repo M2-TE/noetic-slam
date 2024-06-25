@@ -451,7 +451,7 @@ namespace DAG {
 				auto iChild = path[depth]++;
 				if (iChild >= 8) {
 					// insert normal/root node
-					if (depth < nDagLevels - 2) {
+					if (depth < nDagLevels - 1) {
 						// gather all children for this new node
 						std::vector<uint32_t> children(1);
 						for (auto i = 0; i < 8; i++) {
@@ -491,33 +491,33 @@ namespace DAG {
 					continue;
 				}
 
-				// retrieve child node
-				auto* pChild = octNodes[depth]->children[iChild];
-				if (pChild == nullptr) continue;
-				
-				// child node contains 8 leaf clusters (1 cluster = 8 leaves; 64 leaves)
-				if (depth == nDagLevels - 2) {
-					// resize data if necessary and then copy over
-					leafLevel.data.resize(leafLevel.nOccupied + 8);
-					std::memcpy(
-						leafLevel.data.data() + leafLevel.nOccupied,
-						pChild->leaves.data(),
-						8 * sizeof(uint32_t));
-					// check if the same node existed previously
-					uint32_t temporary = leafLevel.nOccupied;
-					auto [pIndex, bNew] = leafLevel.hashSet.emplace(temporary);
+				// child node is a leaf cluster of 8 leaves
+				if (depth == nDagLevels - 1) {
+					// retrieve leaf cluster
+					LeafLevel::LeafCluster leafCluster = octNodes[depth]->leaves[iChild];
+					if (leafCluster == 0) continue;
+					// check if this leaf cluster already exists
+					auto temporaryIndex = leafLevel.data.size();
+					auto [pIter, bNew] = leafLevel.hashMap.emplace(leafCluster, temporaryIndex);
 					if (bNew) {
-						leafLevel.nOccupied += 8;
+						// update reference to leaf cluster
+						nodes[depth][iChild] = temporaryIndex;
+						// insert into cluster array
+						leafLevel.data.push_back(leafCluster);
 						uniques[depth]++;
-						nodes[depth][iChild] = temporary;
 					}
 					else {
+						// simply update references to the existing cluster
+						nodes[depth][iChild] = pIter->second;
 						dupes[depth]++;
-						nodes[depth][iChild] = *pIndex;
 					}
 				}
 				// child node is a simple node
 				else {
+					// retrieve child node
+					auto* pChild = octNodes[depth]->children[iChild];
+					if (pChild == nullptr) continue;
+					// walk deeper
 					depth++;
 					octNodes[depth] = pChild;
 					// reset child tracker
@@ -582,6 +582,12 @@ namespace DAG {
 			//     dataset.read(data);
 			//     std::cout << data.size() << '\n';
 			// }
+			
+			
+			
+			return;
+			
+			
 			
 			lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox(lowerLeft, upperRight);
 			std::vector<std::vector<uint32_t>*> nodeLevelRef;

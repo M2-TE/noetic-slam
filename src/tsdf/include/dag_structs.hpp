@@ -92,14 +92,22 @@ namespace DAG {
             }
         }
         float get_sd(uint8_t index) {
-            // TODO
-            return 0.0f;
+            // 4 bits precision for each leaf
+            int32_t leaf = cluster >> index*4;
+            leaf &= 0b1111;
+            // convert back to standard signed
+            leaf -= (int32_t)range;
+            // convert to floating signed distance
+            float signedDistance = (float)leaf;
+            signedDistance /= range; // normalize signed distance (sorta)
+            signedDistance *= leafResolution; // scale signed distance to real size
+            return signedDistance;
         }
         
         uint32_t cluster;
-        const float maxDist = leafResolution;
-        const size_t nBits = 4; // 1b sign, 3b data
-        const size_t range = (1 << (nBits-1)) - 1; // 7 with nBits = 4
+        static constexpr float maxDist = leafResolution;
+        static constexpr size_t nBits = 4; // 1b sign, 3b data
+        static constexpr size_t range = (1 << (nBits-1)) - 1; // 7 with nBits = 4
     };
 
     struct NodeLevel {
@@ -151,34 +159,11 @@ namespace DAG {
         uint32_t nOccupied;
     };
     struct LeafLevel {
-    private:
-        struct HashFunctor {
-            inline size_t operator()(uint32_t key) const noexcept {
-                const std::vector<uint32_t>& data = *pData;
-                size_t hash = phmap::HashState::combine(0,
-                    data[key + 0], data[key + 1], data[key + 2], data[key + 3],
-                    data[key + 4], data[key + 5], data[key + 6], data[key + 7]);
-                return hash;
-            }
-            std::vector<uint32_t>* pData; // non-owning pointer to raw data array
-        };
-        struct CompFunctor {
-            inline bool operator()(uint32_t keyA, uint32_t keyB) const noexcept {
-                const std::vector<uint32_t>& data = *pData;
-                // compare entire node
-                int cmp = std::memcmp(
-                    &data[keyA],
-                    &data[keyB],
-                    8 * sizeof(uint32_t));
-                return cmp == 0;
-            }
-            std::vector<uint32_t>* pData; // non-owning pointer to raw data array
-        };
-    public: // leaf nodes have no child mask
-        LeafLevel(): hashSet(0, HashFunctor(&data), CompFunctor(&data)), data(1), nOccupied(1) {}
-        phmap::parallel_flat_hash_set<uint32_t, HashFunctor, CompFunctor> hashSet;
-        std::vector<uint32_t> data;
-        uint32_t nOccupied;
+        typedef uint32_t LeafCluster;
+        typedef uint32_t LeafIndex;
+        LeafLevel(): hashMap(), data(1) {}
+        phmap::parallel_flat_hash_map<LeafCluster, LeafIndex> hashMap;
+        std::vector<LeafCluster> data;
     };
 };
 
