@@ -4,6 +4,7 @@
 #include <execution>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -112,12 +113,102 @@ static Eigen::Vector3f normal_from_neighbourhood(std::span<Eigen::Vector3f> poin
 namespace DAG {
 	static std::vector<std::pair<double, std::string>> measurements;
 	struct Map {
+		static auto calc_morton(std::vector<Eigen::Vector3f>& points) {
+			auto beg = std::chrono::steady_clock::now();
+			
+			// create a vector to hold sortable morton codes alongside position
+			std::vector<std::pair<MortonCode, Eigen::Vector3f>> mortonCodes;
+			mortonCodes.reserve(points.size());
+			
+			// iterate through all points to populate morton code vector
+			for (auto it_points = points.cbegin(); it_points != points.cend(); it_points++) {
+				Eigen::Vector3f position = *it_points;
+				// transform into chunk position (leaf chunk in this case)
+				Eigen::Vector3f chunkPosFloat = position * (1.0 / leafResolution);
+				Eigen::Vector3i chunkPos = chunkPosFloat.cast<int32_t>();
+				// calculate morton code and insert into vector
+				MortonCode mc(chunkPos);
+				mortonCodes.emplace_back(mc.val, position);
+			}
+			
+			auto end = std::chrono::steady_clock::now();
+			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+			measurements.emplace_back(dur, "mort calc");
+			return mortonCodes;
+		}
+		static void sort_points(std::vector<Eigen::Vector3f>& points, std::vector<std::pair<MortonCode, Eigen::Vector3f>>& mortonCodes) {
+			auto beg = std::chrono::steady_clock::now();
+			
+			// sort morton code vector
+			auto sorter = [](const auto& a, const auto& b){
+				return std::get<0>(a) > std::get<0>(b);
+			};
+			std::sort(std::execution::par_unseq, mortonCodes.begin(), mortonCodes.end(), sorter);
+			
+			// insert sorted morton code points back into points vector
+			auto it_points = points.begin();
+			for (auto it_morton = mortonCodes.cbegin(); it_morton != mortonCodes.cend(); it_morton++) {
+				*it_points++ = std::get<1>(*it_morton);
+			}
+			
+			auto end = std::chrono::steady_clock::now();
+			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+			measurements.emplace_back(dur, "pnts sort");
+		}
+		static auto calc_normals(Pose pose, std::vector<Eigen::Vector3f>& points, std::vector<std::pair<MortonCode, Eigen::Vector3f>>& mortonCodes) {
+			auto beg = std::chrono::steady_clock::now();
+			
+			// sort points via morton code for next steps (plus better cache coherency)
+			sort_points(points, mortonCodes);
+			
+			// construct neighbourhoods of points
+			struct Neighbourhood {
+				std::vector<std::pair<MortonCode, Eigen::Vector3f>>::const_iterator it_beg;
+				std::vector<std::pair<MortonCode, Eigen::Vector3f>>::const_iterator it_end;
+			};
+			std::vector<Neighbourhood> neighbourhoods;
+			neighbourhoods.emplace_back(mortonCodes.cbegin(), mortonCodes.cbegin());
+			for(auto it_morton = mortonCodes.cbegin() + 1; it_morton != mortonCodes.cend(); it_morton++) {
+				// get latest neighbourhood
+				auto& neighbourhood = neighbourhoods.back();
+				// check if current point is still within said neighbourhood
+				MortonCode mc_point = std::get<0>(*it_morton);
+				MortonCode mc_neigh = std::get<0>(*neighbourhood.it_beg);
+				
+				// the level up to which is checked to see if two morton codes belong to the same neighbourhood
+				constexpr size_t neighLevel = 4;
+				// mask to remove the LSB, where 3 bits are one level
+				constexpr size_t mask = std::numeric_limits<size_t>::max() << neighLevel * 3;
+				
+				if ((mc_neigh.val & mask) == (mc_point.val & mask)) {
+					// same neighbourhood // TRODO
+				}
+				else {
+					// different neighbourhood // TODO
+				}
+				
+				// TODO:
+				// read point at neighbourhood beginning
+				// define how many bits deep the morton code should be checked
+				// each depth is 3 bits
+			}
+			std::cout << neighbourhoods.size() << '\n';
+			// TODO: set it_end of final neighbourhood
+			
+			std::vector<Eigen::Vector3f> normals;
+			normals.reserve(points.size());
+			// TODO
+			
+			auto end = std::chrono::steady_clock::now();
+			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+			measurements.emplace_back(dur, "norm calc");
+			return normals;
+		}
 		auto get_normals(Pose pose, std::vector<Eigen::Vector3f>& points) {
 			auto beg = std::chrono::steady_clock::now();
 			// points to be sorted via morton code
-			std::vector<std::tuple<MortonCode, Eigen::Vector3f, uint32_t>> sorted;
+			std::vector<std::tuple<MortonCode, Eigen::Vector3f>> sorted;
 			sorted.reserve(points.size());
-			uint32_t i = 0;
 			for (auto pCur = points.begin(); pCur != points.end(); pCur++) {
 				// calculate leaf voxel position
 				Eigen::Vector3f fPos = *pCur * (1.0 / leafResolution);
@@ -126,7 +217,7 @@ namespace DAG {
 				// assign to voxel chunk
 				vPos /= (int32_t)dagSizes[idx::leaf - 4];
 				// create 63-bit morton code from 3x21-bit fields
-				sorted.emplace_back(vPos, *pCur, i++);
+				sorted.emplace_back(vPos, *pCur);
 			}
 			// sort via morton codes
 			// std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b){
@@ -145,7 +236,7 @@ namespace DAG {
 			phmap::flat_hash_map<MortonCode, uint32_t> map;
 			MortonCode last = std::get<0>(sorted.front());
 			map.emplace(last, 0);
-			i = 0;
+			uint32_t i = 0;
 			for (auto pCur = sorted.begin(); pCur != sorted.end(); pCur++, i++) {
 				if (std::get<0>(*pCur) == last) continue;
 				last = std::get<0>(*pCur);
@@ -174,6 +265,7 @@ namespace DAG {
 				threads.emplace_back([&sorted, &normals, &map, progress, nElements, pose](){
 					auto pCur = sorted.cbegin() + progress;
 					auto pEnd = (nElements == 0) ? (sorted.cend()) : (pCur + nElements);
+					size_t normIndex = progress;
 					for (; pCur != pEnd; pCur++) {
 						Eigen::Vector3f point = std::get<1>(*pCur);
 						std::vector<Eigen::Vector3f> neighbours;
@@ -206,7 +298,7 @@ namespace DAG {
 						Eigen::Vector3f normal;
 						if (neighbours.size() > 1) normal = normal_from_neighbourhood(neighbours);
 						else normal = (pose.pos - point).normalized();
-						normals[std::get<2>(*pCur)] = normal;
+						normals[normIndex++] = normal;
 					}
 				});
 				progress += nElements;
@@ -426,6 +518,10 @@ namespace DAG {
 				if (z > upperRight.z) upperRight.z = z;
 			}
 			Pose pose = { position, rotation };
+			auto mortonCodes = calc_morton(points);
+			auto normals2 = calc_normals(pose, points, mortonCodes);
+			
+			
 			auto normals = get_normals(pose, points);
 			auto trie = get_trie(points, normals);
 			auto beg = std::chrono::steady_clock::now();
@@ -537,8 +633,8 @@ namespace DAG {
 				std::vector<std::string> labels;
 				std::cout << std::setprecision(2);
 				for (auto& pair: measurements) {
-					// std::cout << pair.second << " " << pair.first << " ms\n";
-					std::cout << (uint32_t)pair.first << '\t';
+					std::cout << pair.second << " " << (uint32_t)pair.first << " ms\n";
+					// std::cout << (uint32_t)pair.first << '\t';
 					if (pair.second == "FULL") continue;
 					times.push_back(pair.first);
 					labels.push_back(pair.second);
@@ -584,7 +680,7 @@ namespace DAG {
 			//     dataset.read(data);
 			//     std::cout << data.size() << '\n';
 			// }
-			// return;
+			return;
 			lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox(lowerLeft, upperRight);
 			std::vector<std::vector<uint32_t>*> nodeLevelRef;
 			for (auto& level: nodeLevels) nodeLevelRef.push_back(&level.data);
