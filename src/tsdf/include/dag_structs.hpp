@@ -1,9 +1,11 @@
 #pragma once
 #include <bitset>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <type_traits>
 #include <vector>
 //
 #include <parallel_hashmap/phmap.h>
@@ -42,9 +44,10 @@ namespace DAG {
     };
     
     struct LeafCluster {
-        LeafCluster(uint32_t other): cluster(other) {}
+        typedef uint64_t ClusterT;
+        LeafCluster(ClusterT other): cluster(other) {}
         LeafCluster(std::array<float, 8>& leaves) {
-            for (uint32_t i = 0; i < 8; i++) {
+            for (ClusterT i = 0; i < 8; i++) {
                 // normalize sd to fit maxDist
                 float sdNormalized = leaves[i] * (1.0 / maxDist);
                 
@@ -61,15 +64,15 @@ namespace DAG {
                 uint8_t sdScaledUint = (uint8_t)(sdScaledInt + (int8_t)scale);
                 
                 // pack the 4 bits of this value into the leaf cluster
-                cluster |= (uint32_t)sdScaledUint << i*4;
+                cluster |= (ClusterT)sdScaledUint << i*nBits;
             }
         }
         void merge(LeafCluster& other) {
-            for (uint32_t i = 0; i < 8; i++) {
+            for (ClusterT i = 0; i < 8; i++) {
                 // mask out bits for current leaf
-                constexpr uint32_t mask = 0b1111;
-                int8_t maskedA = (this->cluster >> i*4) & mask;
-                int8_t maskedB = (other.cluster >> i*4) & mask;
+                constexpr ClusterT mask = 0b1111;
+                int8_t maskedA = (this->cluster >> i*nBits) & mask;
+                int8_t maskedB = (other.cluster >> i*nBits) & mask;
                 
                 // convert back to standard readable int
                 int8_t a = maskedA - range;
@@ -84,19 +87,20 @@ namespace DAG {
                 
                 if (bOverwrite) {
                     // mask out the relevant bits
-                    uint32_t submask = mask << i*4;
+                    ClusterT submask = mask << i*nBits;
                     submask = ~submask; // flip
                     // overwrite result bits with new value
-                    cluster = (cluster & submask) | (maskedB << i*4);
+                    cluster &= submask;
+                    cluster |= (ClusterT)maskedB << i*nBits;
                 }
             }
         }
         float get_sd(uint8_t index) {
             // 4 bits precision for each leaf
-            int32_t leaf = cluster >> index*4;
+            ClusterT leaf = cluster >> index*nBits;
             leaf &= 0b1111;
             // convert back to standard signed
-            leaf -= (int32_t)range;
+            leaf -= (std::make_signed_t<ClusterT>)range;
             // convert to floating signed distance
             float signedDistance = (float)leaf;
             signedDistance /= range; // normalize signed distance (sorta)
@@ -104,10 +108,10 @@ namespace DAG {
             return signedDistance;
         }
         
-        uint32_t cluster;
+        ClusterT cluster;
         static constexpr float maxDist = leafResolution;
-        static constexpr size_t nBits = 4; // 1b sign, 3b data
-        static constexpr size_t range = (1 << (nBits-1)) - 1; // 7 with nBits = 4
+        static constexpr ClusterT nBits = 4; // 1b sign, rest data
+        static constexpr ClusterT range = (1 << (nBits-1)) - 1; // achievable range with data bits
     };
 
     struct NodeLevel {
@@ -159,11 +163,10 @@ namespace DAG {
         uint32_t nOccupied;
     };
     struct LeafLevel {
-        typedef uint32_t LeafCluster;
-        typedef uint32_t LeafIndex;
-        LeafLevel(): hashMap(), data(1) {}
-        phmap::parallel_flat_hash_map<LeafCluster, LeafIndex> hashMap;
-        std::vector<LeafCluster> data;
+        typedef uint32_t LeafIndex; // index into data array
+        LeafLevel(): hashMap(), data(1, 0) {}
+        phmap::parallel_flat_hash_map<LeafCluster::ClusterT, LeafIndex> hashMap;
+        std::vector<uint32_t> data;
     };
 };
 

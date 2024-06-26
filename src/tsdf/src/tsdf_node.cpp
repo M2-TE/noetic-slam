@@ -78,6 +78,9 @@ public:
         dagMap.save_h5();
         exit(0);
     }
+    ~TSDF_Node() {
+        dagMap.save_h5();
+    }
 
 public:
     void callback_pcl_deskewed(const sensor_msgs::PointCloud2ConstPtr& msg) {
@@ -94,18 +97,14 @@ public:
         pointcloud.clear();
 
         auto now = std::chrono::steady_clock::now();
-        // std::cout << pointcloud.size() << " points with a window of ";
-        // std::cout << std::chrono::duration<double, std::milli>(now - prev).count() << " ms" << std::endl;
         prev = now;
 
         // insert into tsdf DAG
         Eigen::Vector3f position = {};
         Eigen::Quaternionf rotation = {};
-        // auto start = std::chrono::steady_clock::now();
+        std::cout << "Inserting " << points.size() << " points.\n";
         dagMap.insert_scan(position, rotation, points);
-        // auto end = std::chrono::steady_clock::now();
-        // std::cout << std::chrono::duration<double, std::milli>(end - start).count() << " ms" << std::endl;
-        // exit(0);
+        exit(0);
     }
 
 private:

@@ -233,11 +233,6 @@ namespace DAG {
 						// this is be a leaf cluster containing 8 individual leaves
 						Eigen::Vector3i clusterPos = mainClusterPos + Eigen::Vector3i(x, y, z) * 2;
 						Eigen::Vector3f clusterOffset = clusterPos.cast<float>() * leafResolution;
-						
-						// the cluster pos will not have the least significant bit set, as that one indicates leaf position.
-						// therefore, we divide it by 2 to populate this first bit to properly store the voxel pos into our octree
-						MortonCode code(clusterPos / 2);
-						auto& cluster = octree.find_cached(code.val, cache);
 
 						// offsets of leaves within
 						std::array<float, 8> leaves;
@@ -253,7 +248,10 @@ namespace DAG {
 								}
 							}
 						}
+						
 						// compare to other existing leaves
+						MortonCode code(clusterPos * 2);
+						auto& cluster = octree.find_cached(code.val, cache);
 						if (cluster != 0) {
 							LeafCluster lc(leaves);
 							LeafCluster other((uint32_t)cluster);
@@ -318,7 +316,7 @@ namespace DAG {
 			for (size_t id = 0; id < nThreads; id++) {
 				size_t nElements = points.size() / nThreads;
 				if (id == nThreads - 1) nElements = 0; // special value for final thread to read the rest
-				octrees.emplace_back(100'000); // hardcoded for now
+				octrees.emplace_back(1'000'000); // hardcoded for now
 				// build one octree per thread
 				threads.emplace_back([&points, &normals, &octrees, id, progress, nElements](){
 					auto pCur = points.cbegin() + progress;
@@ -474,7 +472,8 @@ namespace DAG {
 						// check if the same node existed previously
 						uint32_t temporary = level.nOccupied;
 						auto [pIndex, bNew] = level.hashSet.emplace(temporary);
-						uint32_t indexInParent = depth > 0 ? path[depth - 1] - 1 : 0;
+						uint32_t indexInParent = path[depth - 1] - 1;
+						if (depth == 0) indexInParent = 0;
 						if (bNew) {
 							level.nOccupied += children.size();
 							uniques[depth]++;
@@ -485,7 +484,6 @@ namespace DAG {
 							nodes[depth][indexInParent] = *pIndex;
 						}
 					}
-					// go back up to parent
 					if (depth == 0) break;
 					depth--;
 					continue;
@@ -494,22 +492,26 @@ namespace DAG {
 				// child node is a leaf cluster of 8 leaves
 				if (depth == nDagLevels - 1) {
 					// retrieve leaf cluster
-					LeafLevel::LeafCluster leafCluster = octNodes[depth]->leaves[iChild];
-					if (leafCluster == 0) continue;
+					LeafCluster lc { octNodes[depth]->leaves[iChild] };
+					if (lc.cluster == 0) continue;
 					// check if this leaf cluster already exists
 					auto temporaryIndex = leafLevel.data.size();
-					auto [pIter, bNew] = leafLevel.hashMap.emplace(leafCluster, temporaryIndex);
+					auto [pIter, bNew] = leafLevel.hashMap.emplace(lc.cluster, temporaryIndex);
 					if (bNew) {
+						uniques[depth]++;
 						// update reference to leaf cluster
 						nodes[depth][iChild] = temporaryIndex;
-						// insert into cluster array
-						leafLevel.data.push_back(leafCluster);
-						uniques[depth]++;
+						// insert into (uint32) data array
+						uint32_t parts[2];
+						std::memcpy(parts, &lc.cluster, 8);
+						// todo: worry about endian
+						leafLevel.data.push_back(parts[0]);
+						leafLevel.data.push_back(parts[1]);
 					}
 					else {
+						dupes[depth]++;
 						// simply update references to the existing cluster
 						nodes[depth][iChild] = pIter->second;
-						dupes[depth]++;
 					}
 				}
 				// child node is a simple node
@@ -536,7 +538,7 @@ namespace DAG {
 				std::cout << std::setprecision(2);
 				for (auto& pair: measurements) {
 					// std::cout << pair.second << " " << pair.first << " ms\n";
-					std::cout << pair.first << '\t';
+					std::cout << (uint32_t)pair.first << '\t';
 					if (pair.second == "FULL") continue;
 					times.push_back(pair.first);
 					labels.push_back(pair.second);
@@ -582,13 +584,7 @@ namespace DAG {
 			//     dataset.read(data);
 			//     std::cout << data.size() << '\n';
 			// }
-			
-			
-			
-			return;
-			
-			
-			
+			// return;
 			lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox(lowerLeft, upperRight);
 			std::vector<std::vector<uint32_t>*> nodeLevelRef;
 			for (auto& level: nodeLevels) nodeLevelRef.push_back(&level.data);
