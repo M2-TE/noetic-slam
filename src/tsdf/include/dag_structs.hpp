@@ -15,8 +15,6 @@
 #include "dag_constants.hpp"
 
 namespace DAG {
-    // Morton Code stuff
-    static constexpr size_t mortonVolume = idx::leaf - 4;
     struct MortonCode {
         MortonCode(int x, int y, int z): MortonCode(Eigen::Vector3i(x, y, z)) {}
         MortonCode(uint64_t code): val(code) {}
@@ -45,10 +43,13 @@ namespace DAG {
     
     struct LeafCluster {
         typedef uint64_t ClusterT;
-        LeafCluster(ClusterT other): cluster(other) {}
-        LeafCluster(std::array<float, 8>& leaves) {
+        typedef std::make_signed_t<ClusterT> ClusterS;
+        typedef uint32_t PartT;
+        LeafCluster(ClusterT cluster): cluster(cluster) {}
+        LeafCluster(PartT part0, PartT part1): cluster((ClusterT)part0 | ((ClusterT)part1 << 32)) {}
+        LeafCluster(std::array<float, 8>& leaves): cluster(0) {
             for (ClusterT i = 0; i < 8; i++) {
-                // normalize sd to fit maxDist
+                // normalize sd to [-1, 1]
                 float sdNormalized = leaves[i] * (1.0 / maxDist);
                 
                 // scale up to fit into nBit integers
@@ -60,19 +61,23 @@ namespace DAG {
                 sdScaledInt = std::clamp<int8_t>(sdScaledInt, -scale, scale);
                 
                 // add offset such that values are represented linearly from 0 to max
-                // 0 = -range, 14 = +range (both of these should be seen as "too far away" and discarded)
                 uint8_t sdScaledUint = (uint8_t)(sdScaledInt + (int8_t)scale);
                 
                 // pack the 4 bits of this value into the leaf cluster
                 cluster |= (ClusterT)sdScaledUint << i*nBits;
             }
         }
+        std::pair<PartT, PartT> get_parts() {
+            PartT part0 = (PartT)cluster;
+            PartT part1 = (PartT)(cluster >> 32);
+            return { part0, part1 };
+        }
         void merge(LeafCluster& other) {
             for (ClusterT i = 0; i < 8; i++) {
                 // mask out bits for current leaf
-                constexpr ClusterT mask = 0b1111;
-                int8_t maskedA = (this->cluster >> i*nBits) & mask;
-                int8_t maskedB = (other.cluster >> i*nBits) & mask;
+                typedef std::make_signed_t<ClusterT> ClusterInt;
+                int8_t maskedA = (this->cluster >> i*nBits) & leafMask;
+                int8_t maskedB = (other.cluster >> i*nBits) & leafMask;
                 
                 // convert back to standard readable int
                 int8_t a = maskedA - range;
@@ -87,7 +92,7 @@ namespace DAG {
                 
                 if (bOverwrite) {
                     // mask out the relevant bits
-                    ClusterT submask = mask << i*nBits;
+                    ClusterT submask = leafMask << i*nBits;
                     submask = ~submask; // flip
                     // overwrite result bits with new value
                     cluster &= submask;
@@ -97,21 +102,22 @@ namespace DAG {
         }
         float get_sd(uint8_t index) {
             // 4 bits precision for each leaf
-            ClusterT leaf = cluster >> index*nBits;
-            leaf &= 0b1111;
+            int8_t leaf = cluster >> index*nBits;
+            leaf &= leafMask;
             // convert back to standard signed
-            leaf -= (std::make_signed_t<ClusterT>)range;
+            leaf -= (int8_t)range;
             // convert to floating signed distance
             float signedDistance = (float)leaf;
-            signedDistance /= range; // normalize signed distance (sorta)
+            signedDistance /= (float)range; // normalize signed distance
             signedDistance *= leafResolution; // scale signed distance to real size
             return signedDistance;
         }
         
         ClusterT cluster;
         static constexpr float maxDist = leafResolution;
-        static constexpr ClusterT nBits = 4; // 1b sign, rest data
-        static constexpr ClusterT range = (1 << (nBits-1)) - 1; // achievable range with data bits
+        static constexpr ClusterT nBits = 8; // 1b sign, rest data
+        static constexpr ClusterT leafMask = (1 << nBits) - 1; // mask for a single leaf
+        static constexpr ClusterT range = leafMask / 2; // achievable range with data bits
     };
 
     struct NodeLevel {

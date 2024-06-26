@@ -124,7 +124,7 @@ namespace DAG {
 				Eigen::Vector3f safetyOffset = Eigen::Vector3f(leafResolution, leafResolution, leafResolution) / 2.0;
 				Eigen::Vector3i vPos = (fPos + safetyOffset).cast<int32_t>();
 				// assign to voxel chunk
-				vPos /= (int32_t)dagSizes[mortonVolume];
+				vPos /= (int32_t)dagSizes[idx::leaf - 4];
 				// create 63-bit morton code from 3x21-bit fields
 				sorted.emplace_back(vPos, *pCur, i++);
 			}
@@ -250,8 +250,9 @@ namespace DAG {
 						}
 						
 						// compare to other existing leaves
-						MortonCode code(clusterPos * 2);
+						MortonCode code(clusterPos * 2); // swallows a layer (reverted on reconstruction)
 						auto& cluster = octree.find_cached(code.val, cache);
+						
 						if (cluster != 0) {
 							LeafCluster lc(leaves);
 							LeafCluster other((uint32_t)cluster);
@@ -502,11 +503,10 @@ namespace DAG {
 						// update reference to leaf cluster
 						nodes[depth][iChild] = temporaryIndex;
 						// insert into (uint32) data array
-						uint32_t parts[2];
-						std::memcpy(parts, &lc.cluster, 8);
-						// todo: worry about endian
-						leafLevel.data.push_back(parts[0]);
-						leafLevel.data.push_back(parts[1]);
+						auto [part0, part1] = lc.get_parts();
+						// std::cout << std::bitset<64>(lc.cluster) << '\n';
+						leafLevel.data.push_back(part0);
+						leafLevel.data.push_back(part1);
 					}
 					else {
 						dupes[depth]++;
