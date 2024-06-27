@@ -199,7 +199,7 @@ namespace DAG {
 			}
 			
 			// build normals using local neighbourhoods
-			std::vector<Eigen::Vector3f> normals(points.size());
+			std::vector<Eigen::Vector3f> normals(mortonCodes.size());
 			for (auto it_neigh = neighMap.cbegin(); it_neigh != neighMap.cend(); it_neigh++) {
 				// get morton code for current neighbourhood
 				MortonCode mc_neigh = std::get<0>(*it_neigh);
