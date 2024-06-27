@@ -37,23 +37,18 @@
 
 // https://www.ilikebigbits.com/2017_09_25_plane_from_points_2.html
 static Eigen::Vector3f normal_from_neighbourhood(std::span<Eigen::Vector3f> points) {
-	typedef double prec;
 	// calculate centroid by through coefficient average
-	Eigen::Vector3d centroid = { 0, 0, 0 };
+	Eigen::Vector3f centroid = { 0, 0, 0 };
 	for (auto p = points.begin(); p != points.end(); p++) {
-		centroid += p->cast<prec>();
+		centroid += *p;
 	}
-	centroid /= (prec)points.size();
+	centroid *= 1.0 / (float)points.size();
 
 	// covariance matrix excluding symmetries
-	prec xx = 0.0;
-	prec xy = 0.0;
-	prec xz = 0.0;
-	prec yy = 0.0;
-	prec yz = 0.0;
-	prec zz = 0.0;
+	float xx = 0.0; float xy = 0.0; float xz = 0.0;
+	float yy = 0.0; float yz = 0.0; float zz = 0.0;
 	for (auto p = points.begin(); p != points.end(); p++) {
-		auto r = p->cast<prec>() - centroid;
+		auto r = *p - centroid;
 		xx += r.x() * r.x();
 		xy += r.x() * r.y();
 		xz += r.x() * r.z();
@@ -61,20 +56,20 @@ static Eigen::Vector3f normal_from_neighbourhood(std::span<Eigen::Vector3f> poin
 		yz += r.y() * r.z();
 		zz += r.z() * r.z();
 	}
-	xx /= (prec)points.size();
-	xy /= (prec)points.size();
-	xz /= (prec)points.size();
-	yy /= (prec)points.size();
-	yz /= (prec)points.size();
-	zz /= (prec)points.size();
+	xx /= (float)points.size();
+	xy /= (float)points.size();
+	xz /= (float)points.size();
+	yy /= (float)points.size();
+	yz /= (float)points.size();
+	zz /= (float)points.size();
 
 	// weighting linear regression based on square determinant
-	Eigen::Vector3d weighted_dir = {};
-	Eigen::Vector3d axis_dir = {};
-	prec weight = 0.0;
+	Eigen::Vector3f weighted_dir = {};
+	Eigen::Vector3f axis_dir = {};
+	float weight = 0.0;
 
 	// determinant x
-	prec det_x = yy*zz - yz*yz;
+	float det_x = yy*zz - yz*yz;
 	axis_dir = {
 		det_x,
 		xz*yz - xy*zz,
@@ -85,7 +80,7 @@ static Eigen::Vector3f normal_from_neighbourhood(std::span<Eigen::Vector3f> poin
 	weighted_dir += axis_dir * weight;
 
 	// determinant y
-	prec det_y = xx*zz - xz*xz;
+	float det_y = xx*zz - xz*xz;
 	axis_dir = {
 		xz*yz - xy*zz,
 		det_y,
@@ -96,7 +91,7 @@ static Eigen::Vector3f normal_from_neighbourhood(std::span<Eigen::Vector3f> poin
 	weighted_dir += axis_dir * weight;
 
 	// determinant z
-	prec det_z = xx*yy - xy*xy;
+	float det_z = xx*yy - xy*xy;
 	axis_dir = {
 		xy*yz - xz*yy,
 		xy*xz - yz*xx,
@@ -107,7 +102,8 @@ static Eigen::Vector3f normal_from_neighbourhood(std::span<Eigen::Vector3f> poin
 	weighted_dir += axis_dir * weight;
 
 	// return normalized weighted direction as surface normal
-	return weighted_dir.normalized().cast<float>();
+	weighted_dir.normalize();
+	return weighted_dir;
 }
 
 namespace DAG {
@@ -162,7 +158,7 @@ namespace DAG {
 			sort_points(points, mortonCodes);
 			
 			// the level up to which is checked to see if two morton codes belong to the same neighbourhood
-			constexpr size_t neighLevel = 3;
+			constexpr size_t neighLevel = 2;
 			constexpr size_t mask = std::numeric_limits<size_t>::max() << neighLevel * 3;
 			
 			// construct neighbourhoods of points
@@ -245,7 +241,7 @@ namespace DAG {
 				
 				// calculate normals from nearby points
 				Eigen::Vector3f normal;
-				if (nearestPoints.size() > 1) normal = normal_from_neighbourhood(nearestPoints);
+				if (nearestPoints.size() >= 3) normal = normal_from_neighbourhood(nearestPoints);
 				else normal = std::get<1>(*it_morton).normalized();
 				normals.push_back(normal);
 			}
@@ -570,9 +566,7 @@ namespace DAG {
 			}
 			Pose pose = { position, rotation };
 			auto mortonCodes = calc_morton(points);
-			auto normals2 = calc_normals(pose, points, mortonCodes);
-			
-			auto normals = get_normals(pose, points);
+			auto normals = calc_normals(pose, points, mortonCodes);
 			auto trie = get_trie(points, normals);
 			auto beg = std::chrono::steady_clock::now();
 
