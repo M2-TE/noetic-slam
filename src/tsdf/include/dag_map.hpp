@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -166,45 +167,44 @@ namespace DAG {
 				std::vector<std::pair<MortonCode, Eigen::Vector3f>>::const_iterator it_beg;
 				std::vector<std::pair<MortonCode, Eigen::Vector3f>>::const_iterator it_end;
 			};
-			phmap::flat_hash_map<typeof(MortonCode::val), Neighbourhood> neighMap;
-			// insert the first neighbourhood
-			MortonCode mc_neigh = std::get<0>(mortonCodes.front());
-			mc_neigh.val &= mask;
-			auto it_neigh = neighMap.emplace(mc_neigh.val, Neighbourhood(mortonCodes.cbegin(), mortonCodes.cbegin())).first;
-			
-			// iterate through all points to build neighbourhoods
-			for(auto it_morton = mortonCodes.cbegin() + 1; it_morton != mortonCodes.cend(); it_morton++) {
-				// get morton codes from current point and current neighbourhood
-				MortonCode mc_point = std::get<0>(*it_morton);
-				MortonCode mc_neigh = std::get<0>(*it_neigh->second.it_beg);
-				mc_point.val &= mask;
+			// todo: check performance of real hash vs sorted red-black
+			// phmap::flat_hash_map<typeof(MortonCode::val), Neighbourhood> neighMap;
+			std::map<typeof(MortonCode::val), Neighbourhood> neighMap;
+			{
+				// insert the first neighbourhood
+				MortonCode mc_neigh = std::get<0>(mortonCodes.front());
 				mc_neigh.val &= mask;
+				auto it_neigh = neighMap.emplace(mc_neigh.val, Neighbourhood(mortonCodes.cbegin(), mortonCodes.cbegin())).first;
 				
-				// check if the current point doesnt fit the neighbourhood
-				if (mc_neigh != mc_point) {
-					// set end() iterator for current neighbourhood
-					it_neigh->second.it_end = it_morton;
-					// create a new neighbourhood starting at current point
-					it_neigh = neighMap.emplace(mc_point.val, Neighbourhood(it_morton, it_morton)).first;
+				// iterate through all points to build neighbourhoods
+				for(auto it_morton = mortonCodes.cbegin() + 1; it_morton != mortonCodes.cend(); it_morton++) {
+					// get morton codes from current point and current neighbourhood
+					MortonCode mc_point = std::get<0>(*it_morton);
+					MortonCode mc_neigh = std::get<0>(*it_neigh->second.it_beg);
+					mc_point.val &= mask;
+					mc_neigh.val &= mask;
+					
+					// check if the current point doesnt fit the neighbourhood
+					if (mc_neigh != mc_point) {
+						// set end() iterator for current neighbourhood
+						it_neigh->second.it_end = it_morton;
+						// create a new neighbourhood starting at current point
+						it_neigh = neighMap.emplace(mc_point.val, Neighbourhood(it_morton, it_morton)).first;
+					}
 				}
+				// set end() iterator for final neighbourhood
+				it_neigh->second.it_end = mortonCodes.cend();
+				std::cout << neighMap.size() << " neighbourhoods\n";
 			}
-			// set end() iterator for final neighbourhood
-			it_neigh->second.it_end = mortonCodes.cend();
-			std::cout << neighMap.size() << " neighbourhoods\n";
 			
 			// build normals using local neighbourhoods
 			std::vector<Eigen::Vector3f> normals(points.size());
-			for (auto it_morton = mortonCodes.cbegin(); it_morton != mortonCodes.cend(); it_morton++) {
+			for (auto it_neigh = neighMap.cbegin(); it_neigh != neighMap.cend(); it_neigh++) {
+				// get morton code for current neighbourhood
+				MortonCode mc_neigh = std::get<0>(*it_neigh);
+				const Neighbourhood& neigh = std::get<1>(*it_neigh);
+				Eigen::Vector3i pos_neigh = mc_neigh.decode();
 				
-				// TODO: VERY IMPORTANT
-				// dont iterate over every point individually. a lot of them will have the same point neighbourhoods
-				// instead, iterate over the neighbourhoods only, then within that iteration do all the points of that neighbourhood
-				// use a maxDistance value that is calculated from the length of a single dimension of neighbourhood (based on neighLevel)
-				
-				// decode current morton code into a chunk position
-				MortonCode mc_point { std::get<0>(*it_morton) };
-				mc_point.val &= mask;
-				Eigen::Vector3i pos_neigh = mc_point.decode();
 				// gather adjacent neighbourhoods
 				std::vector<Neighbourhood*> adjNeighs;
 				for (int32_t x = -1; x <= +1; x++) {
@@ -222,6 +222,7 @@ namespace DAG {
 						}
 					}
 				}
+				// std::cout << adjNeighs.size() << '\n';
 				
 				// count total points in all adjacent neighbourhoods
 				size_t n_points = 0;
@@ -230,20 +231,51 @@ namespace DAG {
 					n_points += neigh.it_end - neigh.it_beg;
 				}
 				// collect points from adjacent neighbours
-				std::vector<Eigen::Vector3f> nearestPoints;
-				nearestPoints.reserve(n_points);
+				std::vector<Eigen::Vector3f> localPoints;
+				localPoints.reserve(n_points);
 				for (auto it_neigh = adjNeighs.cbegin(); it_neigh != adjNeighs.cend(); it_neigh++) {
 					Neighbourhood& neigh = **it_neigh;
 					for (auto it_point = neigh.it_beg; it_point != neigh.it_end; it_point++) {
-						nearestPoints.push_back(std::get<1>(*it_point));
+						localPoints.push_back(std::get<1>(*it_point));
 					}
 				}
+				// std::cout << n_points<< '\n';
 				
-				// calculate normals from nearby points
-				Eigen::Vector3f normal;
-				if (nearestPoints.size() >= 3) normal = normal_from_neighbourhood(nearestPoints);
-				else normal = std::get<1>(*it_morton).normalized();
-				normals.push_back(normal);
+				// reserve some generous space for nearest points
+				std::vector<Eigen::Vector3f> nearestPoints;
+				nearestPoints.reserve(n_points);
+				// for every point within the current neighbourhood it_neigh, find its nearest neighbours for normal calc
+				constexpr float maxDist = leafResolution * (1 << neighLevel);
+				for(auto it_point = neigh.it_beg; it_point != neigh.it_end; it_point++) {
+					// clear out vector from previous iteration
+					nearestPoints.clear();
+					Eigen::Vector3f point = std::get<1>(*it_point);
+					
+					// go over all points and store the ones within the boundary
+					for (auto it_other = localPoints.cbegin(); it_other != localPoints.cend(); it_other++) {
+						Eigen::Vector3f diff = *it_other - point;
+						float distSqr = diff.squaredNorm();
+						if (distSqr <= maxDist*maxDist) {
+							nearestPoints.push_back(*it_other);
+							// DEBUG
+							nearestPoints.back() *= -1.0;
+						}
+					}
+					
+					// DEBUG
+					for (auto& point: nearestPoints) {
+						std::cout << point.x() << ' ' << point.y() << ' ' << point.z() << '\n';
+					}
+					
+					// use these filtered nearest points to calc normal
+					Eigen::Vector3f normal;
+					if (nearestPoints.size() >= 3) normal = normal_from_neighbourhood(nearestPoints);
+					else normal = point.normalized();
+					normals.push_back(normal);
+					std::cout << point.x() << ' ' << point.y() << ' ' << point.z() << '\t';
+					std::cout << normal.x() << ' ' << normal.y() << ' ' << normal.z() << '\n';
+				}
+				exit(0);
 			}
 			
 			auto end = std::chrono::steady_clock::now();
