@@ -161,43 +161,94 @@ namespace DAG {
 			// sort points via morton code for next steps (plus better cache coherency)
 			sort_points(points, mortonCodes);
 			
+			// the level up to which is checked to see if two morton codes belong to the same neighbourhood
+			constexpr size_t neighLevel = 3;
+			constexpr size_t mask = std::numeric_limits<size_t>::max() << neighLevel * 3;
+			
 			// construct neighbourhoods of points
 			struct Neighbourhood {
 				std::vector<std::pair<MortonCode, Eigen::Vector3f>>::const_iterator it_beg;
 				std::vector<std::pair<MortonCode, Eigen::Vector3f>>::const_iterator it_end;
 			};
-			std::vector<Neighbourhood> neighbourhoods;
-			neighbourhoods.emplace_back(mortonCodes.cbegin(), mortonCodes.cbegin());
-			for(auto it_morton = mortonCodes.cbegin() + 1; it_morton != mortonCodes.cend(); it_morton++) {
-				// get latest neighbourhood
-				auto& neighbourhood = neighbourhoods.back();
-				// check if current point is still within said neighbourhood
-				MortonCode mc_point = std::get<0>(*it_morton);
-				MortonCode mc_neigh = std::get<0>(*neighbourhood.it_beg);
-				
-				// the level up to which is checked to see if two morton codes belong to the same neighbourhood
-				constexpr size_t neighLevel = 4;
-				// mask to remove the LSB, where 3 bits are one level
-				constexpr size_t mask = std::numeric_limits<size_t>::max() << neighLevel * 3;
-				
-				if ((mc_neigh.val & mask) == (mc_point.val & mask)) {
-					// same neighbourhood // TRODO
-				}
-				else {
-					// different neighbourhood // TODO
-				}
-				
-				// TODO:
-				// read point at neighbourhood beginning
-				// define how many bits deep the morton code should be checked
-				// each depth is 3 bits
-			}
-			std::cout << neighbourhoods.size() << '\n';
-			// TODO: set it_end of final neighbourhood
+			phmap::flat_hash_map<typeof(MortonCode::val), Neighbourhood> neighMap;
+			// insert the first neighbourhood
+			MortonCode mc_neigh = std::get<0>(mortonCodes.front());
+			mc_neigh.val &= mask;
+			auto it_neigh = neighMap.emplace(mc_neigh.val, Neighbourhood(mortonCodes.cbegin(), mortonCodes.cbegin())).first;
 			
-			std::vector<Eigen::Vector3f> normals;
-			normals.reserve(points.size());
-			// TODO
+			// iterate through all points to build neighbourhoods
+			for(auto it_morton = mortonCodes.cbegin() + 1; it_morton != mortonCodes.cend(); it_morton++) {
+				// get morton codes from current point and current neighbourhood
+				MortonCode mc_point = std::get<0>(*it_morton);
+				MortonCode mc_neigh = std::get<0>(*it_neigh->second.it_beg);
+				mc_point.val &= mask;
+				mc_neigh.val &= mask;
+				
+				// check if the current point doesnt fit the neighbourhood
+				if (mc_neigh != mc_point) {
+					// set end() iterator for current neighbourhood
+					it_neigh->second.it_end = it_morton;
+					// create a new neighbourhood starting at current point
+					it_neigh = neighMap.emplace(mc_point.val, Neighbourhood(it_morton, it_morton)).first;
+				}
+			}
+			// set end() iterator for final neighbourhood
+			it_neigh->second.it_end = mortonCodes.cend();
+			std::cout << neighMap.size() << " neighbourhoods\n";
+			
+			// build normals using local neighbourhoods
+			std::vector<Eigen::Vector3f> normals(points.size());
+			for (auto it_morton = mortonCodes.cbegin(); it_morton != mortonCodes.cend(); it_morton++) {
+				
+				// TODO: VERY IMPORTANT
+				// dont iterate over every point individually. a lot of them will have the same point neighbourhoods
+				// instead, iterate over the neighbourhoods only, then within that iteration do all the points of that neighbourhood
+				// use a maxDistance value that is calculated from the length of a single dimension of neighbourhood (based on neighLevel)
+				
+				// decode current morton code into a chunk position
+				MortonCode mc_point { std::get<0>(*it_morton) };
+				mc_point.val &= mask;
+				Eigen::Vector3i pos_neigh = mc_point.decode();
+				// gather adjacent neighbourhoods
+				std::vector<Neighbourhood*> adjNeighs;
+				for (int32_t x = -1; x <= +1; x++) {
+					for (int32_t y = -1; y <= +1; y++) {
+						for (int32_t z = -1; z <= +1; z++) {
+							Eigen::Vector3i offset { x, y, z };
+							offset *= 1 << neighLevel;
+							MortonCode mc_near(pos_neigh + offset);
+							// attempt to find adjacent neighbourhood in map
+							auto it_near = neighMap.find(mc_near.val);
+							if (it_near != neighMap.cend()) {
+								Neighbourhood& adj = std::get<1>(*it_near);
+								adjNeighs.push_back(&adj);	
+							}
+						}
+					}
+				}
+				
+				// count total points in all adjacent neighbourhoods
+				size_t n_points = 0;
+				for (auto it_neigh = adjNeighs.cbegin(); it_neigh != adjNeighs.cend(); it_neigh++) {
+					Neighbourhood& neigh = **it_neigh;
+					n_points += neigh.it_end - neigh.it_beg;
+				}
+				// collect points from adjacent neighbours
+				std::vector<Eigen::Vector3f> nearestPoints;
+				nearestPoints.reserve(n_points);
+				for (auto it_neigh = adjNeighs.cbegin(); it_neigh != adjNeighs.cend(); it_neigh++) {
+					Neighbourhood& neigh = **it_neigh;
+					for (auto it_point = neigh.it_beg; it_point != neigh.it_end; it_point++) {
+						nearestPoints.push_back(std::get<1>(*it_point));
+					}
+				}
+				
+				// calculate normals from nearby points
+				Eigen::Vector3f normal;
+				if (nearestPoints.size() > 1) normal = normal_from_neighbourhood(nearestPoints);
+				else normal = std::get<1>(*it_morton).normalized();
+				normals.push_back(normal);
+			}
 			
 			auto end = std::chrono::steady_clock::now();
 			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
@@ -520,7 +571,6 @@ namespace DAG {
 			Pose pose = { position, rotation };
 			auto mortonCodes = calc_morton(points);
 			auto normals2 = calc_normals(pose, points, mortonCodes);
-			
 			
 			auto normals = get_normals(pose, points);
 			auto trie = get_trie(points, normals);

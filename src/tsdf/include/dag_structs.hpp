@@ -19,12 +19,22 @@ namespace DAG {
         MortonCode(int x, int y, int z): MortonCode(Eigen::Vector3i(x, y, z)) {}
         MortonCode(uint64_t code): val(code) {}
         MortonCode(Eigen::Vector3i vec) {
+            encode(vec);
+        }
+        inline void encode(Eigen::Vector3i vec) {
             // truncate from two's complement 32-bit to 21-bit integer
             uint32_t x, y, z;
             x = (1 << 20) + (uint32_t)vec.x();
             y = (1 << 20) + (uint32_t)vec.y();
             z = (1 << 20) + (uint32_t)vec.z();
             val = mortonnd::MortonNDBmi_3D_64::Encode(x, y, z);
+        }
+        inline Eigen::Vector3i decode() const {
+            auto [x, y, z] = mortonnd::MortonNDBmi_3D_64::Decode(val);
+            x -= 1 << 20;
+            y -= 1 << 20;
+            z -= 1 << 20;
+            return { (int32_t)x, (int32_t)y, (int32_t)z };
         }
         inline bool operator==(const MortonCode& other) const {
             return val == other.val;
