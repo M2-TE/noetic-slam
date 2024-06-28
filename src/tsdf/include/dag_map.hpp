@@ -195,7 +195,6 @@ namespace DAG {
 				}
 				// set end() iterator for final neighbourhood
 				it_neigh->second.it_end = mortonCodes.cend();
-				std::cout << neighMap.size() << " neighbourhoods\n";
 			}
 			
 			// build normals using local neighbourhoods
@@ -262,7 +261,19 @@ namespace DAG {
 					Eigen::Vector3f normal;
 					if (nearestPoints.size() >= 3) normal = normal_from_neighbourhood(nearestPoints);
 					else normal = point.normalized();
-					normals.push_back(normal);
+					
+					// flip normal if needed
+					Eigen::Vector3f posToPoint = point - pose.pos;
+					float dot = normal.dot(posToPoint);
+					if (dot < 0.0f) normal *= -1.0f;
+					// std::cout << normal.dot(posToPoint) << '\t';
+					// std::cout << "pos: " << point.x() << ' ' << point.y() << ' ' << point.z() << '\t';
+					// std::cout << "norm: " << normal.x() << ' ' << normal.y() << ' ' << normal.z() << '\n';
+					
+					
+					// figure out index of point
+					size_t index = it_point - mortonCodes.cbegin();
+					normals[index] = normal;
 				}
 			}
 			
@@ -278,6 +289,12 @@ namespace DAG {
 			Eigen::Vector3f safetyOffset = Eigen::Vector3f(leafResolution, leafResolution, leafResolution) / 2.0;
 			Eigen::Vector3i mainClusterPos = (nVoxelsPerUnit * inputPos + safetyOffset).cast<int32_t>();
 			mainClusterPos = mainClusterPos.unaryExpr([](int32_t val) { return val - val%2; });
+			
+			// DEBUG
+			// if (tid == 0) {
+				// std::cout << inputPos.x() << ' ' << inputPos.y() << ' ' << inputPos.z() << '\t';
+				// std::cout << inputNorm.x() << ' ' << inputNorm.y() << ' ' << inputNorm.z() << '\n';
+			// }
 
 			// calculate signed distances for neighbours of current leaf cluster as well
 			for (int32_t x = -1; x <= +1; x++) {
@@ -296,7 +313,25 @@ namespace DAG {
 									// leaf position
 									Eigen::Vector3f leafOffset = Eigen::Vector3f(xl, yl, zl) * leafResolution;
 									Eigen::Vector3f pos = clusterOffset + leafOffset;
-									*pLeaf = inputNorm.dot(inputPos - pos);
+									*pLeaf = inputNorm.dot(pos - inputPos);
+									
+									
+									// DEBUG
+									float optimalLeaf = pos.norm() - 5.0f;
+									float diff;
+									if (optimalLeaf > *pLeaf) diff = optimalLeaf - *pLeaf;
+									else diff = *pLeaf - optimalLeaf;
+									if (diff > 0.1) {
+										std::cout << std::setprecision(4);
+										if (true) {
+											std::cout << diff << '\t';
+											std::cout << *pLeaf << '\t' << optimalLeaf << '\n';
+											std::cout << "pos: " << inputPos.x() << ' ' << inputPos.y() << ' ' << inputPos.z() << '\t';
+											std::cout << "norm: " << inputNorm.x() << ' ' << inputNorm.y() << ' ' << inputNorm.z() << '\n';
+										}
+									}
+									// *pLeaf = optimalLeaf;
+									// DEBUG END
 									pLeaf++;
 								}
 							}
@@ -378,7 +413,7 @@ namespace DAG {
 					auto pNorm = normals.cbegin() + progress;
 					Octree& octree = octrees[id];
 					Octree::PathCache cache(octree);
-					for (; pCur < pEnd; pCur++) {
+					for (; pCur < pEnd; pCur++, pNorm++) {
 						build_trie_whatnot(octree, cache, *pCur, *pNorm, id);
 					}
 				});
@@ -479,6 +514,7 @@ namespace DAG {
 				if (z > upperRight.z) upperRight.z = z;
 			}
 			Pose pose = { position, rotation };
+			// TODO: transform points here, if not already transformed
 			auto mortonCodes = calc_morton(points);
 			sort_points(points, mortonCodes);
 			auto normals = calc_normals(pose, mortonCodes);
@@ -639,7 +675,7 @@ namespace DAG {
 			//     dataset.read(data);
 			//     std::cout << data.size() << '\n';
 			// }
-			return;
+			// return;
 			lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox(lowerLeft, upperRight);
 			std::vector<std::vector<uint32_t>*> nodeLevelRef;
 			for (auto& level: nodeLevels) nodeLevelRef.push_back(&level.data);
