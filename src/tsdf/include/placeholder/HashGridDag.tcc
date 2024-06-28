@@ -44,89 +44,11 @@
 #include <iostream>
 
 #include "/root/repo/src/tsdf/ext/morton-nd/include/morton-nd/mortonND_BMI2.h"
+#include "/root/repo/src/tsdf/include/leaf_cluster.hpp"
 // #include "/root/repo/src/tsdf/include/placeholder/HashGridDag.tcc"
 
 namespace lvr2
 {
-
-struct LeafCluster {
-    typedef uint64_t ClusterT;
-    typedef std::make_signed_t<ClusterT> ClusterS;
-    typedef uint32_t PartT;
-    LeafCluster(ClusterT cluster): cluster(cluster) {}
-    LeafCluster(PartT part0, PartT part1): cluster((ClusterT)part0 | ((ClusterT)part1 << 32)) {}
-    // LeafCluster(std::array<float, 8>& leaves): cluster(0) {
-    //     for (ClusterT i = 0; i < 8; i++) {
-    //         // normalize sd to [-1, 1]
-    //         float sdNormalized = leaves[i] * (1.0 / maxDist);
-            
-    //         // scale up to fit into nBit integers
-    //         float scale = (float)range;
-    //         float sdScaled = sdNormalized * scale;
-            
-    //         // cast to 8-bit integer and clamp between given range
-    //         int8_t sdScaledInt = (int8_t)sdScaled;
-    //         sdScaledInt = std::clamp<int8_t>(sdScaledInt, -scale, scale);
-            
-    //         // add offset such that values are represented linearly from 0 to max
-    //         uint8_t sdScaledUint = (uint8_t)(sdScaledInt + (int8_t)scale);
-            
-    //         // pack the 4 bits of this value into the leaf cluster
-    //         cluster |= (ClusterT)sdScaledUint << i*nBits;
-    //     }
-    // }
-    std::pair<PartT, PartT> get_parts() {
-        PartT part0 = (PartT)cluster;
-        PartT part1 = (PartT)(cluster >> 32);
-        return { part0, part1 };
-    }
-    void merge(LeafCluster& other) {
-        for (ClusterT i = 0; i < 8; i++) {
-            // mask out bits for current leaf
-            typedef std::make_signed_t<ClusterT> ClusterInt;
-            int8_t maskedA = (this->cluster >> i*nBits) & leafMask;
-            int8_t maskedB = (other.cluster >> i*nBits) & leafMask;
-            
-            // convert back to standard readable int
-            int8_t a = maskedA - range;
-            int8_t b = maskedB - range;
-            
-            // ruleset (in order of priority):
-            // 1. positive signed distance takes precedence over negative
-            // 2. smaller value takes precedence over larger value
-            bool bOverwrite = false;
-            if (std::signbit(a) > std::signbit(b)) bOverwrite = true;
-            else if (std::signbit(a) == std::signbit(b) && std::abs(a) > std::abs(b)) bOverwrite = true;
-            
-            if (bOverwrite) {
-                // mask out the relevant bits
-                ClusterT submask = leafMask << i*nBits;
-                submask = ~submask; // flip
-                // overwrite result bits with new value
-                cluster &= submask;
-                cluster |= (ClusterT)maskedB << i*nBits;
-            }
-        }
-    }
-    float get_sd(uint8_t index, float leafResolution) {
-        // 4 bits precision for each leaf
-        int8_t leaf = cluster >> index*nBits;
-        leaf &= leafMask;
-        // convert back to standard signed
-        leaf -= (int8_t)range;
-        // convert to floating signed distance
-        float signedDistance = (float)leaf;
-        signedDistance /= (float)range; // normalize signed distance
-        signedDistance *= leafResolution; // scale signed distance to real size
-        return signedDistance;
-    }
-    
-    ClusterT cluster;
-    // static constexpr float maxDist = leafResolution;
-    static constexpr ClusterT nBits = 8; // 1b sign, rest data
-    static constexpr ClusterT leafMask = (1 << nBits) - 1; // mask for a single leaf
-    static constexpr ClusterT range = leafMask / 2; // achievable range with data bits
-};
 
 template <typename BaseVecT, typename BoxT>
 HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vector<std::vector<uint32_t>*>& nodeLevels, float voxelsize)
@@ -204,11 +126,11 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
             z -= 1 << 20;
             Eigen::Vector3i veci { (int32_t)x, (int32_t)y, (int32_t)z };
             veci /= 2;
-            Eigen::Vector3f vecf = (veci).cast<float>() * m_voxelsize; // convert back to real position
+            Eigen::Vector3f vecf = veci.cast<float>() * m_voxelsize; // convert back to real position
             // std::cout << vecf.x() << ' ' << vecf.y() << ' ' << vecf.z() << '\n';
             
             // construct helper class for leaf cluster data
-            LeafCluster leafCluster(*pParentNode, *(pParentNode+1));
+            DAG::LeafCluster leafCluster(*pParentNode, *(pParentNode+1));
             // std::cout << std::bitset<64>(leafCluster.cluster) << '\n';
             
             // iterate over packed leaves within leaf cluster
@@ -220,15 +142,7 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
                         Eigen::Vector3f leafOffset = Eigen::Vector3f(xl, yl, zl) * m_voxelsize;
                         Eigen::Vector3f pos = vecf + leafOffset;
                         
-                        float signedDistance = leafCluster.get_sd(iLeaf, m_voxelsize);
-                        
-                        // DEBUG
-                        {
-                            // std::cout << std::bitset<32>(leafCluster) << '\n';
-                            // float magn = pos.norm();
-                            // signedDistance = magn - 5.0f;
-                            // std::cout << pos.x() << ' ' << pos.y() << ' ' << pos.z() << ": " << pos.norm() << ' ' << signedDistance << '\n';
-                        }
+                        float signedDistance = leafCluster.get_sd(iLeaf);
                         
                         // create query point
                         size_t qIndex = m_queryPoints.size();
@@ -240,8 +154,8 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
                         box->setVertex(0, qIndex); // set only lower bottom left vertex
 
                         // hash cell as morton code
-                        float voxelsPerUnit = 1.0 / m_voxelsize;
-                        Eigen::Vector3i leafPosition = (cell_centerf * voxelsPerUnit).cast<int32_t>();
+                        float recip = 1.0 / m_voxelsize;
+                        Eigen::Vector3i leafPosition = (cell_centerf * recip).cast<int32_t>();
                         
                         // std::cout << leafPosition.x() << ' ' << leafPosition.y() << ' ' << leafPosition.z() << '\n';
                         uint32_t xCell = (1 << 20) + (uint32_t)leafPosition.x();
@@ -250,6 +164,15 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
                         uint64_t mc = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
                         m_cells.emplace(mc, box);
                         iLeaf++;
+                        
+                        
+                        // DEBUG
+                        {
+                            // std::cout << std::bitset<32>(leafCluster) << '\n';
+                            // float magn = pos.norm();
+                            // signedDistance = magn - 5.0f;
+                            // std::cout << pos.x() << ' ' << pos.y() << ' ' << pos.z() << ": " << pos.norm() << ' ' << signedDistance << '\n';
+                        }
                     }
                 }
             }

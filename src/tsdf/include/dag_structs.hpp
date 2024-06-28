@@ -1,10 +1,13 @@
 #pragma once
+#include <algorithm>
 #include <bitset>
+#include <cmath>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <sstream>
 #include <type_traits>
 #include <vector>
 //
@@ -13,6 +16,7 @@
 #include <Eigen/Eigen>
 //
 #include "dag_constants.hpp"
+#include "leaf_cluster.hpp"
 
 namespace DAG {
     struct MortonCode {
@@ -36,99 +40,12 @@ namespace DAG {
             z -= 1 << 20;
             return { (int32_t)x, (int32_t)y, (int32_t)z };
         }
-        inline bool operator==(const MortonCode& other) const {
-            return val == other.val;
-        }
-        inline bool operator<(const MortonCode& other) const {
-            return val < other.val;
-        }
-        inline bool operator>(const MortonCode& other) const {
-            return val > other.val;
-        }
-        inline size_t hash() {
-            return val;
-        }
+        inline bool operator==(const MortonCode& other) const { return val == other.val; }
+        inline bool operator<(const MortonCode& other) const { return val < other.val; }
+        inline bool operator>(const MortonCode& other) const { return val > other.val; }
         uint64_t val;
     };
     
-    struct LeafCluster {
-        typedef uint64_t ClusterT;
-        typedef std::make_signed_t<ClusterT> ClusterS;
-        typedef uint32_t PartT;
-        LeafCluster(ClusterT cluster): cluster(cluster) {}
-        LeafCluster(PartT part0, PartT part1): cluster((ClusterT)part0 | ((ClusterT)part1 << 32)) {}
-        LeafCluster(std::array<float, 8>& leaves): cluster(0) {
-            for (ClusterT i = 0; i < 8; i++) {
-                // normalize sd to [-1, 1]
-                float sdNormalized = leaves[i] * (1.0 / maxDist);
-                
-                // scale up to fit into nBit integers
-                float scale = (float)range;
-                float sdScaled = sdNormalized * scale;
-                
-                // cast to 8-bit integer and clamp between given range
-                int8_t sdScaledInt = (int8_t)sdScaled;
-                sdScaledInt = std::clamp<int8_t>(sdScaledInt, -scale, scale);
-                
-                // add offset such that values are represented linearly from 0 to max
-                uint8_t sdScaledUint = (uint8_t)(sdScaledInt + (int8_t)scale);
-                
-                // pack the 4 bits of this value into the leaf cluster
-                cluster |= (ClusterT)sdScaledUint << i*nBits;
-            }
-        }
-        std::pair<PartT, PartT> get_parts() {
-            PartT part0 = (PartT)cluster;
-            PartT part1 = (PartT)(cluster >> 32);
-            return { part0, part1 };
-        }
-        void merge(LeafCluster& other) {
-            for (ClusterT i = 0; i < 8; i++) {
-                // mask out bits for current leaf
-                typedef std::make_signed_t<ClusterT> ClusterInt;
-                int8_t maskedA = (this->cluster >> i*nBits) & leafMask;
-                int8_t maskedB = (other.cluster >> i*nBits) & leafMask;
-                
-                // convert back to standard readable int
-                int8_t a = maskedA - range;
-                int8_t b = maskedB - range;
-                
-                // ruleset (in order of priority):
-                // 1. positive signed distance takes precedence over negative
-                // 2. smaller value takes precedence over larger value
-                bool bOverwrite = false;
-                if (std::signbit(a) > std::signbit(b)) bOverwrite = true;
-                else if (std::signbit(a) == std::signbit(b) && std::abs(a) > std::abs(b)) bOverwrite = true;
-                
-                if (bOverwrite) {
-                    // mask out the relevant bits
-                    ClusterT submask = leafMask << i*nBits;
-                    submask = ~submask; // flip
-                    // overwrite result bits with new value
-                    cluster &= submask;
-                    cluster |= (ClusterT)maskedB << i*nBits;
-                }
-            }
-        }
-        float get_sd(uint8_t index) {
-            // 4 bits precision for each leaf
-            int8_t leaf = cluster >> index*nBits;
-            leaf &= leafMask;
-            // convert back to standard signed
-            leaf -= (int8_t)range;
-            // convert to floating signed distance
-            float signedDistance = (float)leaf;
-            signedDistance /= (float)range; // normalize signed distance
-            signedDistance *= leafResolution; // scale signed distance to real size
-            return signedDistance;
-        }
-        
-        ClusterT cluster;
-        static constexpr float maxDist = leafResolution;
-        static constexpr ClusterT nBits = 8; // 1b sign, rest data
-        static constexpr ClusterT leafMask = (1 << nBits) - 1; // mask for a single leaf
-        static constexpr ClusterT range = leafMask / 2; // achievable range with data bits
-    };
 
     struct NodeLevel {
     private:

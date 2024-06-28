@@ -29,6 +29,7 @@
 #include <lvr2/reconstruction/HashGrid.hpp>
 //
 #include "dag_structs.hpp"
+#include "leaf_cluster.hpp"
 #include "lvr2/geometry/PMPMesh.hpp"
 #include "lvr2/reconstruction/FastBox.hpp"
 #include "lvr2/reconstruction/FastReconstruction.hpp"
@@ -108,6 +109,81 @@ static Eigen::Vector3f normal_from_neighbourhood(std::vector<Eigen::Vector3f>& p
 	// return normalized weighted direction as surface normal
 	weighted_dir.normalize();
 	return weighted_dir;
+}
+static Eigen::Vector3f normal_from_neighbourhood(std::vector<Eigen::Vector4d>& points) {
+	// calculate centroid by through coefficient average
+	Eigen::Vector4d centroid { 0, 0, 0, 0 };
+	for (auto p = points.cbegin(); p != points.cend(); p++) {
+		centroid += *p;
+	}
+	double recip = 1.0 / (double)points.size();
+	centroid *= recip;
+
+	// covariance matrix excluding symmetries
+	double xx = 0.0; double xy = 0.0; double xz = 0.0;
+	double yy = 0.0; double yz = 0.0; double zz = 0.0;
+	for (auto p = points.cbegin(); p != points.cend(); p++) {
+		auto r = *p - centroid;
+		xx += r.x() * r.x();
+		xy += r.x() * r.y();
+		xz += r.x() * r.z();
+		yy += r.y() * r.y();
+		yz += r.y() * r.z();
+		zz += r.z() * r.z();
+	}
+	xx *= recip;
+	xy *= recip;
+	xz *= recip;
+	yy *= recip;
+	yz *= recip;
+	zz *= recip;
+
+	// weighting linear regression based on square determinant
+	Eigen::Vector4d weighted_dir = { 0, 0, 0, 0 };
+
+	// determinant x
+	{
+		double det_x = yy*zz - yz*yz;
+		Eigen::Vector4d axis_dir = {
+			det_x,
+			xz*yz - xy*zz,
+			xy*yz - xz*yy,
+			0.0
+		};
+		double weight = det_x * det_x;
+		if (weighted_dir.dot(axis_dir) < 0.0) weight = -weight;
+		weighted_dir += axis_dir * weight;
+	}
+	// determinant y
+	{
+		double det_y = xx*zz - xz*xz;
+		Eigen::Vector4d axis_dir = {
+			xz*yz - xy*zz,
+			det_y,
+			xy*xz - yz*xx,
+			0.0
+		};
+		double weight = det_y * det_y;
+		if (weighted_dir.dot(axis_dir) < 0.0) weight = -weight;
+		weighted_dir += axis_dir * weight;
+	}
+	// determinant z
+	{
+		double det_z = xx*yy - xy*xy;
+		Eigen::Vector4d axis_dir = {
+			xy*yz - xz*yy,
+			xy*xz - yz*xx,
+			det_z,
+			0.0
+		};
+		double weight = det_z * det_z;
+		if (weighted_dir.dot(axis_dir) < 0.0) weight = -weight;
+		weighted_dir += axis_dir * weight;
+	}
+
+	// return normalized weighted direction as surface normal
+	weighted_dir.normalize();
+	return { (float)weighted_dir.x(), (float)weighted_dir.y(), (float)weighted_dir.z() };
 }
 
 namespace DAG {
@@ -242,7 +318,7 @@ namespace DAG {
 				// std::cout << n_points<< '\n';
 				
 				// reserve some generous space for nearest points
-				std::vector<Eigen::Vector3f> nearestPoints;
+				std::vector<Eigen::Vector4d> nearestPoints;
 				nearestPoints.reserve(n_points);
 				// for every point within the current neighbourhood it_neigh, find its nearest neighbours for normal calc
 				constexpr float maxDist = leafResolution * (1 << neighLevel);
@@ -254,13 +330,16 @@ namespace DAG {
 					for (auto it_other = localPoints.cbegin(); it_other != localPoints.cend(); it_other++) {
 						Eigen::Vector3f diff = *it_other - point;
 						float distSqr = diff.squaredNorm();
-						if (distSqr <= maxDist*maxDist) nearestPoints.push_back(*it_other);
+						if (distSqr <= maxDist*maxDist) {
+							Eigen::Vector3f other = *it_other;
+							nearestPoints.emplace_back(other.x(), other.y(), other.z(), 0.0);
+						}
 					}
 					
 					// use these filtered nearest points to calc normal
 					Eigen::Vector3f normal;
 					if (nearestPoints.size() >= 3) normal = normal_from_neighbourhood(nearestPoints);
-					else normal = point.normalized();
+					else normal = (point - pose.pos).normalized();
 					
 					// flip normal if needed
 					Eigen::Vector3f posToPoint = point - pose.pos;
@@ -284,10 +363,9 @@ namespace DAG {
 		}
 		static auto build_trie_whatnot(Octree& octree, Octree::PathCache& cache, const Eigen::Vector3f inputPos, const Eigen::Vector3f& inputNorm, uint32_t tid) {
 			// voxels per unit at leaf level
-			constexpr float nVoxelsPerUnit = 1.0 / leafResolution;
+			constexpr float recip = 1.0 / leafResolution;
 			// morton code will be generated using leaf cluster position, not the leaves themselves
-			Eigen::Vector3f safetyOffset = Eigen::Vector3f(leafResolution, leafResolution, leafResolution) / 2.0;
-			Eigen::Vector3i mainClusterPos = (nVoxelsPerUnit * inputPos + safetyOffset).cast<int32_t>();
+			Eigen::Vector3i mainClusterPos = (inputPos * recip).cast<int32_t>();
 			mainClusterPos = mainClusterPos.unaryExpr([](int32_t val) { return val - val%2; });
 			
 			// DEBUG
@@ -315,21 +393,21 @@ namespace DAG {
 									Eigen::Vector3f pos = clusterOffset + leafOffset;
 									*pLeaf = inputNorm.dot(pos - inputPos);
 									
-									
 									// DEBUG
 									float optimalLeaf = pos.norm() - 5.0f;
-									float diff;
-									if (optimalLeaf > *pLeaf) diff = optimalLeaf - *pLeaf;
-									else diff = *pLeaf - optimalLeaf;
-									if (diff > 0.1) {
-										std::cout << std::setprecision(4);
-										if (true) {
-											std::cout << diff << '\t';
-											std::cout << *pLeaf << '\t' << optimalLeaf << '\n';
-											std::cout << "pos: " << inputPos.x() << ' ' << inputPos.y() << ' ' << inputPos.z() << '\t';
-											std::cout << "norm: " << inputNorm.x() << ' ' << inputNorm.y() << ' ' << inputNorm.z() << '\n';
-										}
-									}
+									// float diff = std::abs(*pLeaf - optimalLeaf);
+									// if (diff > 0.1) {
+									// 	std::cout << std::setprecision(4);
+									// 	if (true) {
+									// 		std::cout << diff << '\t';
+									// 		std::cout << *pLeaf << '\t' << optimalLeaf << '\n';
+									// 		std::cout << "pos: " << inputPos.x() << ' ' << inputPos.y() << ' ' << inputPos.z() << '\t';
+									// 		std::cout << "norm: " << inputNorm.x() << ' ' << inputNorm.y() << ' ' << inputNorm.z() << '\n';
+									// 	}
+									// }
+									// std::ostringstream oss;
+									// oss << *pLeaf << '\t' << optimalLeaf << '\t' << diff << '\n';
+									// std::cout << oss.str();
 									// *pLeaf = optimalLeaf;
 									// DEBUG END
 									pLeaf++;
@@ -343,7 +421,7 @@ namespace DAG {
 						
 						if (cluster != 0) {
 							LeafCluster lc(leaves);
-							LeafCluster other((uint32_t)cluster);
+							LeafCluster other(cluster);
 							lc.merge(other);
 							cluster = lc.cluster;
 						}
@@ -501,6 +579,36 @@ namespace DAG {
 		}
 		void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
 			auto full_beg = std::chrono::steady_clock::now();
+			
+			// std::random_device rd;
+			// std::mt19937 gen(0);
+			// std::uniform_real_distribution<float> dis(-.06f, .06f);
+			// std::cout << std::setprecision(4);
+			// for (auto i = 0; i < 1; i++) {
+			// 	// gen
+			// 	std::array<float, 8> leaves;
+			// 	for (auto iLeaf = 0; iLeaf < 8; iLeaf++) leaves[iLeaf] = dis(gen);
+			// 	LeafCluster lc(leaves);
+				
+			// 	// merge
+			// 	std::array<float, 8> otherLeaves;
+			// 	for (auto iLeaf = 0; iLeaf < 8; iLeaf++) otherLeaves[iLeaf] = dis(gen);
+			// 	LeafCluster lcmerge(otherLeaves);
+			// 	lc.merge(lcmerge);
+				
+			// 	// conversion
+			// 	auto [part0, part1] = lc.get_parts();
+			// 	LeafCluster lc2(part0, part1);
+				
+			// 	// output
+			// 	for (auto iLeaf = 0; iLeaf < 8; iLeaf++) {
+			// 		std::cout << leaves[iLeaf] << "  \tmerged with " << otherLeaves[iLeaf] << "  \toutput: " << lc2.get_sd(iLeaf) << '\n';
+			// 	}
+			// 	std::cout << '\n';
+			// }
+			// exit(0);
+			
+			
 			// update bounding box
 			for (auto cur = points.cbegin(); cur != points.cend(); cur++) {
 				float x = cur->x();
