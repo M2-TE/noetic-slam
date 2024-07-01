@@ -26,6 +26,7 @@
 // #include <highfive/boost.hpp>
 // #include <highfive/eigen.hpp>
 #include <highfive/H5File.hpp>
+#include <placeholder/HashGridDag.tcc>
 #include <lvr2/reconstruction/HashGrid.hpp>
 //
 #include "dag_structs.hpp"
@@ -784,47 +785,47 @@ namespace DAG {
 			//     std::cout << data.size() << '\n';
 			// }
 			// return;
-			lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox(lowerLeft, upperRight);
-			std::vector<std::vector<uint32_t>*> nodeLevelRef;
-			for (auto& level: nodeLevels) nodeLevelRef.push_back(&level.data);
-			nodeLevelRef.push_back(&leafLevel.data);
+			// lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox(lowerLeft, upperRight);
+			// std::vector<std::vector<uint32_t>*> nodeLevelRef;
+			// for (auto& level: nodeLevels) nodeLevelRef.push_back(&level.data);
+			// nodeLevelRef.push_back(&leafLevel.data);
 			
-			///////////////////////// LVR2 ///////////////////////////
-			typedef lvr2::BaseVector<float> VecT;
+			// ///////////////////////// LVR2 ///////////////////////////
+			// typedef lvr2::BaseVector<float> VecT;
 			
-			// create hash grid from entire tree
-			auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::FastBox<VecT>>>(boundingBox, nodeLevelRef, leafResolution);
+			// // create hash grid from entire tree
+			// auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::FastBox<VecT>>>(boundingBox, nodeLevelRef, leafResolution);
 			
-			// generate mesh from hash grid
-			lvr2::FastReconstruction<VecT, lvr2::FastBox<VecT>> reconstruction(pGrid);
-			lvr2::PMPMesh<VecT> mesh{};
-			reconstruction.getMesh(mesh);			
-			// lvr2::reconstruct::Options options(0, "");
-			// optimizeMesh(options, mesh);
+			// // generate mesh from hash grid
+			// lvr2::FastReconstruction<VecT, lvr2::FastBox<VecT>> reconstruction(pGrid);
+			// lvr2::PMPMesh<VecT> mesh{};
+			// reconstruction.getMesh(mesh);			
+			// // lvr2::reconstruct::Options options(0, "");
+			// // optimizeMesh(options, mesh);
 			
-			// generate mesh buffer from reconstructed mesh
-			auto faceNormals = lvr2::calcFaceNormals(mesh);
-    		auto clusterBiMap = lvr2::planarClusterGrowing(mesh, faceNormals, 0.85);
-			lvr2::ClusterPainter painter(clusterBiMap);
-    		lvr2::ColorGradient::GradientType t = lvr2::ColorGradient::gradientFromString("GREY");
-			auto clusterColors = boost::optional<lvr2::DenseClusterMap<lvr2::RGB8Color>>(painter.colorize(mesh, t));
-			auto vertexNormals = lvr2::calcVertexNormals(mesh, faceNormals);
-			// auto matResult = lvr2::Materializer<VecT>(mesh, clusterBiMap, faceNormals, *surface).generateMaterials();
+			// // generate mesh buffer from reconstructed mesh
+			// auto faceNormals = lvr2::calcFaceNormals(mesh);
+    		// auto clusterBiMap = lvr2::planarClusterGrowing(mesh, faceNormals, 0.85);
+			// lvr2::ClusterPainter painter(clusterBiMap);
+    		// lvr2::ColorGradient::GradientType t = lvr2::ColorGradient::gradientFromString("GREY");
+			// auto clusterColors = boost::optional<lvr2::DenseClusterMap<lvr2::RGB8Color>>(painter.colorize(mesh, t));
+			// auto vertexNormals = lvr2::calcVertexNormals(mesh, faceNormals);
+			// // auto matResult = lvr2::Materializer<VecT>(mesh, clusterBiMap, faceNormals, *surface).generateMaterials();
 
-			// Calc normals for vertices
-			// lvr2::SimpleFinalizer<lvr2::BaseVector<float>> finalizer;
-			// finalizer.setNormalData(vertexNormals);
-			// finalizer.setColorData(const VertexMap<RGB8Color> &colorData);
+			// // Calc normals for vertices
+			// // lvr2::SimpleFinalizer<lvr2::BaseVector<float>> finalizer;
+			// // finalizer.setNormalData(vertexNormals);
+			// // finalizer.setColorData(const VertexMap<RGB8Color> &colorData);
 			
-			lvr2::TextureFinalizer<lvr2::BaseVector<float>> finalizer(clusterBiMap);
-			finalizer.setClusterColors(*clusterColors);
-			finalizer.setVertexNormals(vertexNormals);
-			// finalizer.setMaterializerResult(matResult);
+			// lvr2::TextureFinalizer<lvr2::BaseVector<float>> finalizer(clusterBiMap);
+			// finalizer.setClusterColors(*clusterColors);
+			// finalizer.setVertexNormals(vertexNormals);
+			// // finalizer.setMaterializerResult(matResult);
 			
-			// save to disk
-			auto meshBuffer = finalizer.apply(mesh);
-			auto model = std::make_shared<lvr2::Model>(meshBuffer);
-			lvr2::ModelFactory::saveModel(model, "yeehaw.ply");
+			// // save to disk
+			// auto meshBuffer = finalizer.apply(mesh);
+			// auto model = std::make_shared<lvr2::Model>(meshBuffer);
+			// lvr2::ModelFactory::saveModel(model, "yeehaw.ply");
 		}
 
 	private:

@@ -32,8 +32,8 @@
  *      Author: twiemann
  */
 
-#ifndef _LVR2_RECONSTRUCTION_HASHGRID_H_
-#define _LVR2_RECONSTRUCTION_HASHGRID_H_
+// #ifndef _LVR2_RECONSTRUCTION_HASHGRID_H_
+// #define _LVR2_RECONSTRUCTION_HASHGRID_H_
 
 // temporary
 // #include "/root/repo/src/tsdf/include/placeholder/HashGridDag.hpp"
