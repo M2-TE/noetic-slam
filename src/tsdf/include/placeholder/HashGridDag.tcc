@@ -40,12 +40,12 @@
 #include "lvr2/reconstruction/HashGrid.hpp"
 
 #include <bitset>
+#include <cstddef>
 #include <fstream>
 #include <iostream>
 
 #include "/root/repo/src/tsdf/ext/morton-nd/include/morton-nd/mortonND_BMI2.h"
 #include "/root/repo/src/tsdf/include/leaf_cluster.hpp"
-// #include "/root/repo/src/tsdf/include/placeholder/HashGridDag.tcc"
 
 namespace lvr2
 {
@@ -147,32 +147,32 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
                         // create query point
                         size_t qIndex = m_queryPoints.size();
                         m_queryPoints.emplace_back(BaseVecT(pos.x(), pos.y(), pos.z()), signedDistance);
-
-                        // create a cell for each query point (query point will be q0 of cell)
-                        Eigen::Vector3f cell_centerf = pos + Eigen::Vector3f(m_voxelsize/2, m_voxelsize/2, m_voxelsize/2);
-                        BoxT* box = new BoxT(BaseVecT(cell_centerf.x(), cell_centerf.y(), cell_centerf.z()));
-                        box->setVertex(0, qIndex); // set only lower bottom left vertex
-
-                        // hash cell as morton code
-                        float recip = 1.0 / m_voxelsize;
-                        Eigen::Vector3i leafPosition = (cell_centerf * recip).cast<int32_t>();
                         
-                        // std::cout << leafPosition.x() << ' ' << leafPosition.y() << ' ' << leafPosition.z() << '\n';
-                        uint32_t xCell = (1 << 20) + (uint32_t)leafPosition.x();
-                        uint32_t yCell = (1 << 20) + (uint32_t)leafPosition.y();
-                        uint32_t zCell = (1 << 20) + (uint32_t)leafPosition.z();
-                        uint64_t mc = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
-                        m_cells.emplace(mc, box);
-                        iLeaf++;
-                        
-                        
-                        // DEBUG
-                        {
-                            // std::cout << std::bitset<32>(leafCluster) << '\n';
-                            // float magn = pos.norm();
-                            // signedDistance = magn - 5.0f;
-                            // std::cout << pos.x() << ' ' << pos.y() << ' ' << pos.z() << ": " << pos.norm() << ' ' << signedDistance << '\n';
+                        // create 8 cells around the query point
+                        std::array<Eigen::Vector3f, 8> cellOffsets = {
+                            Eigen::Vector3f(+0.5, +0.5, +0.5), Eigen::Vector3f(-0.5, +0.5, +0.5),
+                            Eigen::Vector3f(-0.5, -0.5, +0.5), Eigen::Vector3f(+0.5, -0.5, +0.5),
+                            Eigen::Vector3f(+0.5, +0.5, -0.5), Eigen::Vector3f(-0.5, +0.5, -0.5),
+                            Eigen::Vector3f(-0.5, -0.5, -0.5), Eigen::Vector3f(+0.5, -0.5, -0.5),
+                        };
+                        for (size_t i = 0; i < 8; i++) {
+                            // create cell
+                            Eigen::Vector3f cell_centerf = pos + cellOffsets[i] * m_voxelsize;
+                            BoxT* pBox = new BoxT(BaseVecT(cell_centerf.x(), cell_centerf.y(), cell_centerf.z()));
+                            // create morton code of cell
+                            float recip = 1.0 / m_voxelsize;
+                            Eigen::Vector3i leafPosition = (cell_centerf * recip).cast<int32_t>();
+                            uint32_t xCell = (1 << 20) + (uint32_t)leafPosition.x();
+                            uint32_t yCell = (1 << 20) + (uint32_t)leafPosition.y();
+                            uint32_t zCell = (1 << 20) + (uint32_t)leafPosition.z();
+                            uint64_t mc = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
+                            // emplace cell into map, check if it already existed
+                            auto [iter, bEmplaced] = m_cells.emplace(mc, pBox);
+                            if (!bEmplaced) delete pBox;
+                            // place query point at the correct cell index
+                            iter->second->setVertex(i, qIndex);
                         }
+                        iLeaf++;
                     }
                 }
             }
@@ -406,6 +406,7 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
         }
     }
 
+    // TODO: instead of flagging and culling, add query points with max negative distance to the cells containing invalid indices
     std::cout << timestamp << "flagging cells..." << std::endl;
     std::vector<size_t> invalid_cells;
     for (auto it = m_cells.cbegin(); it != m_cells.cend(); it++) {
@@ -414,13 +415,11 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
         for (auto i = 0; i < 8; i++) {
             auto v = it->second->getVertex(i);
             if (v == BoxT::INVALID_INDEX) b_flagged = true;
-
-            // also flag boxes with only negative or only positive signed distances?
-            // if (m_queryPoints[v].m_distance < 0.0f) b_all_positive = false;
-            // if (m_queryPoints[v].m_distance > 0.0f) b_all_negative = false;
         }
         if (b_flagged) invalid_cells.push_back(it->first);
     }
+    
+    // TODO: erase the culling part
     // erase the cells that were flagged for removal
     std::cout << timestamp << "culling "<< invalid_cells.size() << " flagged cells..." << std::endl;
     for (auto it = invalid_cells.cbegin(); it != invalid_cells.cend(); it++) {
