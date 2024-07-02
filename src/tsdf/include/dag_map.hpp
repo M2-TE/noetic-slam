@@ -236,27 +236,25 @@ namespace DAG {
 		static auto calc_normals(Pose pose, std::vector<std::pair<MortonCode, Eigen::Vector3f>>& mortonCodes) {
 			auto beg = std::chrono::steady_clock::now();
 			
-			
-			// the level up to which is checked to see if two morton codes belong to the same neighbourhood
-			constexpr size_t neighLevel = 2;
-			constexpr size_t mask = std::numeric_limits<size_t>::max() << neighLevel * 3;
-			
 			// construct neighbourhoods of points
 			struct Neighbourhood {
 				std::vector<std::pair<MortonCode, Eigen::Vector3f>>::const_iterator it_beg;
 				std::vector<std::pair<MortonCode, Eigen::Vector3f>>::const_iterator it_end;
 			};
-			// todo: check performance of real hash vs sorted red-black
-			// phmap::flat_hash_map<typeof(MortonCode::val), Neighbourhood> neighMap;
-			std::map<typeof(MortonCode::val), Neighbourhood> neighMap;
-			{
+			auto calc_neigh_map = [&mortonCodes](size_t neighLevel) {
+				// the level up to which is checked to see if two morton codes belong to the same neighbourhood
+				size_t mask = std::numeric_limits<size_t>::max() << neighLevel * 3;
+				phmap::flat_hash_map<typeof(MortonCode::val), Neighbourhood> neighMap;
+				// phmap::btree_map<typeof(MortonCode::val), Neighbourhood> neighMap;
+				// std::map<typeof(MortonCode::val), Neighbourhood> neighMap;
+				
 				// insert the first neighbourhood
 				MortonCode mc_neigh = std::get<0>(mortonCodes.front());
 				mc_neigh.val &= mask;
 				auto it_neigh = neighMap.emplace(mc_neigh.val, Neighbourhood(mortonCodes.cbegin(), mortonCodes.cbegin())).first;
 				
 				// iterate through all points to build neighbourhoods
-				for(auto it_morton = mortonCodes.cbegin() + 1; it_morton != mortonCodes.cend(); it_morton++) {
+				for (auto it_morton = mortonCodes.cbegin() + 1; it_morton != mortonCodes.cend(); it_morton++) {
 					// get morton codes from current point and current neighbourhood
 					MortonCode mc_point = std::get<0>(*it_morton);
 					MortonCode mc_neigh = std::get<0>(*it_neigh->second.it_beg);
@@ -273,95 +271,129 @@ namespace DAG {
 				}
 				// set end() iterator for final neighbourhood
 				it_neigh->second.it_end = mortonCodes.cend();
+				
+				return neighMap;
+			};
+			// use chunk at level 2 (relative from leaves) for neighbourhoods
+			static size_t neighLevel = 1;
+			auto neighMap = calc_neigh_map(neighLevel);
+			// rough approximation of points per neighbourhood
+			size_t nPts = mortonCodes.size() / neighMap.size();
+			// increase neigh level until the desired amount of points per neighbourhood is reached
+			while (nPts < 6) {
+				neighLevel++;
+				neighMap = calc_neigh_map(neighLevel);
+				// rough approximation of points per neighbourhood
+				nPts = mortonCodes.size() / neighMap.size();
+				std::cout << "increased neighbourhood level to: " << neighLevel << '\n';
 			}
+			auto end = std::chrono::steady_clock::now();
+			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+			measurements.emplace_back(dur, "neig calc");
+			beg = std::chrono::steady_clock::now();
 			
 			// build normals using local neighbourhoods
+			float maxDist = leafResolution * (1 << neighLevel);
 			std::vector<Eigen::Vector3f> normals(mortonCodes.size());
-			for (auto it_neigh = neighMap.cbegin(); it_neigh != neighMap.cend(); it_neigh++) {
-				// get morton code for current neighbourhood
-				MortonCode mc_neigh = std::get<0>(*it_neigh);
-				const Neighbourhood& neigh = std::get<1>(*it_neigh);
-				Eigen::Vector3i pos_neigh = mc_neigh.decode();
-				
-				// gather adjacent neighbourhoods
-				std::vector<Neighbourhood*> adjNeighs;
-				for (int32_t x = -1; x <= +1; x++) {
-					for (int32_t y = -1; y <= +1; y++) {
-						for (int32_t z = -1; z <= +1; z++) {
-							Eigen::Vector3i offset { x, y, z };
-							offset *= 1 << neighLevel;
-							MortonCode mc_near(pos_neigh + offset);
-							// attempt to find adjacent neighbourhood in map
-							auto it_near = neighMap.find(mc_near.val);
-							if (it_near != neighMap.cend()) {
-								Neighbourhood& adj = std::get<1>(*it_near);
-								adjNeighs.push_back(&adj);	
+			typedef decltype(neighMap)::const_iterator NeighIter;
+			auto normFnc = [&normals, &neighMap, &mortonCodes, pose, maxDist](NeighIter beg, NeighIter end) {
+				for (auto it_neigh = beg; it_neigh != end; it_neigh++) {
+					// get morton code for current neighbourhood
+					MortonCode mc_neigh = std::get<0>(*it_neigh);
+					const Neighbourhood& neigh = std::get<1>(*it_neigh);
+					Eigen::Vector3i pos_neigh = mc_neigh.decode();
+					
+					// gather adjacent neighbourhoods
+					std::vector<Neighbourhood*> adjNeighs;
+					for (int32_t x = -1; x <= +1; x++) {
+						for (int32_t y = -1; y <= +1; y++) {
+							for (int32_t z = -1; z <= +1; z++) {
+								Eigen::Vector3i offset { x, y, z };
+								offset *= 1 << neighLevel;
+								MortonCode mc_near(pos_neigh + offset);
+								// attempt to find adjacent neighbourhood in map
+								auto it_near = neighMap.find(mc_near.val);
+								if (it_near != neighMap.cend()) {
+									Neighbourhood& adj = std::get<1>(*it_near);
+									adjNeighs.push_back(&adj);	
+								}
 							}
 						}
 					}
-				}
-				// std::cout << adjNeighs.size() << '\n';
-				
-				// count total points in all adjacent neighbourhoods
-				size_t n_points = 0;
-				for (auto it_neigh = adjNeighs.cbegin(); it_neigh != adjNeighs.cend(); it_neigh++) {
-					Neighbourhood& neigh = **it_neigh;
-					n_points += neigh.it_end - neigh.it_beg;
-				}
-				// collect points from adjacent neighbours
-				std::vector<Eigen::Vector3f> localPoints;
-				localPoints.reserve(n_points);
-				for (auto it_neigh = adjNeighs.cbegin(); it_neigh != adjNeighs.cend(); it_neigh++) {
-					Neighbourhood& neigh = **it_neigh;
-					for (auto it_point = neigh.it_beg; it_point != neigh.it_end; it_point++) {
-						localPoints.push_back(std::get<1>(*it_point));
-					}
-				}
-				// std::cout << n_points<< '\n';
-				
-				// reserve some generous space for nearest points
-				std::vector<Eigen::Vector4d> nearestPoints;
-				nearestPoints.reserve(n_points);
-				// for every point within the current neighbourhood it_neigh, find its nearest neighbours for normal calc
-				constexpr float maxDist = leafResolution * (1 << neighLevel);
-				for(auto it_point = neigh.it_beg; it_point != neigh.it_end; it_point++) {
-					Eigen::Vector3f point = std::get<1>(*it_point);
 					
-					// go over all points and store the ones within the boundary
-					nearestPoints.clear();
-					for (auto it_other = localPoints.cbegin(); it_other != localPoints.cend(); it_other++) {
-						Eigen::Vector3f diff = *it_other - point;
-						float distSqr = diff.squaredNorm();
-						if (distSqr <= maxDist*maxDist) {
-							Eigen::Vector3f other = *it_other;
-							nearestPoints.emplace_back(other.x(), other.y(), other.z(), 0.0);
+					// count total points in all adjacent neighbourhoods
+					size_t n_points = 0;
+					for (auto it_neigh = adjNeighs.cbegin(); it_neigh != adjNeighs.cend(); it_neigh++) {
+						Neighbourhood& neigh = **it_neigh;
+						n_points += neigh.it_end - neigh.it_beg;
+					}
+					// collect points from adjacent neighbours
+					std::vector<Eigen::Vector3f> localPoints;
+					localPoints.reserve(n_points);
+					for (auto it_neigh = adjNeighs.cbegin(); it_neigh != adjNeighs.cend(); it_neigh++) {
+						Neighbourhood& neigh = **it_neigh;
+						for (auto it_point = neigh.it_beg; it_point != neigh.it_end; it_point++) {
+							localPoints.push_back(std::get<1>(*it_point));
 						}
 					}
 					
-					// use these filtered nearest points to calc normal
-					Eigen::Vector3f normal;
-					if (nearestPoints.size() >= 3) normal = normal_from_neighbourhood(nearestPoints);
-					else normal = (point - pose.pos).normalized();
-					
-					// flip normal if needed
-					Eigen::Vector3f posToPoint = point - pose.pos;
-					float dot = normal.dot(posToPoint);
-					if (dot < 0.0f) normal *= -1.0f;
-					// if (dot < 0) {
-					// 	std::cout << dot << '\t';
-					// 	std::cout << "pos: " << point.x() << ' ' << point.y() << ' ' << point.z() << '\t';
-					// 	std::cout << "norm: " << normal.x() << ' ' << normal.y() << ' ' << normal.z() << '\n';
-					// }
-					
-					
-					// figure out index of point
-					size_t index = it_point - mortonCodes.cbegin();
-					normals[index] = normal;
+					// reserve some generous space for nearest points
+					std::vector<Eigen::Vector4d> nearestPoints;
+					nearestPoints.reserve(n_points);
+					// for every point within the current neighbourhood it_neigh, find its nearest neighbours for normal calc
+					for (auto it_point = neigh.it_beg; it_point != neigh.it_end; it_point++) {
+						Eigen::Vector3f point = std::get<1>(*it_point);
+						
+						// go over all points and store the ones within the boundary
+						nearestPoints.clear();
+						for (auto it_other = localPoints.cbegin(); it_other != localPoints.cend(); it_other++) {
+							Eigen::Vector3f diff = *it_other - point;
+							float distSqr = diff.squaredNorm();
+							if (distSqr <= maxDist*maxDist) {
+								Eigen::Vector3f other = *it_other;
+								nearestPoints.emplace_back(other.x(), other.y(), other.z(), 0.0);
+							}
+						}
+						
+						// use these filtered nearest points to calc normal
+						Eigen::Vector3f normal;
+						if (nearestPoints.size() >= 3) normal = normal_from_neighbourhood(nearestPoints);
+						else normal = (point - pose.pos).normalized();
+						
+						// flip normal if needed
+						Eigen::Vector3f posToPoint = point - pose.pos;
+						float dot = normal.dot(posToPoint);
+						if (dot < 0.0f) normal *= -1.0f;
+						
+						// figure out index of point
+						size_t index = it_point - mortonCodes.cbegin();
+						normals[index] = normal;
+					}
 				}
+			};
+			// balance load across several threads
+			std::vector<std::jthread> threads;
+			threads.reserve(std::jthread::hardware_concurrency());
+			for (size_t iThread = 0; iThread < threads.capacity(); iThread++) {
+				// neighbours per thread
+				size_t nNeighs = neighMap.size() / threads.capacity();
+				// prepare iterators
+				NeighIter beg = neighMap.cbegin();
+				std::advance(beg, nNeighs * iThread);
+				NeighIter end;
+				if (iThread == threads.capacity() - 1) {
+					end = neighMap.cend();
+				}
+				else {
+					end = beg;
+					std::advance(end, nNeighs);
+				}
+				threads.emplace_back(normFnc, beg, end);
 			}
+			threads.clear();
 			
-			auto end = std::chrono::steady_clock::now();
-			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+			end = std::chrono::steady_clock::now();
+			dur = std::chrono::duration<double, std::milli> (end - beg).count();
 			measurements.emplace_back(dur, "norm calc");
 			return normals;
 		}
