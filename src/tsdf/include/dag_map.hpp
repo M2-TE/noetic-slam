@@ -32,6 +32,7 @@
 #include "dag_structs.hpp"
 #include "leaf_cluster.hpp"
 #include "lvr2/geometry/PMPMesh.hpp"
+#include "lvr2/reconstruction/DMCReconstruction.hpp"
 #include "lvr2/reconstruction/FastBox.hpp"
 #include "lvr2/reconstruction/FastReconstruction.hpp"
 #include "lvr2/algorithm/NormalAlgorithms.hpp"
@@ -794,33 +795,42 @@ namespace DAG {
 			typedef lvr2::BaseVector<float> VecT;
 			
 			// create hash grid from entire tree
-			auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::FastBox<VecT>>>(boundingBox, nodeLevelRef, leafResolution);
-			
 			// generate mesh from hash grid
-			lvr2::FastReconstruction<VecT, lvr2::FastBox<VecT>> reconstruction(pGrid);
 			lvr2::PMPMesh<VecT> mesh{};
-			reconstruction.getMesh(mesh);			
+			constexpr std::string_view decompositionType = "MC";
+			if (decompositionType == "MC") {
+				auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::FastBox<VecT>>>(boundingBox, nodeLevelRef, leafResolution);
+				lvr2::FastReconstruction<VecT, lvr2::FastBox<VecT>> reconstruction(pGrid);
+				reconstruction.getMesh(mesh);
+			}
+			else if (decompositionType == "PMC") {
+				auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::BilinearFastBox<VecT>>>(boundingBox, nodeLevelRef, leafResolution);
+				lvr2::FastReconstruction<VecT, lvr2::BilinearFastBox<VecT>> reconstruction(pGrid);
+				reconstruction.getMesh(mesh);
+			}
+			else if (decompositionType == "DMC") {
+				// auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::BilinearFastBox<VecT>>>(boundingBox, nodeLevelRef, leafResolution);
+				// lvr2::DMCReconstruction<VecT, lvr2::FastBox<VecT>> reconstruction(pGrid);
+				// reconstruction.getMesh(mesh);
+			}
 			// lvr2::reconstruct::Options options(0, "");
 			// optimizeMesh(options, mesh);
 			
 			// generate mesh buffer from reconstructed mesh
 			auto faceNormals = lvr2::calcFaceNormals(mesh);
+			auto vertexNormals = lvr2::calcVertexNormals(mesh, faceNormals);
+			// coloring
     		auto clusterBiMap = lvr2::planarClusterGrowing(mesh, faceNormals, 0.85);
 			lvr2::ClusterPainter painter(clusterBiMap);
     		lvr2::ColorGradient::GradientType t = lvr2::ColorGradient::gradientFromString("GREY");
 			auto clusterColors = boost::optional<lvr2::DenseClusterMap<lvr2::RGB8Color>>(painter.colorize(mesh, t));
-			auto vertexNormals = lvr2::calcVertexNormals(mesh, faceNormals);
-			// auto matResult = lvr2::Materializer<VecT>(mesh, clusterBiMap, faceNormals, *surface).generateMaterials();
+			lvr2::TextureFinalizer<lvr2::BaseVector<float>> finalizer(clusterBiMap);
+			finalizer.setClusterColors(*clusterColors);
+			finalizer.setVertexNormals(vertexNormals);
 
 			// Calc normals for vertices
 			// lvr2::SimpleFinalizer<lvr2::BaseVector<float>> finalizer;
 			// finalizer.setNormalData(vertexNormals);
-			// finalizer.setColorData(const VertexMap<RGB8Color> &colorData);
-			
-			lvr2::TextureFinalizer<lvr2::BaseVector<float>> finalizer(clusterBiMap);
-			finalizer.setClusterColors(*clusterColors);
-			finalizer.setVertexNormals(vertexNormals);
-			// finalizer.setMaterializerResult(matResult);
 			
 			// save to disk
 			auto meshBuffer = finalizer.apply(mesh);
@@ -836,8 +846,6 @@ namespace DAG {
 		lvr2::BaseVector<float> upperRight = {min, min, min};
 		std::array<uint32_t, nDagLevels> uniques = {};
 		std::array<uint32_t, nDagLevels> dupes = {};
-
-		// std::array<DAG::Level, nDagLevels> dagLevels;
 
 		// new //
 		std::array<NodeLevel, nDagLevels - 1> nodeLevels;
