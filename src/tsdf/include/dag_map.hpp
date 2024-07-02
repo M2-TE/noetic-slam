@@ -397,7 +397,7 @@ namespace DAG {
 			measurements.emplace_back(dur, "norm calc");
 			return normals;
 		}
-		static auto build_trie_whatnot(Octree& octree, Octree::PathCache& cache, const Eigen::Vector3f inputPos, const Eigen::Vector3f& inputNorm, uint32_t tid) {
+		static auto build_trie_whatnot(Octree& octree, Octree::PathCache& cache, Eigen::Vector3f inputPos, Eigen::Vector3f inputNorm, uint32_t tid) {
 			// voxels per unit at leaf level
 			constexpr float recip = 1.0 / leafResolution;
 			// morton code will be generated using leaf cluster position, not the leaves themselves
