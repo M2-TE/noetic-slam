@@ -347,9 +347,11 @@ namespace DAG {
 					Eigen::Vector3f posToPoint = point - pose.pos;
 					float dot = normal.dot(posToPoint);
 					if (dot < 0.0f) normal *= -1.0f;
-					// std::cout << normal.dot(posToPoint) << '\t';
-					// std::cout << "pos: " << point.x() << ' ' << point.y() << ' ' << point.z() << '\t';
-					// std::cout << "norm: " << normal.x() << ' ' << normal.y() << ' ' << normal.z() << '\n';
+					// if (dot < 0) {
+					// 	std::cout << dot << '\t';
+					// 	std::cout << "pos: " << point.x() << ' ' << point.y() << ' ' << point.z() << '\t';
+					// 	std::cout << "norm: " << normal.x() << ' ' << normal.y() << ' ' << normal.z() << '\n';
+					// }
 					
 					
 					// figure out index of point

@@ -37,8 +37,8 @@ public:
         std::uniform_real_distribution<double> dis(-1.0f, 1.0f);
 
         // insert into tsdf DAG
-        Eigen::Vector3f position = {};
-        Eigen::Quaternionf rotation = {};
+        Eigen::Vector3f position { 10, 10, 10 };
+        Eigen::Quaternionf rotation {};
         for (size_t i = 0; i < 1; i++) {
             for (auto& point: points) {
                 Eigen::Vector3d pointd = {
@@ -48,8 +48,8 @@ public:
                 };
                 pointd.normalize();
                 pointd *= 5.0f;
-                pointd += Eigen::Vector3d(10, 10, 10); // offset for testing
                 point = pointd.cast<float>();
+                point += position;
             }
             dagMap.insert_scan(position, rotation, points);
         }
