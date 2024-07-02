@@ -46,6 +46,7 @@ public:
                     dis(gen),
                     dis(gen)  
                 };
+                // pointd += Eigen::Vector3d(10, 10, 10); // offset for testing
                 pointd.normalize();
                 pointd *= 5.0f;
                 point = pointd.cast<float>();

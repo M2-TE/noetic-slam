@@ -216,161 +216,329 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
             path[depth] = 0;
         }
     }
-
-    // TODO: dont need to add vertex indices in neighbours?
-    // iterate over cells to set neighbours and remaining cell vertices
-    std::cout << timestamp << "processing " << m_cells.size() << " cells..." << std::endl;
-    for (auto it = m_cells.cbegin(); it != m_cells.cend(); it++) {
-        BoxT* p_cell = it->second;
-        
-        auto center_v = p_cell->getCenter();
-        Eigen::Vector3f center_f { center_v.x, center_v.y, center_v.z };
-        float voxelsPerUnit = 1.0 / m_voxelsize;
-        Eigen::Vector3i center_i = (center_f * voxelsPerUnit).cast<int32_t>();
-
-        // neighbour vertex lookup tables (forbidden technique)
-        // indices in current cell
-        constexpr uint8_t lookup_A[] = {
-                        //  x  y  z (neighbor pos)
-            0, 0, 0, 0, // -1 -1 -1
-            0, 4, 0, 4, // -1 -1 +0
-            4, 4, 4, 4, // -1 -1 +1
-            0, 3, 0, 3, // -1 +0 -1
-            0, 3, 4, 7, // -1 +0 +0
-            4, 7, 4, 7, // -1 +0 -1
-            3, 3, 3, 3, // -1 +1 -1
-            3, 7, 3, 7, // -1 +1 +0
-            7, 7, 7, 7, // -1 +1 -1
-            //
-            0, 1, 0, 1, // +0 -1 -1
-            0, 1, 4, 5, // +0 -1 +0
-            4, 5, 4, 5, // +0 -1 +1
-            0, 1, 3, 2, // +0 +0 -1
-            0, 0, 0, 0, // +0 +0 +0
-            4, 5, 7, 6, // +0 +0 -1
-            3, 2, 3, 2, // +0 +1 -1
-            3, 2, 7, 6, // +0 +1 +0
-            7, 6, 7, 6, // +0 +1 -1
-            //
-            1, 1, 1, 1, // +1 -1 -1
-            1, 5, 1, 5, // +1 -1 +0
-            5, 5, 5, 5, // +1 -1 +1
-            1, 2, 1, 2, // +1 +0 -1
-            1, 2, 5, 6, // +1 +0 +0
-            5, 6, 5, 6, // +1 +0 -1
-            2, 2, 2, 2, // +1 +1 -1
-            2, 6, 2, 6, // +1 +1 +0
-            6, 6, 6, 6, // +1 +1 -1
-        };
-        // indices in neighbor cell
-        constexpr uint8_t lookup_B[] = {
-                        //  x  y  z
-            6, 6, 6, 6, // -1 -1 -1
-            2, 6, 2, 6, // -1 -1 +0
-            2, 2, 2, 2, // -1 -1 +1
-            5, 6, 5, 6, // -1 +0 -1
-            1, 2, 5, 6, // -1 +0 +0
-            1, 2, 1, 2, // -1 +0 -1
-            5, 5, 5, 5, // -1 +1 -1
-            1, 5, 1, 5, // -1 +1 +0
-            1, 1, 1, 1, // -1 +1 -1
-            //
-            7, 6, 7, 6, // +0 -1 -1
-            3, 2, 7, 6, // +0 -1 +0
-            3, 2, 3, 2, // +0 -1 +1
-            4, 5, 7, 6, // +0 +0 -1
-            0, 0, 0, 0, // +0 +0 +0
-            0, 1, 3, 2, // +0 +0 -1
-            4, 5, 4, 5, // +0 +1 -1
-            0, 1, 4, 5, // +0 +1 +0
-            0, 1, 0, 1, // +0 +1 -1
-            //
-            7, 7, 7, 7, // +1 -1 -1
-            3, 7, 3, 7, // +1 -1 +0
-            3, 3, 3, 3, // +1 -1 +1
-            4, 7, 4, 7, // +1 +0 -1
-            0, 3, 5, 7, // +1 +0 +0
-            0, 3, 0, 3, // +1 +0 -1
-            4, 4, 4, 4, // +1 +1 -1
-            0, 4, 0, 4, // +1 +1 +0
-            0, 0, 0, 0, // +1 +1 -1
-        };
-
-        size_t i_neighbour = 0;
-        for (int x = -1; x <= 1; x++) {
-            for (int y = -1; y <= 1; y++) {
-                for (int z = -1; z <= 1; z++) {
-                    // TODO: only need to find neighbour if p_cell->getNeighbour(i_neighbour) returns nullptr
-                    
-                    Eigen::Vector3i neigh_i = center_i + Eigen::Vector3i(x, y, z);
-                    uint32_t xCell = (1 << 20) + (uint32_t)neigh_i.x();
-                    uint32_t yCell = (1 << 20) + (uint32_t)neigh_i.y();
-                    uint32_t zCell = (1 << 20) + (uint32_t)neigh_i.z();
-                    uint64_t morton_code = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
-                    
-                    // find neighbor and exchange phone numbers
-                    auto it_neighbour = m_cells.find(morton_code);
-                    if (it_neighbour != nullptr) {
-                        auto p_neig = it_neighbour->second;
-                        p_cell->setNeighbor(i_neighbour, p_neig);
-                        p_neig->setNeighbor(26 - i_neighbour, p_cell);
-
-                        // update aliasing vertices
-                        auto i_lookup = i_neighbour * 4;
-                        for (auto i = 0; i < 4; i++) {
-                            uint8_t iv_cell = lookup_A[i_lookup];
-                            uint8_t iv_neig = lookup_B[i_lookup];
-                            // get vertex from both cells
-                            auto v_cell = p_cell->getVertex(iv_cell);
-                            auto v_neig = p_neig->getVertex(iv_neig);
-                            // select the one that isnt invalid
-                            auto vertex = 0;
-                            if (v_cell != BoxT::INVALID_INDEX) vertex = v_cell;
-                            else vertex = v_neig;
-                            // update vertices
-                            p_cell->setVertex(iv_cell, vertex);
-                            p_neig->setVertex(iv_neig, vertex);
-                        }
-                    }
-                    i_neighbour++;
-                }
-            }
-        }
-    }
-
-    // TODO: instead of flagging and culling, add query points with max negative distance to the cells containing invalid indices
-    std::cout << timestamp << "flagging cells..." << std::endl;
-    std::vector<size_t> invalid_cells;
-    for (auto it = m_cells.cbegin(); it != m_cells.cend(); it++) {
-        // iterate over all vertices and flag cell for removal if even one is invalid
-        bool b_flagged = false;
-        for (auto i = 0; i < 8; i++) {
-            auto v = it->second->getVertex(i);
-            if (v == BoxT::INVALID_INDEX) b_flagged = true;
-        }
-        if (b_flagged) invalid_cells.push_back(it->first);
-    }
     
-    // TODO: erase the culling part
-    // erase the cells that were flagged for removal
-    std::cout << timestamp << "culling "<< invalid_cells.size() << " flagged cells..." << std::endl;
-    for (auto it = invalid_cells.cbegin(); it != invalid_cells.cend(); it++) {
-        auto it_cell = m_cells.find(*it);
-        auto* p_cell = it_cell->second;
+    if (false) {
+        // TODO: dont need to add vertex indices in neighbours?
+        // iterate over cells to set neighbours and remaining cell vertices
+        std::cout << timestamp << "processing " << m_cells.size() << " cells..." << std::endl;
+        for (auto it = m_cells.cbegin(); it != m_cells.cend(); it++) {
+            BoxT* p_cell = it->second;
+            
+            auto center_v = p_cell->getCenter();
+            Eigen::Vector3f center_f { center_v.x, center_v.y, center_v.z };
+            float voxelsPerUnit = 1.0 / m_voxelsize;
+            Eigen::Vector3i center_i = (center_f * voxelsPerUnit).cast<int32_t>();
 
-        // clear references to this cell from neigbors
-        for (auto i = 0; i < 27; i++) {
-            auto* p_neig = p_cell->getNeighbor(i);
-            if (p_neig == nullptr) continue;
-            for (auto k = 0; k < 27; k++) {
-                if (p_neig->getNeighbor(k) == p_cell) {
-                    p_neig->setNeighbor(k, nullptr);
+            // neighbour vertex lookup tables (forbidden technique)
+            // indices in current cell
+            constexpr uint8_t lookup_A[] = {
+                            //  x  y  z (neighbor pos)
+                0, 0, 0, 0, // -1 -1 -1
+                0, 4, 0, 4, // -1 -1 +0
+                4, 4, 4, 4, // -1 -1 +1
+                0, 3, 0, 3, // -1 +0 -1
+                0, 3, 4, 7, // -1 +0 +0
+                4, 7, 4, 7, // -1 +0 -1
+                3, 3, 3, 3, // -1 +1 -1
+                3, 7, 3, 7, // -1 +1 +0
+                7, 7, 7, 7, // -1 +1 -1
+                //
+                0, 1, 0, 1, // +0 -1 -1
+                0, 1, 4, 5, // +0 -1 +0
+                4, 5, 4, 5, // +0 -1 +1
+                0, 1, 3, 2, // +0 +0 -1
+                0, 0, 0, 0, // +0 +0 +0
+                4, 5, 7, 6, // +0 +0 -1
+                3, 2, 3, 2, // +0 +1 -1
+                3, 2, 7, 6, // +0 +1 +0
+                7, 6, 7, 6, // +0 +1 -1
+                //
+                1, 1, 1, 1, // +1 -1 -1
+                1, 5, 1, 5, // +1 -1 +0
+                5, 5, 5, 5, // +1 -1 +1
+                1, 2, 1, 2, // +1 +0 -1
+                1, 2, 5, 6, // +1 +0 +0
+                5, 6, 5, 6, // +1 +0 -1
+                2, 2, 2, 2, // +1 +1 -1
+                2, 6, 2, 6, // +1 +1 +0
+                6, 6, 6, 6, // +1 +1 -1
+            };
+            // indices in neighbor cell
+            constexpr uint8_t lookup_B[] = {
+                            //  x  y  z
+                6, 6, 6, 6, // -1 -1 -1
+                2, 6, 2, 6, // -1 -1 +0
+                2, 2, 2, 2, // -1 -1 +1
+                5, 6, 5, 6, // -1 +0 -1
+                1, 2, 5, 6, // -1 +0 +0
+                1, 2, 1, 2, // -1 +0 -1
+                5, 5, 5, 5, // -1 +1 -1
+                1, 5, 1, 5, // -1 +1 +0
+                1, 1, 1, 1, // -1 +1 -1
+                //
+                7, 6, 7, 6, // +0 -1 -1
+                3, 2, 7, 6, // +0 -1 +0
+                3, 2, 3, 2, // +0 -1 +1
+                4, 5, 7, 6, // +0 +0 -1
+                0, 0, 0, 0, // +0 +0 +0
+                0, 1, 3, 2, // +0 +0 -1
+                4, 5, 4, 5, // +0 +1 -1
+                0, 1, 4, 5, // +0 +1 +0
+                0, 1, 0, 1, // +0 +1 -1
+                //
+                7, 7, 7, 7, // +1 -1 -1
+                3, 7, 3, 7, // +1 -1 +0
+                3, 3, 3, 3, // +1 -1 +1
+                4, 7, 4, 7, // +1 +0 -1
+                0, 3, 5, 7, // +1 +0 +0
+                0, 3, 0, 3, // +1 +0 -1
+                4, 4, 4, 4, // +1 +1 -1
+                0, 4, 0, 4, // +1 +1 +0
+                0, 0, 0, 0, // +1 +1 -1
+            };
+
+            size_t i_neighbour = 0;
+            for (int x = -1; x <= 1; x++) {
+                for (int y = -1; y <= 1; y++) {
+                    for (int z = -1; z <= 1; z++) {
+                        // TODO: only need to find neighbour if p_cell->getNeighbour(i_neighbour) returns nullptr
+                        
+                        Eigen::Vector3i neigh_i = center_i + Eigen::Vector3i(x, y, z);
+                        uint32_t xCell = (1 << 20) + (uint32_t)neigh_i.x();
+                        uint32_t yCell = (1 << 20) + (uint32_t)neigh_i.y();
+                        uint32_t zCell = (1 << 20) + (uint32_t)neigh_i.z();
+                        uint64_t morton_code = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
+                        
+                        // find neighbor and exchange phone numbers
+                        auto it_neighbour = m_cells.find(morton_code);
+                        if (it_neighbour != nullptr) {
+                            auto p_neig = it_neighbour->second;
+                            p_cell->setNeighbor(i_neighbour, p_neig);
+                            p_neig->setNeighbor(26 - i_neighbour, p_cell);
+
+                            // update aliasing vertices
+                            auto i_lookup = i_neighbour * 4;
+                            for (auto i = 0; i < 4; i++) {
+                                uint8_t iv_cell = lookup_A[i_lookup];
+                                uint8_t iv_neig = lookup_B[i_lookup];
+                                // get vertex from both cells
+                                auto v_cell = p_cell->getVertex(iv_cell);
+                                auto v_neig = p_neig->getVertex(iv_neig);
+                                // select the one that isnt invalid
+                                auto vertex = 0;
+                                if (v_cell != BoxT::INVALID_INDEX) vertex = v_cell;
+                                else vertex = v_neig;
+                                // update vertices
+                                p_cell->setVertex(iv_cell, vertex);
+                                p_neig->setVertex(iv_neig, vertex);
+                            }
+                        }
+                        i_neighbour++;
+                    }
                 }
             }
         }
 
-        delete p_cell;
-        m_cells.erase(it_cell);
+        // TODO: instead of flagging and culling, add query points with max negative distance to the cells containing invalid indices
+        std::cout << timestamp << "flagging cells..." << std::endl;
+        std::vector<size_t> invalid_cells;
+        for (auto it = m_cells.cbegin(); it != m_cells.cend(); it++) {
+            // iterate over all vertices and flag cell for removal if even one is invalid
+            bool b_flagged = false;
+            for (auto i = 0; i < 8; i++) {
+                auto v = it->second->getVertex(i);
+                if (v == BoxT::INVALID_INDEX) b_flagged = true;
+            }
+            if (b_flagged) invalid_cells.push_back(it->first);
+        }
+        
+        // TODO: erase the culling part
+        // erase the cells that were flagged for removal
+        std::cout << timestamp << "culling "<< invalid_cells.size() << " flagged cells..." << std::endl;
+        for (auto it = invalid_cells.cbegin(); it != invalid_cells.cend(); it++) {
+            auto it_cell = m_cells.find(*it);
+            auto* p_cell = it_cell->second;
+
+            // clear references to this cell from neigbors
+            for (auto i = 0; i < 27; i++) {
+                auto* p_neig = p_cell->getNeighbor(i);
+                if (p_neig == nullptr) continue;
+                for (auto k = 0; k < 27; k++) {
+                    if (p_neig->getNeighbor(k) == p_cell) {
+                        p_neig->setNeighbor(k, nullptr);
+                    }
+                }
+            }
+
+            delete p_cell;
+            m_cells.erase(it_cell);
+        }
+    }
+    // newer but broken i think
+    else {
+        // iterate over cells to set neighbours and remaining cell vertices
+        std::cout << timestamp << "processing " << m_cells.size() << " cells..." << std::endl;
+        for (auto it = m_cells.cbegin(); it != m_cells.cend(); it++) {
+            BoxT* p_cell = it->second;
+            
+            auto center_v = p_cell->getCenter();
+            Eigen::Vector3f center_f { center_v.x, center_v.y, center_v.z };
+            float voxelsPerUnit = 1.0 / m_voxelsize;
+            Eigen::Vector3i center_i = (center_f * voxelsPerUnit).cast<int32_t>();
+
+            // neighbour vertex lookup tables (forbidden technique)
+            // indices in current cell
+            constexpr uint8_t lookup_A[] = {
+                            //  x  y  z (neighbor pos)
+                0, 0, 0, 0, // -1 -1 -1
+                0, 4, 0, 4, // -1 -1 +0
+                4, 4, 4, 4, // -1 -1 +1
+                0, 3, 0, 3, // -1 +0 -1
+                0, 3, 4, 7, // -1 +0 +0
+                4, 7, 4, 7, // -1 +0 -1
+                3, 3, 3, 3, // -1 +1 -1
+                3, 7, 3, 7, // -1 +1 +0
+                7, 7, 7, 7, // -1 +1 -1
+                //
+                0, 1, 0, 1, // +0 -1 -1
+                0, 1, 4, 5, // +0 -1 +0
+                4, 5, 4, 5, // +0 -1 +1
+                0, 1, 3, 2, // +0 +0 -1
+                0, 0, 0, 0, // +0 +0 +0
+                4, 5, 7, 6, // +0 +0 -1
+                3, 2, 3, 2, // +0 +1 -1
+                3, 2, 7, 6, // +0 +1 +0
+                7, 6, 7, 6, // +0 +1 -1
+                //
+                1, 1, 1, 1, // +1 -1 -1
+                1, 5, 1, 5, // +1 -1 +0
+                5, 5, 5, 5, // +1 -1 +1
+                1, 2, 1, 2, // +1 +0 -1
+                1, 2, 5, 6, // +1 +0 +0
+                5, 6, 5, 6, // +1 +0 -1
+                2, 2, 2, 2, // +1 +1 -1
+                2, 6, 2, 6, // +1 +1 +0
+                6, 6, 6, 6, // +1 +1 -1
+            };
+            // indices in neighbor cell
+            constexpr uint8_t lookup_B[] = {
+                            //  x  y  z
+                6, 6, 6, 6, // -1 -1 -1
+                2, 6, 2, 6, // -1 -1 +0
+                2, 2, 2, 2, // -1 -1 +1
+                5, 6, 5, 6, // -1 +0 -1
+                1, 2, 5, 6, // -1 +0 +0
+                1, 2, 1, 2, // -1 +0 -1
+                5, 5, 5, 5, // -1 +1 -1
+                1, 5, 1, 5, // -1 +1 +0
+                1, 1, 1, 1, // -1 +1 -1
+                //
+                7, 6, 7, 6, // +0 -1 -1
+                3, 2, 7, 6, // +0 -1 +0
+                3, 2, 3, 2, // +0 -1 +1
+                4, 5, 7, 6, // +0 +0 -1
+                0, 0, 0, 0, // +0 +0 +0
+                0, 1, 3, 2, // +0 +0 -1
+                4, 5, 4, 5, // +0 +1 -1
+                0, 1, 4, 5, // +0 +1 +0
+                0, 1, 0, 1, // +0 +1 -1
+                //
+                7, 7, 7, 7, // +1 -1 -1
+                3, 7, 3, 7, // +1 -1 +0
+                3, 3, 3, 3, // +1 -1 +1
+                4, 7, 4, 7, // +1 +0 -1
+                0, 3, 5, 7, // +1 +0 +0
+                0, 3, 0, 3, // +1 +0 -1
+                4, 4, 4, 4, // +1 +1 -1
+                0, 4, 0, 4, // +1 +1 +0
+                0, 0, 0, 0, // +1 +1 -1
+            };
+
+            size_t i_neighbour = 0;
+            for (int x = -1; x <= 1; x++) {
+                for (int y = -1; y <= 1; y++) {
+                    for (int z = -1; z <= 1; z++) {
+                        // only need to find neighbour if there isnt one already
+                        if (p_cell->getNeighbor(i_neighbour) == nullptr) {
+                            i_neighbour++;
+                            continue;
+                        }
+                        
+                        Eigen::Vector3i neigh_i = center_i + Eigen::Vector3i(x, y, z);
+                        uint32_t xCell = (1 << 20) + (uint32_t)neigh_i.x();
+                        uint32_t yCell = (1 << 20) + (uint32_t)neigh_i.y();
+                        uint32_t zCell = (1 << 20) + (uint32_t)neigh_i.z();
+                        uint64_t morton_code = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
+                        
+                        // find neighbor and exchange phone numbers
+                        auto it_neighbour = m_cells.find(morton_code);
+                        if (it_neighbour != nullptr) {
+                            auto p_neig = it_neighbour->second;
+                            p_cell->setNeighbor(i_neighbour, p_neig);
+                            p_neig->setNeighbor(26 - i_neighbour, p_cell);
+
+                            // update aliasing vertices
+                            auto i_lookup = i_neighbour * 4;
+                            for (auto i = 0; i < 4; i++) {
+                                uint8_t iv_cell = lookup_A[i_lookup];
+                                uint8_t iv_neig = lookup_B[i_lookup];
+                                // get vertex from both cells
+                                auto v_cell = p_cell->getVertex(iv_cell);
+                                auto v_neig = p_neig->getVertex(iv_neig);
+                                // select the one that isnt invalid
+                                auto vertex = 0;
+                                if (v_cell != BoxT::INVALID_INDEX) vertex = v_cell;
+                                else vertex = v_neig;
+                                // update vertices
+                                p_cell->setVertex(iv_cell, vertex);
+                                p_neig->setVertex(iv_neig, vertex);
+                            }
+                        }
+                        i_neighbour++;
+                    }
+                }
+            }
+        }
+        // process partially filled cells
+        std::cout << timestamp << "filling empty query points in cells..." << std::endl;
+        for (auto it = m_cells.cbegin(); it != m_cells.cend(); it++) {
+            // count up signed distance to fill missing query points
+            float signedDistanceTotal = 0.0f;
+            for (auto i = 0; i < 8; i++) {
+                auto vertexIndex = it->second->getVertex(i);
+                if (vertexIndex != BoxT::INVALID_INDEX) {
+                    auto& vertex = m_queryPoints[vertexIndex];
+                    signedDistanceTotal += vertex.m_distance;
+                }
+            }
+            // cell center as eigen vector
+            Eigen::Vector3f cell_centerf {
+                it->second->m_center.x,
+                it->second->m_center.y,
+                it->second->m_center.z,  
+            };
+            // vertex positions relative to cell center
+            std::array<Eigen::Vector3f, 8> vertexOffsets = {
+                -Eigen::Vector3f(+0.5, +0.5, +0.5), -Eigen::Vector3f(-0.5, +0.5, +0.5),
+                -Eigen::Vector3f(-0.5, -0.5, +0.5), -Eigen::Vector3f(+0.5, -0.5, +0.5),
+                -Eigen::Vector3f(+0.5, +0.5, -0.5), -Eigen::Vector3f(-0.5, +0.5, -0.5),
+                -Eigen::Vector3f(-0.5, -0.5, -0.5), -Eigen::Vector3f(+0.5, -0.5, -0.5),
+            };
+            for (auto i = 0; i < 8; i++) {
+                auto vertexIndex = it->second->getVertex(i);
+                if (vertexIndex == BoxT::INVALID_INDEX) {
+                    // create new query point
+                    float sd = std::signbit(signedDistanceTotal) 
+                        ? -m_voxelsize 
+                        : m_voxelsize;
+                    auto index_qp = m_queryPoints.size();
+                    Eigen::Vector3f pos = cell_centerf + vertexOffsets[i];
+                    m_queryPoints.emplace_back(BaseVecT(pos.x(), pos.y(), pos.z()), sd);
+                    // add query point to cell
+                    it->second->setVertex(i, index_qp);
+                }
+            }
+        }
     }
     std::cout << timestamp << "Grid Construction Complete" << std::endl;
 }
