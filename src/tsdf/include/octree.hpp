@@ -64,6 +64,7 @@ struct Octree {
     ~Octree() = default;
     
     const Node* get_root() { return _pRoot; }
+    // finds leaf via key and emplaces nodes if needed
     Leaf& find(Key key) {
         // depth from 20 (root) to 0 (leaf)
         size_t rDepth = 63/3 - 1;
@@ -90,7 +91,7 @@ struct Octree {
         return pNode->leaves[key & 0b111];
     }
     // return node via key from given depth (0 root to 20 leaf)
-    Node* find(Key key, size_t target_depth) {
+    Node* find(Key key, size_t target_depth) const {
         // depth from 20 (root) to 0 (leaf)
         size_t rDepth = 63/3 - 1;
         // reverse target depth to fit internal depth iterator
@@ -107,6 +108,7 @@ struct Octree {
         size_t index = (key >> rDepth*3) & 0b111;
         return pNode->children[index];
     }
+    // emplace chosen leaf and all required nodes inbetween
     void emplace(Key key, Leaf leaf) {
         find(key) = leaf;
     }
