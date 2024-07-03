@@ -37,7 +37,6 @@
 #include "lvr2/reconstruction/FastBox.hpp"
 #include "lvr2/reconstruction/FastReconstruction.hpp"
 #include "lvr2/algorithm/NormalAlgorithms.hpp"
-#include "trie.hpp"
 
 
 // https://www.ilikebigbits.com/2017_09_25_plane_from_points_2.html
@@ -406,7 +405,7 @@ namespace DAG {
 			measurements.emplace_back(dur, "norm calc");
 			return normals;
 		}
-		static auto build_trie_whatnot(Octree& octree, Octree::PathCache& cache, Eigen::Vector3f inputPos, Eigen::Vector3f inputNorm, uint32_t tid) {
+		static auto build_trie_whatnot(Octree& octree, Eigen::Vector3f inputPos, Eigen::Vector3f inputNorm, uint32_t tid) {
 			// voxels per unit at leaf level
 			constexpr float recip = 1.0 / leafResolution;
 			// morton code will be generated using leaf cluster position, not the leaves themselves
@@ -462,7 +461,7 @@ namespace DAG {
 						
 						// compare to other existing leaves
 						MortonCode code(clusterPos * 2); // swallows a layer (reverted on reconstruction)
-						auto& cluster = octree.find_cached(code.val, cache);
+						auto& cluster = octree.find(code.val);
 						
 						if (cluster != 0) {
 							LeafCluster lc(leaves);
@@ -488,8 +487,7 @@ namespace DAG {
 			// std::cout << "Using " << nThreads << " threads for trie ctor\n";
 			std::vector<std::jthread> threads;
 			threads.reserve(nThreads);
-			std::vector<Octree> octrees;
-			octrees.reserve(nThreads);
+			std::vector<Octree> octrees(nThreads);
 
 			// thread groups throughout the stages
 			struct ThreadGroup {
@@ -524,31 +522,31 @@ namespace DAG {
 					grp.nCompletedThreads = std::make_unique<std::atomic_uint8_t>(0);
 				}
 			}
+			
+			// build smaller octrees on several threads
 			size_t progress = 0;
 			for (size_t id = 0; id < nThreads; id++) {
 				size_t nElements = points.size() / nThreads;
 				if (id == nThreads - 1) nElements = 0; // special value for final thread to read the rest
-				octrees.emplace_back(1'000'000); // hardcoded for now
 				// build one octree per thread
 				threads.emplace_back([&points, &normals, &octrees, id, progress, nElements](){
 					auto pCur = points.cbegin() + progress;
 					auto pEnd = (nElements == 0) ? (points.cend()) : (pCur + nElements);
 					auto pNorm = normals.cbegin() + progress;
 					Octree& octree = octrees[id];
-					Octree::PathCache cache(octree);
+					// Octree::PathCache cache(octree);
 					for (; pCur < pEnd; pCur++, pNorm++) {
-						build_trie_whatnot(octree, cache, *pCur, *pNorm, id);
+						build_trie_whatnot(octree, *pCur, *pNorm, id);
 					}
 				});
 				progress += nElements;
 			}
-
-			// join all threads
-			threads.clear();
+			threads.clear(); // join
 			auto end = std::chrono::steady_clock::now();
 			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
 			measurements.emplace_back(dur, "trie ctor");
-
+			
+			// merge the smaller octrees into one
 			beg = std::chrono::steady_clock::now();
 			for (size_t id = 0; id < nThreads; id++) {
 				threads.emplace_back([&octrees, &stages, id]() {
@@ -584,7 +582,7 @@ namespace DAG {
 
 							// in order to keep a balanced load, have N collisions per thread
 							uint32_t nTargetCollisions = stage.groupSize;
-							std::tie(grp.collisions, grp.collisionDepth) = grp.trees[0]->find_collisions_and_merge(*grp.trees[1], nTargetCollisions);
+							std::tie(grp.collisions, grp.collisionDepth) = grp.trees[0]->merge(*grp.trees[1], nTargetCollisions);
 
 							// signal that this group thread is fully prepared
 							grp.bPrepared->store(true);
@@ -594,18 +592,13 @@ namespace DAG {
 						// resolve assigned collisions
 						uint32_t colIndex = iLocal;
 						while (colIndex < grp.collisions.size()) {
-							grp.trees[0]->resolve_collisions(*grp.trees[1], grp.collisions[colIndex], grp.collisionDepth,
-								[](Octree::Node* pA, Octree::Node* pB) {
-								// compare two leaf clusters a and b during collision
-								// merge results into node a
-
-								// iterate over leaf cluster parents
-								for (uint32_t i = 0; i < 8; i++) {
-									LeafCluster lcA(pA->leaves[i]);
-									LeafCluster lcB(pB->leaves[i]);
-									lcA.merge(lcB);
-									pA->leaves[i] = lcA.cluster;
-								}
+							grp.trees[0]->merge(*grp.trees[1], grp.collisions[colIndex], grp.collisionDepth,
+								[](Octree::Leaf& leaf_a, Octree::Leaf& leaf_b) {
+								// merge leaves into a
+								LeafCluster lc_a(leaf_a);
+								LeafCluster lc_b(leaf_b);
+								lc_a.merge(lc_b);
+								leaf_a = lc_a.cluster;
 							});
 							colIndex += stage.groupSize;
 						}
@@ -620,38 +613,10 @@ namespace DAG {
 			end = std::chrono::steady_clock::now();
 			dur = std::chrono::duration<double, std::milli> (end - beg).count();
 			measurements.emplace_back(dur, "trie mrge");
-			return octrees[0];
+			return std::move(octrees[0]);
 		}
 		void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
 			auto full_beg = std::chrono::steady_clock::now();
-			
-			Octree2 oct;
-			auto* root = oct.get_root();
-			
-			std::random_device rd;
-			std::mt19937 gen(420);
-			std::uniform_int_distribution<int32_t> dis(-50, 50);
-			for (auto i = 0; i < 10; i++) {
-				Eigen::Vector3i pos { dis(gen),dis(gen),dis(gen) };
-				MortonCode mc(pos);
-				oct.emplace(mc.val, dis(gen));
-			}
-			
-			Octree2 oct2;
-			for (auto i = 0; i < 10; i++) {
-				Eigen::Vector3i pos { dis(gen),dis(gen),dis(gen) };
-				MortonCode mc(pos);
-				oct2.emplace(mc.val, dis(gen));
-			}
-			auto [collisions, depthtest] = oct.merge(oct2, 1);
-			for (auto& collision: collisions) {
-				oct.merge(oct2, collision, depthtest, [](Octree2::Node*, Octree2::Node*){
-					std::cout << "yay\n";
-				});
-			}
-			
-			exit(0);
-			
 			
 			// update bounding box
 			for (auto cur = points.cbegin(); cur != points.cend(); cur++) {
@@ -678,14 +643,14 @@ namespace DAG {
 			// collection of nodes that exist along the path
 			std::array<std::array<uint32_t, 8>, nDagLevels> nodes;
 			// nodes of the temporary octree
-			std::array<Octree::Node*, nDagLevels> octNodes;
+			std::array<const Octree::Node*, nDagLevels> octNodes;
 			// keep track of tree depth
 			uint_fast32_t depth;
 			
 			// initialize
 			for (auto& level: nodes) level.fill(0); // reset nodes tracker
 			path.fill(0); // reset path
-			octNodes[0] = trie.pNodes; // begin at octree root
+			octNodes[0] = trie.get_root(); // begin at octree root
 			depth = 0; // depth 0 being the root
 			
 			// begin insertion into hashDAG (bottom-up)

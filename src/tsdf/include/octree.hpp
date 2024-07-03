@@ -1,14 +1,13 @@
 #pragma once
-#include "parallel_hashmap/phmap.h"
 #include <array>
-#include <bitset>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
 #include <vector>
+//
+#include <parallel_hashmap/phmap.h>
 
-struct Octree2 {
+struct Octree {
     typedef uint64_t Key; // only 63 bits in use
     typedef uint64_t Leaf;
     union Node {
@@ -30,7 +29,7 @@ struct Octree2 {
         MemoryBlock& operator=(MemoryBlock&)  = delete;
         MemoryBlock& operator=(MemoryBlock&&) = delete;
         ~MemoryBlock() {
-            if (_pData != nullptr) delete _pData;
+            // if (_pData != nullptr) delete _pData;
         }
         Node* get_new() {
             Node* pNode = _pData + _size++;
@@ -46,7 +45,7 @@ struct Octree2 {
         size_t _capacity;
         size_t _size;
     };
-    Octree2() {
+    Octree() {
         // create a reasonably sized memory block
         size_t n_capacity = 1<<16;
         _memory_blocks.emplace_back(n_capacity);
@@ -55,11 +54,15 @@ struct Octree2 {
         _pRoot = _memory_blocks.front().get_new();
         std::memset(_pRoot, 0, sizeof(Node));
     }
-    Octree2(Octree2&)  = delete;
-    Octree2(Octree2&&) = delete;
-    Octree2& operator=(Octree2&)  = delete;
-    Octree2& operator=(Octree2&&) = delete;
-    ~Octree2() = default;
+    Octree(Octree&)  = delete;
+    Octree(Octree&& other) {
+        _memory_blocks = std::move(other._memory_blocks);
+        _pRoot = other._pRoot;
+    }
+    Octree& operator=(Octree&)  = delete;
+    Octree& operator=(Octree&&) = delete;
+    ~Octree() = default;
+    
     const Node* get_root() { return _pRoot; }
     Leaf& find(Key key) {
         // depth from 20 (root) to 0 (leaf)
@@ -86,32 +89,18 @@ struct Octree2 {
         // pNode will be leaf parent
         return pNode->leaves[key & 0b111];
     }
-    Leaf& find(Key key, size_t placeholderforcache) {
-        return find(key); // todo
-    }
     // return node via key from given depth (0 root to 20 leaf)
-    Node* find_at(Key key, size_t target_depth) {
+    Node* find(Key key, size_t target_depth) {
         // depth from 20 (root) to 0 (leaf)
         size_t rDepth = 63/3 - 1;
         // reverse target depth to fit internal depth iterator
         target_depth = rDepth - target_depth;
         
-        // heck if memory block has enough space left
-        if (_memory_blocks.back().check_remaining() < 63/3) {
-            _memory_blocks.emplace_back(1<<16);
-        }
-        auto& memblock = _memory_blocks.back();
-        
         // go from root to leaf parent
         Node* pNode = _pRoot;
         while (rDepth > target_depth) {
             size_t index = (key >> rDepth*3) & 0b111;
-            Node* pChild = pNode->children[index];
-            if (pChild == nullptr) {
-                pChild = memblock.get_new();
-                pNode->children[index] = pChild;
-            }
-            pNode = pChild;
+            pNode = pNode->children[index];
             rDepth--;
         }
         // return pointer to the requested child node
@@ -122,7 +111,7 @@ struct Octree2 {
         find(key) = leaf;
     }
     // merge up until the depth where minCollisions is met
-    std::pair<std::vector<Key>, uint32_t> merge(Octree2& other, uint32_t minCollisions) {
+    std::pair<std::vector<Key>, uint32_t> merge(Octree& other, uint32_t minCollisions) {
         std::vector<Key> collisions;
         phmap::flat_hash_map<Key, Node*> parents_a;
         phmap::flat_hash_map<Key, Node*> layer_a, layer_b;
@@ -217,7 +206,7 @@ struct Octree2 {
         return { collisions, depth };
     }
     // merge via previously found collisions
-    void merge(Octree2& other, Key key, uint32_t startDepth, void(*resolver)(Node*,Node*)) {
+    void merge(Octree& other, Key key, uint32_t startDepth, void(*resolver)(Leaf&, Leaf&)) {
         uint32_t pathLength = 63/3 - startDepth;
         std::vector<uint8_t> path(pathLength);
         std::vector<Node*> nodes_a(pathLength);
@@ -225,8 +214,8 @@ struct Octree2 {
         
         // find the colliding nodes in both trees
         path[0] = 0;
-        nodes_a[0] = find_at(key, startDepth);
-        nodes_b[0] = other.find_at(key, startDepth);
+        nodes_a[0] = find(key, startDepth);
+        nodes_b[0] = other.find(key, startDepth);
         uint32_t depth = 0;
 
         // begin traversal
@@ -245,7 +234,12 @@ struct Octree2 {
                 // if this node is missing from B, simply skip it
                 if (pChild_b == nullptr) continue;
                 // if child nodes are leaves, call resolver
-                if (depth >= pathLength - 2) resolver(pChild_a, pChild_b);
+                if (depth >= pathLength - 2) {
+                    resolver(
+                        nodes_a[depth]->leaves[iChild], 
+                        nodes_b[depth]->leaves[iChild]
+                    );
+                }
                 else {
                     // walk down path
                     depth++;
