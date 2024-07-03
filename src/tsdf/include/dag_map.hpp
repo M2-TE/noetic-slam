@@ -29,6 +29,7 @@
 #include <placeholder/HashGridDag.tcc>
 #include <lvr2/reconstruction/HashGrid.hpp>
 //
+#include "octree.hpp"
 #include "dag_structs.hpp"
 #include "leaf_cluster.hpp"
 #include "lvr2/geometry/PMPMesh.hpp"
@@ -279,6 +280,14 @@ namespace DAG {
 			auto neighMap = calc_neigh_map(neighLevel);
 			// rough approximation of points per neighbourhood
 			size_t nPts = mortonCodes.size() / neighMap.size();
+			// decrease neigh level if too many points per neighbourhood are present
+			while (nPts > 20) {
+				neighLevel--;
+				neighMap = calc_neigh_map(neighLevel);
+				// rough approximation of points per neighbourhood
+				nPts = mortonCodes.size() / neighMap.size();
+				std::cout << "decreased neighbourhood level to: " << neighLevel << '\n';
+			}
 			// increase neigh level until the desired amount of points per neighbourhood is reached
 			while (nPts < 6) {
 				neighLevel++;
@@ -616,33 +625,32 @@ namespace DAG {
 		void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
 			auto full_beg = std::chrono::steady_clock::now();
 			
-			// std::random_device rd;
-			// std::mt19937 gen(0);
-			// std::uniform_real_distribution<float> dis(-.06f, .06f);
-			// std::cout << std::setprecision(4);
-			// for (auto i = 0; i < 1; i++) {
-			// 	// gen
-			// 	std::array<float, 8> leaves;
-			// 	for (auto iLeaf = 0; iLeaf < 8; iLeaf++) leaves[iLeaf] = dis(gen);
-			// 	LeafCluster lc(leaves);
-				
-			// 	// merge
-			// 	std::array<float, 8> otherLeaves;
-			// 	for (auto iLeaf = 0; iLeaf < 8; iLeaf++) otherLeaves[iLeaf] = dis(gen);
-			// 	LeafCluster lcmerge(otherLeaves);
-			// 	lc.merge(lcmerge);
-				
-			// 	// conversion
-			// 	auto [part0, part1] = lc.get_parts();
-			// 	LeafCluster lc2(part0, part1);
-				
-			// 	// output
-			// 	for (auto iLeaf = 0; iLeaf < 8; iLeaf++) {
-			// 		std::cout << leaves[iLeaf] << "  \tmerged with " << otherLeaves[iLeaf] << "  \toutput: " << lc2.get_sd(iLeaf) << '\n';
-			// 	}
-			// 	std::cout << '\n';
-			// }
-			// exit(0);
+			Octree2 oct;
+			auto* root = oct.get_root();
+			
+			std::random_device rd;
+			std::mt19937 gen(420);
+			std::uniform_int_distribution<int32_t> dis(-50, 50);
+			for (auto i = 0; i < 10; i++) {
+				Eigen::Vector3i pos { dis(gen),dis(gen),dis(gen) };
+				MortonCode mc(pos);
+				oct.emplace(mc.val, dis(gen));
+			}
+			
+			Octree2 oct2;
+			for (auto i = 0; i < 10; i++) {
+				Eigen::Vector3i pos { dis(gen),dis(gen),dis(gen) };
+				MortonCode mc(pos);
+				oct2.emplace(mc.val, dis(gen));
+			}
+			auto [collisions, depthtest] = oct.merge(oct2, 1);
+			for (auto& collision: collisions) {
+				oct.merge(oct2, collision, depthtest, [](Octree2::Node*, Octree2::Node*){
+					std::cout << "yay\n";
+				});
+			}
+			
+			exit(0);
 			
 			
 			// update bounding box

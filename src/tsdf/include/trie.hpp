@@ -136,7 +136,7 @@ struct Octree {
         std::map<Key, Node*> parentsA;
         std::map<Key, Node*> layerA, layerB;
         uint32_t prevCollisions = 0;
-        uint32_t depth;
+        uint32_t depth = 1;
 
         // pass ownership of memory block from other octree to this one
         mergedNodes.push_back(other.pNodes);
@@ -144,7 +144,7 @@ struct Octree {
         mergedNodes.insert(mergedNodes.end(), other.mergedNodes.cbegin(), other.mergedNodes.cend());
 
         // find collisions until collision target is met
-        for (depth = 1; depth < 63/3; depth++) {
+        for (; depth < 63/3; depth++) {
             collisions.clear();
             // get node layers via root node
             if (depth == 1) {

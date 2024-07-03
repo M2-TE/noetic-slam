@@ -37,8 +37,8 @@ public:
         std::uniform_real_distribution<double> dis(-1.0f, 1.0f);
 
         // insert into tsdf DAG
-        // Eigen::Vector3f position { 0, 0, 0 };
-        Eigen::Vector3f position { 10, 10, 10 };
+        Eigen::Vector3f position { 0, 0, 0 };
+        // Eigen::Vector3f position { 10, 10, 10 };
         // Eigen::Vector3f position { -10, -10, -10 };
         for (size_t i = 0; i < 1; i++) {
             for (auto& point: points) {
@@ -77,6 +77,7 @@ public:
         //     auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
         //     std::cout << "VDBFusion: " << dur << " ms" << std::endl;
         // }
+        
         dagMap.save_h5();
         exit(0);
     }
