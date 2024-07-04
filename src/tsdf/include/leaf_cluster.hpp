@@ -108,5 +108,9 @@ struct LeafCluster {
     static constexpr ClusterT nBits = 8; // 1b sign, rest data
     static constexpr ClusterT leafMask = (1 << nBits) - 1; // mask for a single leaf
     static constexpr ClusterT range = leafMask / 2; // achievable range with data bits
+    // cluster value when all leaves have the maximum positive signed distance
+    static constexpr ClusterT max = 0b1111111011111110111111101111111011111110111111101111111011111110;
+    // cluster value when all leaves have the maximum negative signed distance
+    static constexpr ClusterT min = 0b0000000000000000000000000000000000000000000000000000000000000000;
 };  
 };

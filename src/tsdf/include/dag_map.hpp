@@ -634,6 +634,114 @@ namespace DAG {
 			dur = std::chrono::duration<double, std::milli> (end - beg).count();
 			return std::move(octrees[0]);
 		}
+		auto insert_octree(Octree& octree) {
+			auto beg = std::chrono::steady_clock::now();
+			// trackers that will be updated during traversal
+			std::array<uint8_t, 63/3> path;
+			std::array<std::array<uint32_t, 8>, 63/3> pathNodes;
+			std::array<const Octree::Node*, 63/3> octNodes;
+			
+			// reset arrays
+			path.fill(0);
+			octNodes.fill(nullptr);
+			for (auto& level: pathNodes) level.fill(0);
+			
+			// set starting values
+			int64_t depth = 0;
+			octNodes[0] = octree.get_root();
+			
+			// iterate through octree and insert into hashDAG
+			while (depth >= 0) {
+				auto iChild = path[depth]++;
+				
+				// when children were iterated
+				if (iChild == 8) {
+					// gather all children for this new node
+					std::vector<uint32_t> children(1);
+					for (auto i = 0; i < 8; i++) {
+						if (pathNodes[depth][i] == 0) continue;
+						children.push_back(pathNodes[depth][i]);
+						children[0] |= 1 << i; // child mask
+					}
+					// add child count to mask
+					children[0] |= (children.size() - 1) << 8;
+					// reset node tracker for used-up nodes
+					pathNodes[depth].fill(0);
+					
+					// check path in parent depth to know this node's child ID
+					uint32_t indexInParent;
+					if (depth == 0) indexInParent = 0;
+					else path[depth - 1] - 1;
+					
+					// resize data if necessary and then copy over
+					auto& level = nodeLevels[depth];
+					level.data.resize(level.nOccupied + children.size());
+					std::memcpy(
+						level.data.data() + level.nOccupied,
+						children.data(),
+						children.size() * sizeof(uint32_t));
+					// check if the same node existed previously
+					uint32_t temporary = level.nOccupied;
+					auto [pIndex, bNew] = level.hashSet.emplace(temporary);
+					if (bNew) {
+						level.nOccupied += children.size();
+						uniques[depth]++;
+						pathNodes[depth][indexInParent] = temporary;
+					}
+					else {
+						dupes[depth]++;
+						pathNodes[depth][indexInParent] = *pIndex;
+					}
+					
+					depth--;
+					continue;
+				}
+				
+				// node contains children
+				if (depth < 63/3 - 1) {
+					// retrieve child node
+					auto* pChild = octNodes[depth]->children[iChild];
+					if (pChild == nullptr) continue;
+					// walk deeper
+					depth++;
+					octNodes[depth] = pChild;
+					path[depth] = 0;
+				}
+				// node contains leaves
+				else {
+					// go over every leaf(-cluster)
+					for (auto i = 0; i < 8; i++) {
+						LeafCluster lc(octNodes[depth]->leaves[i]);
+						if (lc.cluster == LeafCluster::max) continue;
+						if (lc.cluster == LeafCluster::min) continue;
+						
+						// check if this leaf cluster already exists
+						auto temporaryIndex = leafLevel.data.size();
+						auto [pIter, bNew] = leafLevel.hashMap.emplace(lc.cluster, temporaryIndex);
+						if (bNew) {
+							uniques[depth+1]++;
+							// insert as new leaf cluster
+							auto [part0, part1] = lc.get_parts();
+							leafLevel.data.push_back(part0);
+							leafLevel.data.push_back(part1);
+							pathNodes[depth][iChild] = temporaryIndex;
+						}
+						else {
+							dupes[depth+1]++;
+							// simply update references to the existing cluster
+							pathNodes[depth][iChild] = pIter->second;
+						}
+					}
+					// update path tracker to signal that all "children" were iterated
+					path[depth] = 8;
+				}
+				
+			}
+			
+			auto end = std::chrono::steady_clock::now();
+			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+			measurements.emplace_back(dur, "hdag ctor");
+		}
 		void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
 			auto full_beg = std::chrono::steady_clock::now();
 			
@@ -654,9 +762,11 @@ namespace DAG {
 			auto mortonCodes = calc_morton(points);
 			sort_points(points, mortonCodes);
 			auto normals = calc_normals(pose, mortonCodes);
-			auto trie = get_trie(points, normals);
+			auto octree = get_trie(points, normals);
+			insert_octree(octree);
+			
 			auto beg = std::chrono::steady_clock::now();
-
+			// DEPRECATED
 			// path leading to current node
 			std::array<uint8_t, nDagLevels> path;
 			// collection of nodes that exist along the path
@@ -665,15 +775,13 @@ namespace DAG {
 			std::array<const Octree::Node*, nDagLevels> octNodes;
 			// keep track of tree depth
 			uint_fast32_t depth;
-			
 			// initialize
 			for (auto& level: nodes) level.fill(0); // reset nodes tracker
 			path.fill(0); // reset path
-			octNodes[0] = trie.get_root(); // begin at octree root
+			octNodes[0] = octree.get_root(); // begin at octree root
 			depth = 0; // depth 0 being the root
-			
 			// begin insertion into hashDAG (bottom-up)
-			while (true) {
+			while (false) {
 				auto iChild = path[depth]++;
 				if (iChild >= 8) {
 					// insert normal/root node
@@ -759,6 +867,7 @@ namespace DAG {
 					path[depth] = 0;
 				}
 			}
+			// DEPRECATED END
 
 			auto end = std::chrono::steady_clock::now();
 			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
@@ -817,7 +926,7 @@ namespace DAG {
 			//     dataset.read(data);
 			//     std::cout << data.size() << '\n';
 			// }
-			// return;
+			return;
 			lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox(lowerLeft, upperRight);
 			std::vector<std::vector<uint32_t>*> nodeLevelRef;
 			for (auto& level: nodeLevels) nodeLevelRef.push_back(&level.data);
@@ -876,11 +985,11 @@ namespace DAG {
 		
 		lvr2::BaseVector<float> lowerLeft = {max, max, max};
 		lvr2::BaseVector<float> upperRight = {min, min, min};
-		std::array<uint32_t, nDagLevels> uniques = {};
-		std::array<uint32_t, nDagLevels> dupes = {};
+		std::array<uint32_t, 63/3+1> uniques = {};
+		std::array<uint32_t, 63/3+1> dupes = {};
 
 		// new //
-		std::array<NodeLevel, nDagLevels - 1> nodeLevels;
+		std::array<NodeLevel, 63/3> nodeLevels;
 		LeafLevel leafLevel;
 		struct Scan {
 			Pose pose;

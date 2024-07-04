@@ -110,13 +110,19 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
         
         // child will be a leaf cluster
         if (depth == 63/3 - 1) {
+            // construct helper class for leaf cluster data
+            DAG::LeafCluster leafCluster(*pParentNode, *(pParentNode+1));
+            // std::cout << std::bitset<64>(leafCluster.cluster) << '\n';
+            
             // reconstruct morton code from path
             uint64_t mortonCode = 0;
             for (uint64_t k = 0; k < 63/3; k++) {
                 uint64_t part = path[k] - 1;
                 mortonCode |= part << (60 - k*3);
             }
-            // std::cout << std::bitset<63>(mortonCode) << ' ' << (uint32_t)iChild << '\n';
+            // TODO: shoudl this not be a full morton code with right 3 bits NOT missing?????
+            // std::cout << std::bitset<63>(mortonCode) <<' '<<(uint32_t)iChild<<'\n';
+            mortonCode = mortonCode << 3; // restore as per insert
             
             // morton codes were inserted via cluster pos, not leaf pos
             auto [x, y, z] = mortonnd::MortonNDBmi_3D_64::Decode(mortonCode);
@@ -125,13 +131,9 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
             y -= 1 << 20;
             z -= 1 << 20;
             Eigen::Vector3i veci { (int32_t)x, (int32_t)y, (int32_t)z };
-            veci /= 2;
             Eigen::Vector3f vecf = veci.cast<float>() * m_voxelsize; // convert back to real position
             // std::cout << vecf.x() << ' ' << vecf.y() << ' ' << vecf.z() << '\n';
             
-            // construct helper class for leaf cluster data
-            DAG::LeafCluster leafCluster(*pParentNode, *(pParentNode+1));
-            // std::cout << std::bitset<64>(leafCluster.cluster) << '\n';
             
             // iterate over packed leaves within leaf cluster
             uint32_t iLeaf = 0;
