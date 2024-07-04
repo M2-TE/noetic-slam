@@ -671,7 +671,7 @@ namespace DAG {
 					// check path in parent depth to know this node's child ID
 					uint32_t indexInParent;
 					if (depth == 0) indexInParent = 0;
-					else path[depth - 1] - 1;
+					else indexInParent = path[depth - 1] - 1;
 					
 					// resize data if necessary and then copy over
 					auto& level = nodeLevels[depth];
@@ -743,7 +743,7 @@ namespace DAG {
 			measurements.emplace_back(dur, "hdag ctor");
 		}
 		void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
-			auto full_beg = std::chrono::steady_clock::now();
+			auto beg = std::chrono::steady_clock::now();
 			
 			// update bounding box
 			for (auto cur = points.cbegin(); cur != points.cend(); cur++) {
@@ -764,126 +764,16 @@ namespace DAG {
 			auto normals = calc_normals(pose, mortonCodes);
 			auto octree = get_trie(points, normals);
 			insert_octree(octree);
-			
-			auto beg = std::chrono::steady_clock::now();
-			// DEPRECATED
-			// path leading to current node
-			std::array<uint8_t, nDagLevels> path;
-			// collection of nodes that exist along the path
-			std::array<std::array<uint32_t, 8>, nDagLevels> nodes;
-			// nodes of the temporary octree
-			std::array<const Octree::Node*, nDagLevels> octNodes;
-			// keep track of tree depth
-			uint_fast32_t depth;
-			// initialize
-			for (auto& level: nodes) level.fill(0); // reset nodes tracker
-			path.fill(0); // reset path
-			octNodes[0] = octree.get_root(); // begin at octree root
-			depth = 0; // depth 0 being the root
-			// begin insertion into hashDAG (bottom-up)
-			while (false) {
-				auto iChild = path[depth]++;
-				if (iChild >= 8) {
-					// insert normal/root node
-					if (depth < nDagLevels - 1) {
-						// gather all children for this new node
-						std::vector<uint32_t> children(1);
-						for (auto i = 0; i < 8; i++) {
-							if (nodes[depth+1][i] == 0) continue;
-							children.push_back(nodes[depth+1][i]);
-							children[0] |= 1 << i; // child mask
-						}
-						// add child count to mask
-						children[0] |= (children.size() - 1) << 8;
-						// reset node tracker for used-up nodes
-						nodes[depth+1].fill(0);
-						
-						// resize data if necessary and then copy over
-						auto& level = nodeLevels[depth];
-						level.data.resize(level.nOccupied + children.size());
-						std::memcpy(
-							level.data.data() + level.nOccupied,
-							children.data(),
-							children.size() * sizeof(uint32_t));
-						// check if the same node existed previously
-						uint32_t temporary = level.nOccupied;
-						auto [pIndex, bNew] = level.hashSet.emplace(temporary);
-						uint32_t indexInParent = path[depth - 1] - 1;
-						if (depth == 0) indexInParent = 0;
-						if (bNew) {
-							level.nOccupied += children.size();
-							uniques[depth]++;
-							nodes[depth][indexInParent] = temporary;
-						}
-						else {
-							dupes[depth]++;
-							nodes[depth][indexInParent] = *pIndex;
-						}
-					}
-					if (depth == 0) break;
-					depth--;
-					continue;
-				}
-
-				// child node is a leaf cluster of 8 leaves
-				if (depth == nDagLevels - 1) {
-					// uint64_t mortonCode = 0;
-					// for (uint64_t k = 0; k < 63/3; k++) {
-					// 	uint64_t part = path[k] - 1;
-					// 	mortonCode |= part << (60 - k*3);
-					// }
-					// std::cout << std::bitset<63>(mortonCode) << '\n';
-					
-					// retrieve leaf cluster
-					LeafCluster lc { octNodes[depth]->leaves[iChild] };
-					if (lc.cluster == 0) continue;
-					// check if this leaf cluster already exists
-					auto temporaryIndex = leafLevel.data.size();
-					auto [pIter, bNew] = leafLevel.hashMap.emplace(lc.cluster, temporaryIndex);
-					if (bNew) {
-						uniques[depth]++;
-						// update reference to leaf cluster
-						nodes[depth][iChild] = temporaryIndex;
-						// insert into (uint32) data array
-						auto [part0, part1] = lc.get_parts();
-						leafLevel.data.push_back(part0);
-						leafLevel.data.push_back(part1);
-					}
-					else {
-						dupes[depth]++;
-						// simply update references to the existing cluster
-						nodes[depth][iChild] = pIter->second;
-					}
-				}
-				// child node is a simple node
-				else {
-					// retrieve child node
-					auto* pChild = octNodes[depth]->children[iChild];
-					if (pChild == nullptr) continue;
-					// walk deeper
-					depth++;
-					octNodes[depth] = pChild;
-					// reset child tracker
-					path[depth] = 0;
-				}
-			}
-			// DEPRECATED END
 
 			auto end = std::chrono::steady_clock::now();
 			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-			measurements.emplace_back(dur, "trie iter");
-			dur = std::chrono::duration<double, std::milli> (end - full_beg).count();
 			measurements.emplace_back(dur, "FULL");
 			if (true) {
-				std::vector<double> times;
-				std::vector<std::string> labels;
 				std::cout << std::setprecision(2);
 				for (auto& pair: measurements) {
-					std::cout << pair.second << " " << (uint32_t)pair.first << " ms\n";
+					std::cout << pair.second << " " << (double)pair.first << " ms\n";
 					// std::cout << (uint32_t)pair.first << '\t';
 					if (pair.second == "FULL") continue;
-					times.push_back(pair.first);
-					labels.push_back(pair.second);
 				}
 				std::cout << std::setprecision(6);
 				std::cout << "\n";
