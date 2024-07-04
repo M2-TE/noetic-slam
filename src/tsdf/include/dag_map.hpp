@@ -639,15 +639,17 @@ namespace DAG {
 			auto beg = std::chrono::steady_clock::now();
 			
 			struct DagNode {
+				// pure helper struct, so no ctor/dtor
 				DagNode() = delete;
 				~DagNode() = delete;
 				static DagNode* conv(uint32_t& addr) {
 					return reinterpret_cast<DagNode*>(&addr);
 				}
+				
 				// check header mask for a specific child
 				bool contains_child(uint32_t iChild) const {
 					uint32_t childBit = 1 << iChild;
-					return header & iChild;
+					return header & childBit;
 				}
 				uint32_t get_child(uint32_t iChild) const {
 					// popcount lookup table: https://stackoverflow.com/a/51388543
@@ -674,8 +676,10 @@ namespace DAG {
 					uint32_t masked = header & (childBit - 1);
 					uint32_t nChildren = bitcount[masked];
 					// return actual index to child
-					return children[nChildren + 1];
+					return children[nChildren];
 				}
+				
+			private:
 				uint32_t header; // always valid
 				std::array<uint32_t, 8> children; // sparse and compacted
 			};
@@ -692,13 +696,15 @@ namespace DAG {
 			// set starting values
 			int64_t depth = 0;
 			octNodes[0] = octree.get_root();
-			dagNodes[0] = DagNode::conv(nodeLevels[0].data[0]);
+			dagNodes[0] = DagNode::conv(nodeLevels[0].data[1]);
 			
 			while (depth >= 0) {
 				auto iChild = path[depth]++;
 				
 				// todo
 				if (iChild == 8) {
+					newNodes[depth].fill(0);
+					std::cout << "normal node\n";
 					depth--;
 				}
 				else if (depth < 63/3 - 1) {
@@ -708,29 +714,32 @@ namespace DAG {
 					// check if the DAG tree contains this child
 					auto* dagNode = dagNodes[depth];
 					if (dagNode->contains_child(iChild)) {
+						std::cout << depth << '\t' << (uint32_t)iChild <<  "\twalking further down\n";
 						// walk further down as both octree and dag contain this child
 						uint32_t dagChildAddr = dagNode->get_child(iChild);
 						depth++;
-						dagNodes[depth] = nodeLevels[depth].data[dagChildAddr];
+						path[depth] = 0;
+						dagNodes[depth] = DagNode::conv(nodeLevels[depth].data[dagChildAddr]);
 						octNodes[depth] = octChild;
-						depth++;
 					}
 					else {
 						// node is missing from dag, add it and all its subsequent children
+						std::cout << depth << '\t' << (uint32_t)iChild << "\tmissing from dag\n";
 						// TODO
 					}
-					
-					
 				}
 				// todo
 				else {
-					
+					std::cout << "leaf\n";
 				}
 			}
 			
 			auto end = std::chrono::steady_clock::now();
 			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
 			measurements.emplace_back(dur, "dag  ctor");
+		}
+		void insert_partial() {
+			// TODO
 		}
 		// todo: make octree2 call a mini version of this, starting from nodes that didnt exist in DAG
 		auto insert_octree(Octree& octree) {
@@ -788,11 +797,11 @@ namespace DAG {
 					if (bNew) {
 						level.nOccupied += children.size();
 						uniques[depth]++;
-						dagNodes[depth][indexInParent] = temporary;
+						dagNodes[depth - 1][indexInParent] = temporary;
 					}
 					else {
 						dupes[depth]++;
-						dagNodes[depth][indexInParent] = *pIndex;
+						dagNodes[depth - 1][indexInParent] = *pIndex;
 					}
 					
 					depth--;
