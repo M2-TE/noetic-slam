@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
+#include <sstream>
 #include <vector>
 //
 #include <parallel_hashmap/phmap.h>
@@ -213,6 +215,9 @@ struct Octree {
         std::vector<uint8_t> path(pathLength);
         std::vector<Node*> nodes_a(pathLength);
         std::vector<Node*> nodes_b(pathLength);
+        
+        // when start depth is equal to 63/3, it is a special value indicating no need for merging
+        if (pathLength == 0) return;
         
         // find the colliding nodes in both trees
         path[0] = 0;

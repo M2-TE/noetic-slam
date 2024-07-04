@@ -29,11 +29,11 @@
 #include <placeholder/HashGridDag.tcc>
 #include <lvr2/reconstruction/HashGrid.hpp>
 //
+#include "dag_constants.hpp"
 #include "octree.hpp"
 #include "dag_structs.hpp"
 #include "leaf_cluster.hpp"
 #include "lvr2/geometry/PMPMesh.hpp"
-#include "lvr2/reconstruction/DMCReconstruction.hpp"
 #include "lvr2/reconstruction/FastBox.hpp"
 #include "lvr2/reconstruction/FastReconstruction.hpp"
 #include "lvr2/algorithm/NormalAlgorithms.hpp"
@@ -274,8 +274,8 @@ namespace DAG {
 				
 				return neighMap;
 			};
-			// use chunk at level 2 (relative from leaves) for neighbourhoods
-			static size_t neighLevel = 1;
+			// use chunk at level 2 (relative from leaves) for neighbourhoods by default
+			static size_t neighLevel = 2;
 			auto neighMap = calc_neigh_map(neighLevel);
 			// rough approximation of points per neighbourhood
 			size_t nPts = mortonCodes.size() / neighMap.size();
@@ -406,25 +406,63 @@ namespace DAG {
 			return normals;
 		}
 		static auto build_trie_whatnot(Octree& octree, Eigen::Vector3f inputPos, Eigen::Vector3f inputNorm, uint32_t tid) {
-			// voxels per unit at leaf level
+			// calculate chunk position as a leaf
 			constexpr float recip = 1.0 / leafResolution;
-			// morton code will be generated using leaf cluster position, not the leaves themselves
-			Eigen::Vector3i mainClusterPos = (inputPos * recip).cast<int32_t>();
-			mainClusterPos = mainClusterPos.unaryExpr([](int32_t val) { return val - val%2; });
+			Eigen::Vector3i baseClusterChunk = (inputPos * recip).cast<int32_t>();
+			// %2 to get the parent chunk with 2x2x2 leaf clusters
+			baseClusterChunk = baseClusterChunk.unaryExpr([](int32_t val) { return val - val%2; });
+			// convert back to real-world coordinates
+			Eigen::Vector3f baseClusterPos = baseClusterChunk.cast<float>() * leafResolution;
 			
 			// DEBUG
-			// if (tid == 0) {
-				// std::cout << inputPos.x() << ' ' << inputPos.y() << ' ' << inputPos.z() << '\t';
+			if (tid == 0) {
+				// std::cout << clusterPos.x() << ' ' << clusterPos.y() << ' ' << clusterPos.z() << '\t';
+				// std::cout << inputPos.x() << ' ' << inputPos.y() << ' ' << inputPos.z() << '\n';
 				// std::cout << inputNorm.x() << ' ' << inputNorm.y() << ' ' << inputNorm.z() << '\n';
+			}
+			
+			// // offsets of leaves within
+			// std::array<float, 8> leaves;
+			// auto pLeaf = leaves.begin();
+			// for (auto xl = 0; xl < 2; xl++) {
+			// 	for (auto yl = 0; yl < 2; yl++) {
+			// 		for (auto zl = 0; zl < 2; zl++) {
+			// 			// leaf position
+			// 			Eigen::Vector3f leafOffset = Eigen::Vector3f(xl, yl, zl) * leafResolution;
+			// 			Eigen::Vector3f pos = clusterPosReal + leafOffset;
+			// 			*pLeaf = inputNorm.dot(pos - inputPos);		
+			// 			// DEBUG
+			// 			// float optimalLeaf = pos.norm() - 5.0f;
+			// 			// *pLeaf = optimalLeaf;
+			// 			// DEBUG END
+			// 			pLeaf++;
+			// 		}
+			// 	}
 			// }
+			// // // compare to other existing leaves
+			// MortonCode code(clusterPos * 2); // swallows a layer (reverted on reconstruction)
+			// auto& cluster = octree.find(code.val);
+			// if (cluster != 0) {
+			// 	LeafCluster lc(leaves);
+			// 	LeafCluster other(cluster);
+			// 	lc.merge(other);
+			// 	cluster = lc.cluster;
+			// }
+			// // simply insert
+			// else {
+			// 	LeafCluster lc(leaves);
+			// 	cluster = lc.cluster;
+			// }
+			// return;
 
 			// calculate signed distances for neighbours of current leaf cluster as well
 			for (int32_t x = -1; x <= +1; x++) {
 				for (int32_t y = -1; y <= +1; y++) {
 					for (int32_t z = -1; z <= +1; z++) {
 						// this is be a leaf cluster containing 8 individual leaves
-						Eigen::Vector3i clusterPos = mainClusterPos + Eigen::Vector3i(x, y, z) * 2;
-						Eigen::Vector3f clusterOffset = clusterPos.cast<float>() * leafResolution;
+						Eigen::Vector3i clusterChunk = baseClusterChunk + Eigen::Vector3i(x, y, z) * 2;
+						Eigen::Vector3f clusterPos = baseClusterPos + Eigen::Vector3f(x, y, z) * 2 * leafResolution;
+						// Eigen::Vector3f clusterOffset = clusterPos.cast<float>() * leafResolution;
 
 						// offsets of leaves within
 						std::array<float, 8> leaves;
@@ -434,33 +472,16 @@ namespace DAG {
 								for (auto zl = 0; zl < 2; zl++) {
 									// leaf position
 									Eigen::Vector3f leafOffset = Eigen::Vector3f(xl, yl, zl) * leafResolution;
-									Eigen::Vector3f pos = clusterOffset + leafOffset;
-									*pLeaf = inputNorm.dot(pos - inputPos);
-									
-									// DEBUG
-									float optimalLeaf = pos.norm() - 5.0f;
-									// float diff = std::abs(*pLeaf - optimalLeaf);
-									// if (diff > 0.1) {
-									// 	std::cout << std::setprecision(4);
-									// 	if (true) {
-									// 		std::cout << diff << '\t';
-									// 		std::cout << *pLeaf << '\t' << optimalLeaf << '\n';
-									// 		std::cout << "pos: " << inputPos.x() << ' ' << inputPos.y() << ' ' << inputPos.z() << '\t';
-									// 		std::cout << "norm: " << inputNorm.x() << ' ' << inputNorm.y() << ' ' << inputNorm.z() << '\n';
-									// 	}
-									// }
-									// std::ostringstream oss;
-									// oss << *pLeaf << '\t' << optimalLeaf << '\t' << diff << '\n';
-									// std::cout << oss.str();
-									// *pLeaf = optimalLeaf;
-									// DEBUG END
-									pLeaf++;
+									Eigen::Vector3f pos = clusterPos + leafOffset;
+									*pLeaf++ = inputNorm.dot(pos - inputPos);
 								}
 							}
 						}
 						
 						// compare to other existing leaves
-						MortonCode code(clusterPos * 2); // swallows a layer (reverted on reconstruction)
+						MortonCode code(clusterChunk);
+						// since we do not explicitly encode leaf positions into morton code, 3 LSB wont be set
+						code.val = code.val >> 3; // EXPERIMENTAL
 						auto& cluster = octree.find(code.val);
 						
 						if (cluster != 0) {
@@ -607,12 +628,10 @@ namespace DAG {
 					}
 				});
 			}
-			// join threads
-			threads.clear();
+			threads.clear(); // join
 
 			end = std::chrono::steady_clock::now();
 			dur = std::chrono::duration<double, std::milli> (end - beg).count();
-			measurements.emplace_back(dur, "trie mrge");
 			return std::move(octrees[0]);
 		}
 		void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
@@ -700,6 +719,13 @@ namespace DAG {
 
 				// child node is a leaf cluster of 8 leaves
 				if (depth == nDagLevels - 1) {
+					// uint64_t mortonCode = 0;
+					// for (uint64_t k = 0; k < 63/3; k++) {
+					// 	uint64_t part = path[k] - 1;
+					// 	mortonCode |= part << (60 - k*3);
+					// }
+					// std::cout << std::bitset<63>(mortonCode) << '\n';
+					
 					// retrieve leaf cluster
 					LeafCluster lc { octNodes[depth]->leaves[iChild] };
 					if (lc.cluster == 0) continue;
@@ -712,7 +738,6 @@ namespace DAG {
 						nodes[depth][iChild] = temporaryIndex;
 						// insert into (uint32) data array
 						auto [part0, part1] = lc.get_parts();
-						// std::cout << std::bitset<64>(lc.cluster) << '\n';
 						leafLevel.data.push_back(part0);
 						leafLevel.data.push_back(part1);
 					}
@@ -814,11 +839,6 @@ namespace DAG {
 				auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::BilinearFastBox<VecT>>>(boundingBox, nodeLevelRef, leafResolution);
 				lvr2::FastReconstruction<VecT, lvr2::BilinearFastBox<VecT>> reconstruction(pGrid);
 				reconstruction.getMesh(mesh);
-			}
-			else if (decompositionType == "DMC") {
-				// auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::BilinearFastBox<VecT>>>(boundingBox, nodeLevelRef, leafResolution);
-				// lvr2::DMCReconstruction<VecT, lvr2::FastBox<VecT>> reconstruction(pGrid);
-				// reconstruction.getMesh(mesh);
 			}
 			// lvr2::reconstruct::Options options(0, "");
 			// optimizeMesh(options, mesh);

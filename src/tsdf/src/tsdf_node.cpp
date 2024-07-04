@@ -107,7 +107,6 @@ public:
         Eigen::Quaternionf rotation = {};
         std::cout << "Inserting " << points.size() << " points.\n";
         dagMap.insert_scan(position, rotation, points);
-        exit(0);
     }
 
 private:

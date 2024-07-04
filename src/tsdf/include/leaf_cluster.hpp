@@ -18,7 +18,6 @@ struct LeafCluster {
     LeafCluster(ClusterT cluster): cluster(cluster) {}
     LeafCluster(PartT part0, PartT part1): cluster((ClusterT)part0 | ((ClusterT)part1 << 32)) {}
     LeafCluster(std::array<float, 8>& leaves): cluster(0) {
-        std::ostringstream oss;
         for (ClusterT i = 0; i < 8; i++) {
             // normalize sd to [-1, 1]
             float sdNormalized = leaves[i] * (1.0 / maxDist);
@@ -33,7 +32,6 @@ struct LeafCluster {
             // pack the 4 bits of this value into the leaf cluster
             cluster |= (ClusterT)sdLinear << i*nBits; 
         }
-        std::cout << oss.str();
     }
     std::pair<PartT, PartT> get_parts() {
         PartT part0 = (PartT)cluster;
