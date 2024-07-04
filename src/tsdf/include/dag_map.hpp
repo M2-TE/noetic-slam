@@ -632,20 +632,122 @@ namespace DAG {
 
 			end = std::chrono::steady_clock::now();
 			dur = std::chrono::duration<double, std::milli> (end - beg).count();
+			measurements.emplace_back(dur, "trie merg");
 			return std::move(octrees[0]);
 		}
-		auto insert_octree(Octree& octree) {
+		auto insert_octree2(Octree& octree) {
 			auto beg = std::chrono::steady_clock::now();
+			
+			struct DagNode {
+				DagNode() = delete;
+				~DagNode() = delete;
+				static DagNode* conv(uint32_t& addr) {
+					return reinterpret_cast<DagNode*>(&addr);
+				}
+				// check header mask for a specific child
+				bool contains_child(uint32_t iChild) const {
+					uint32_t childBit = 1 << iChild;
+					return header & iChild;
+				}
+				uint32_t get_child(uint32_t iChild) const {
+					// popcount lookup table: https://stackoverflow.com/a/51388543
+					constexpr uint8_t bitcount[] = {
+						0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
+						1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
+						1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
+						2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
+						1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
+						2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
+						2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
+						3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
+						1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
+						2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
+						2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
+						3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
+						2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
+						3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
+						3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
+						4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8,
+					};
+					// count how many children come before this one
+					uint32_t childBit = 1 << iChild;
+					uint32_t masked = header & (childBit - 1);
+					uint32_t nChildren = bitcount[masked];
+					// return actual index to child
+					return children[nChildren + 1];
+				}
+				uint32_t header; // always valid
+				std::array<uint32_t, 8> children; // sparse and compacted
+			};
+			
 			// trackers that will be updated during traversal
 			std::array<uint8_t, 63/3> path;
-			std::array<std::array<uint32_t, 8>, 63/3> pathNodes;
+			std::array<const DagNode*, 		63/3> dagNodes;
 			std::array<const Octree::Node*, 63/3> octNodes;
-			
+			std::array<std::array<uint32_t, 8>, 63/3> newNodes;
 			// reset arrays
 			path.fill(0);
 			octNodes.fill(nullptr);
-			for (auto& level: pathNodes) level.fill(0);
+			for (auto& level: newNodes) level.fill(0);
+			// set starting values
+			int64_t depth = 0;
+			octNodes[0] = octree.get_root();
+			dagNodes[0] = DagNode::conv(nodeLevels[0].data[0]);
 			
+			while (depth >= 0) {
+				auto iChild = path[depth]++;
+				
+				// todo
+				if (iChild == 8) {
+					depth--;
+				}
+				else if (depth < 63/3 - 1) {
+					// check if the octree contains this child
+					auto* octChild = octNodes[depth]->children[iChild];
+					if (octChild == nullptr) continue;
+					// check if the DAG tree contains this child
+					auto* dagNode = dagNodes[depth];
+					if (dagNode->contains_child(iChild)) {
+						// walk further down as both octree and dag contain this child
+						uint32_t dagChildAddr = dagNode->get_child(iChild);
+						depth++;
+						dagNodes[depth] = nodeLevels[depth].data[dagChildAddr];
+						octNodes[depth] = octChild;
+						depth++;
+					}
+					else {
+						// node is missing from dag, add it and all its subsequent children
+						// TODO
+					}
+					
+					
+				}
+				// todo
+				else {
+					
+				}
+			}
+			
+			auto end = std::chrono::steady_clock::now();
+			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+			measurements.emplace_back(dur, "dag  ctor");
+		}
+		// todo: make octree2 call a mini version of this, starting from nodes that didnt exist in DAG
+		auto insert_octree(Octree& octree) {
+			if (nodeLevels[0].data.size() > 1) {
+				insert_octree2(octree);
+				return;
+			}
+			auto beg = std::chrono::steady_clock::now();
+			
+			// trackers that will be updated during traversal
+			std::array<uint8_t, 63/3> path;
+			std::array<std::array<uint32_t, 8>, 63/3> dagNodes;
+			std::array<const Octree::Node*, 63/3> octNodes;
+			// reset arrays
+			path.fill(0);
+			octNodes.fill(nullptr);
+			for (auto& level: dagNodes) level.fill(0);
 			// set starting values
 			int64_t depth = 0;
 			octNodes[0] = octree.get_root();
@@ -654,19 +756,19 @@ namespace DAG {
 			while (depth >= 0) {
 				auto iChild = path[depth]++;
 				
-				// when children were iterated
+				// when all children were iterated
 				if (iChild == 8) {
 					// gather all children for this new node
 					std::vector<uint32_t> children(1);
 					for (auto i = 0; i < 8; i++) {
-						if (pathNodes[depth][i] == 0) continue;
-						children.push_back(pathNodes[depth][i]);
+						if (dagNodes[depth][i] == 0) continue;
+						children.push_back(dagNodes[depth][i]);
 						children[0] |= 1 << i; // child mask
 					}
 					// add child count to mask
 					children[0] |= (children.size() - 1) << 8;
 					// reset node tracker for used-up nodes
-					pathNodes[depth].fill(0);
+					dagNodes[depth].fill(0);
 					
 					// check path in parent depth to know this node's child ID
 					uint32_t indexInParent;
@@ -686,19 +788,17 @@ namespace DAG {
 					if (bNew) {
 						level.nOccupied += children.size();
 						uniques[depth]++;
-						pathNodes[depth][indexInParent] = temporary;
+						dagNodes[depth][indexInParent] = temporary;
 					}
 					else {
 						dupes[depth]++;
-						pathNodes[depth][indexInParent] = *pIndex;
+						dagNodes[depth][indexInParent] = *pIndex;
 					}
 					
 					depth--;
-					continue;
 				}
-				
 				// node contains children
-				if (depth < 63/3 - 1) {
+				else if (depth < 63/3 - 1) {
 					// retrieve child node
 					auto* pChild = octNodes[depth]->children[iChild];
 					if (pChild == nullptr) continue;
@@ -724,12 +824,12 @@ namespace DAG {
 							auto [part0, part1] = lc.get_parts();
 							leafLevel.data.push_back(part0);
 							leafLevel.data.push_back(part1);
-							pathNodes[depth][iChild] = temporaryIndex;
+							dagNodes[depth][iChild] = temporaryIndex;
 						}
 						else {
 							dupes[depth+1]++;
 							// simply update references to the existing cluster
-							pathNodes[depth][iChild] = pIter->second;
+							dagNodes[depth][iChild] = pIter->second;
 						}
 					}
 					// update path tracker to signal that all "children" were iterated
@@ -740,7 +840,7 @@ namespace DAG {
 			
 			auto end = std::chrono::steady_clock::now();
 			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-			measurements.emplace_back(dur, "hdag ctor");
+			measurements.emplace_back(dur, "dag  ctor");
 		}
 		void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
 			auto beg = std::chrono::steady_clock::now();
@@ -767,40 +867,16 @@ namespace DAG {
 
 			auto end = std::chrono::steady_clock::now();
 			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-			measurements.emplace_back(dur, "FULL");
+			measurements.emplace_back(dur, "FULL time");
 			if (true) {
 				std::cout << std::setprecision(2);
 				for (auto& pair: measurements) {
 					std::cout << pair.second << " " << (double)pair.first << " ms\n";
-					// std::cout << (uint32_t)pair.first << '\t';
-					if (pair.second == "FULL") continue;
 				}
 				std::cout << std::setprecision(6);
 				std::cout << "\n";
 			}
 			measurements.clear();
-
-			size_t nUniques = 0;
-			size_t nDupes = 0;
-			size_t nBytes = 0;
-			for (size_t i = 0; i < uniques.size(); i++) {
-				std::cout << "Level " << i << ": " << uniques[i] << " uniques, " << dupes[i] << " dupes, ";
-				std::cout << static_cast<double>(uniques[i] * sizeof(uint32_t)) / 1024.0 / 1024.0 << " MiB \n";
-				nUniques += uniques[i];
-				nDupes += dupes[i];
-			}
-			std::cout << static_cast<double>(nUniques * sizeof(uint32_t)) / 1024.0 / 1024.0 << " MiB used in total\n";
-			// // std::cout << "Memory footprint: " << nBytes << " bytes (" << (double)nBytes / 1'000'000 << " MB)\n";
-			// std::cout << "Total: " << nUniques << " uniques, " << nDupes << " dupes\n";
-			// size_t pointsBytes = points.size() * sizeof(Eigen::Vector3f);
-			// std::cout << "Pointcloud footprint: " << pointsBytes << " bytes (" << (double)pointsBytes / 1'000'000 << "MB)\n";
-			//// find the average of all points
-			// Eigen::Vector3d acc = {0, 0, 0};
-			// for (auto& point: points) {
-			//     acc += point.cast<double>();
-			// }
-			// acc /= (double)points.size();
-			// std::cout << acc << std::endl;
 		}
 		void save_h5() {
 			// HighFive::File file("test.h5", HighFive::File::Truncate);
@@ -867,6 +943,19 @@ namespace DAG {
 			// save to disk
 			auto model = std::make_shared<lvr2::Model>(meshBuffer);
 			lvr2::ModelFactory::saveModel(model, "yeehaw.ply");
+		}
+		void print_stats() {
+			size_t nUniques = 0;
+			size_t nDupes = 0;
+			size_t nBytes = 0;
+			for (size_t i = 0; i < uniques.size(); i++) {
+				std::cout << std::fixed;
+				std::cout << "Level " << i << ": " << uniques[i] << " uniques, " << dupes[i] << " dupes, ";
+				std::cout << static_cast<double>(uniques[i] * sizeof(uint32_t)) / 1024.0 / 1024.0 << " MiB \n";
+				nUniques += uniques[i];
+				nDupes += dupes[i];
+			}
+			std::cout << static_cast<double>(nUniques * sizeof(uint32_t)) / 1024.0 / 1024.0 << " MiB used in total\n";
 		}
 
 	private:

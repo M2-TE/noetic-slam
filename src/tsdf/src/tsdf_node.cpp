@@ -40,7 +40,7 @@ public:
         Eigen::Vector3f position { 0, 0, 0 };
         // Eigen::Vector3f position { 10, 10, 10 };
         // Eigen::Vector3f position { -10, -10, -10 };
-        for (size_t i = 0; i < 1; i++) {
+        for (size_t i = 0; i < 2; i++) {
             for (auto& point: points) {
                 Eigen::Vector3d pointd = {
                     dis(gen),
@@ -78,6 +78,7 @@ public:
         //     std::cout << "VDBFusion: " << dur << " ms" << std::endl;
         // }
         
+        dagMap.print_stats();
         dagMap.save_h5();
         exit(0);
     }
