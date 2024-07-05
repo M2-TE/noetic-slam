@@ -120,10 +120,10 @@
 //     std::chrono::time_point<std::chrono::steady_clock> prev;
 // };
 
-// int main(int argc, char **argv) {
-//     ros::init(argc, argv, "tsdf_node");
-//     ros::NodeHandle nh;
-//     TSDF_Node tsdfNode(nh);
-//     ros::spin();
-//     return 0;
-// }
+int main(int argc, char **argv) {
+    // ros::init(argc, argv, "tsdf_node");
+    // ros::NodeHandle nh;
+    // TSDF_Node tsdfNode(nh);
+    // ros::spin();
+    return 0;
+}
