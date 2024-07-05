@@ -635,6 +635,10 @@ namespace DAG {
 			measurements.emplace_back(dur, "trie merg");
 			return std::move(octrees[0]);
 		}
+		uint32_t insert_partial() {
+			// TODO
+			return 0;
+		}
 		auto insert_octree2(Octree& octree) {
 			auto beg = std::chrono::steady_clock::now();
 			
@@ -642,8 +646,9 @@ namespace DAG {
 				// pure helper struct, so no ctor/dtor
 				DagNode() = delete;
 				~DagNode() = delete;
-				static DagNode* conv(uint32_t& addr) {
-					return reinterpret_cast<DagNode*>(&addr);
+				// reinterpret an explicit node address
+				static DagNode* conv(std::vector<uint32_t>& data, uint32_t addr) {
+					return reinterpret_cast<DagNode*>(&data[addr]);
 				}
 				
 				// check header mask for a specific child
@@ -651,6 +656,12 @@ namespace DAG {
 					uint32_t childBit = 1 << iChild;
 					return header & childBit;
 				}
+				// check header mask for a specific leaf
+				bool contains_leaf(uint32_t iLeaf) const {
+					std::cout << std::bitset<32>(header) << '\n';
+					return contains_child(iLeaf);
+				}
+				// retrieve child addr from sparse children array
 				uint32_t get_child(uint32_t iChild) const {
 					// popcount lookup table: https://stackoverflow.com/a/51388543
 					constexpr uint8_t bitcount[] = {
@@ -678,10 +689,23 @@ namespace DAG {
 					// return actual index to child
 					return children[nChildren];
 				}
+				// retrieve leaf cluster from sparse children array
+				LeafCluster get_leaf(uint32_t iLeaf) const {
+					std::cout << std::bitset<32>(header) << '\n';
+					for (auto i = 0; i < 8; i++) {
+						uint32_t part0 = children[i*2+0];
+						uint32_t part1 = children[i*2+1];
+						LeafCluster lc(part0, part1);
+						std::cout << std::bitset<64>(lc.cluster) << '\n';
+					}
+					return LeafCluster(42);
+				}
 				
 			private:
-				uint32_t header; // always valid
-				std::array<uint32_t, 8> children; // sparse and compacted
+				uint32_t header; // contains child flags and child count
+				// either 8 children or 8 leaves (16 leaf parts)
+				std::array<uint32_t, 16> children; // sparse and compacted
+				// TODO: is the 16 children part necessary? should be 8 leaf pointers either way, each 32 bits
 			};
 			
 			// trackers that will be updated during traversal
@@ -696,7 +720,7 @@ namespace DAG {
 			// set starting values
 			int64_t depth = 0;
 			octNodes[0] = octree.get_root();
-			dagNodes[0] = DagNode::conv(nodeLevels[0].data[1]);
+			dagNodes[0] = DagNode::conv(nodeLevels[0].data, 1);
 			
 			while (depth >= 0) {
 				auto iChild = path[depth]++;
@@ -719,18 +743,50 @@ namespace DAG {
 						uint32_t dagChildAddr = dagNode->get_child(iChild);
 						depth++;
 						path[depth] = 0;
-						dagNodes[depth] = DagNode::conv(nodeLevels[depth].data[dagChildAddr]);
+						dagNodes[depth] = DagNode::conv(nodeLevels[depth].data, dagChildAddr);
 						octNodes[depth] = octChild;
 					}
 					else {
 						// node is missing from dag, add it and all its subsequent children
 						std::cout << depth << '\t' << (uint32_t)iChild << "\tmissing from dag\n";
 						// TODO
+						// uint32_t newNode = insert_partial();
 					}
 				}
 				// todo
 				else {
-					std::cout << "leaf\n";
+					std::cout << "leaf clusters\n";
+					// go over every leaf(-cluster)
+					for (auto i = 0; i < 8; i++) {
+						LeafCluster octLc(octNodes[depth]->leaves[i]);
+						// std::cout << std::bitset<64>(octLc.cluster) << '\n';
+						if (dagNodes[depth]->contains_leaf(i)) {
+							std::cout << "has\n";
+							// LeafCluster dagLc = dagNodes[depth]->get_leaf(i);
+						}
+						
+						// if (lc.cluster == LeafCluster::max) continue;
+						// if (lc.cluster == LeafCluster::min) continue;
+						
+						// // check if this leaf cluster already exists
+						// auto temporaryIndex = leafLevel.data.size();
+						// auto [pIter, bNew] = leafLevel.hashMap.emplace(lc.cluster, temporaryIndex);
+						// if (bNew) {
+						// 	uniques[depth+1]++;
+						// 	// insert as new leaf cluster
+						// 	auto [part0, part1] = lc.get_parts();
+						// 	leafLevel.data.push_back(part0);
+						// 	leafLevel.data.push_back(part1);
+						// 	newNodes[depth][iChild] = temporaryIndex;
+						// }
+						// else {
+						// 	dupes[depth+1]++;
+						// 	// simply update references to the existing cluster
+						// 	newNodes[depth][iChild] = pIter->second;
+						// }
+					}
+					// update path tracker to signal that all "children" were iterated
+					path[depth] = 8;
 				}
 			}
 			
@@ -738,13 +794,10 @@ namespace DAG {
 			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
 			measurements.emplace_back(dur, "dag  ctor");
 		}
-		void insert_partial() {
-			// TODO
-		}
 		// todo: make octree2 call a mini version of this, starting from nodes that didnt exist in DAG
 		auto insert_octree(Octree& octree) {
 			if (nodeLevels[0].data.size() > 1) {
-				insert_octree2(octree);
+				// insert_octree2(octree);
 				return;
 			}
 			auto beg = std::chrono::steady_clock::now();
@@ -878,6 +931,7 @@ namespace DAG {
 			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
 			measurements.emplace_back(dur, "FULL time");
 			if (true) {
+				std::cout << std::fixed;
 				std::cout << std::setprecision(2);
 				for (auto& pair: measurements) {
 					std::cout << pair.second << " " << (double)pair.first << " ms\n";
