@@ -102,6 +102,9 @@ struct LeafCluster {
         signedDistance *= maxDist; // scale signed distance to real size
         return signedDistance;
     }
+    bool operator==(const LeafCluster& other) const {
+        return cluster == other.cluster;
+    }
     
     ClusterT cluster;
     static constexpr float maxDist = leafResolution;

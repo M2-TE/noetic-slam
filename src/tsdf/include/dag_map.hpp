@@ -28,15 +28,15 @@
 #include <highfive/H5File.hpp>
 #include <placeholder/HashGridDag.tcc>
 #include <lvr2/reconstruction/HashGrid.hpp>
-//
-#include "dag_constants.hpp"
-#include "octree.hpp"
-#include "dag_structs.hpp"
-#include "leaf_cluster.hpp"
 #include "lvr2/geometry/PMPMesh.hpp"
 #include "lvr2/reconstruction/FastBox.hpp"
 #include "lvr2/reconstruction/FastReconstruction.hpp"
 #include "lvr2/algorithm/NormalAlgorithms.hpp"
+//
+#include "dag_constants.hpp"
+#include "octree.hpp"
+#include "dag_structs.hpp"
+#include "dag_node.hpp"
 
 
 // https://www.ilikebigbits.com/2017_09_25_plane_from_points_2.html
@@ -191,6 +191,14 @@ static Eigen::Vector3f normal_from_neighbourhood(std::vector<Eigen::Vector4d>& p
 namespace DAG {
 	static std::vector<std::pair<double, std::string>> measurements;
 	struct Map {
+		Map() {
+			// create a main root node, 1 child mask, 8 children
+			for (auto i = 0; i < 9; i++) {
+				nodeLevels[0].data.push_back(0);
+			}
+			nodeLevels[0].nOccupied += 9;
+			uniques[0]++;
+		}
 		static auto calc_morton(std::vector<Eigen::Vector3f>& points) {
 			auto beg = std::chrono::steady_clock::now();
 			
@@ -635,172 +643,9 @@ namespace DAG {
 			measurements.emplace_back(dur, "trie merg");
 			return std::move(octrees[0]);
 		}
-		uint32_t insert_partial() {
-			// TODO
-			return 0;
-		}
-		auto insert_octree2(Octree& octree) {
-			auto beg = std::chrono::steady_clock::now();
-			
-			struct DagNode {
-				// pure helper struct, so no ctor/dtor
-				DagNode() = delete;
-				~DagNode() = delete;
-				// reinterpret an explicit node address
-				static DagNode* conv(std::vector<uint32_t>& data, uint32_t addr) {
-					return reinterpret_cast<DagNode*>(&data[addr]);
-				}
-				
-				// check header mask for a specific child
-				bool contains_child(uint32_t iChild) const {
-					uint32_t childBit = 1 << iChild;
-					return header & childBit;
-				}
-				// check header mask for a specific leaf
-				bool contains_leaf(uint32_t iLeaf) const {
-					std::cout << std::bitset<32>(header) << '\n';
-					return contains_child(iLeaf);
-				}
-				// retrieve child addr from sparse children array
-				uint32_t get_child(uint32_t iChild) const {
-					// popcount lookup table: https://stackoverflow.com/a/51388543
-					constexpr uint8_t bitcount[] = {
-						0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
-						1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
-						1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
-						2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
-						1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
-						2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
-						2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
-						3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
-						1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
-						2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
-						2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
-						3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
-						2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,
-						3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
-						3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,
-						4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8,
-					};
-					// count how many children come before this one
-					uint32_t childBit = 1 << iChild;
-					uint32_t masked = header & (childBit - 1);
-					uint32_t nChildren = bitcount[masked];
-					// return actual index to child
-					return children[nChildren];
-				}
-				// retrieve leaf cluster from sparse children array
-				LeafCluster get_leaf(uint32_t iLeaf) const {
-					std::cout << std::bitset<32>(header) << '\n';
-					for (auto i = 0; i < 8; i++) {
-						uint32_t part0 = children[i*2+0];
-						uint32_t part1 = children[i*2+1];
-						LeafCluster lc(part0, part1);
-						std::cout << std::bitset<64>(lc.cluster) << '\n';
-					}
-					return LeafCluster(42);
-				}
-				
-			private:
-				uint32_t header; // contains child flags and child count
-				// either 8 children or 8 leaves (16 leaf parts)
-				std::array<uint32_t, 16> children; // sparse and compacted
-				// TODO: is the 16 children part necessary? should be 8 leaf pointers either way, each 32 bits
-			};
-			
-			// trackers that will be updated during traversal
-			std::array<uint8_t, 63/3> path;
-			std::array<const DagNode*, 		63/3> dagNodes;
-			std::array<const Octree::Node*, 63/3> octNodes;
-			std::array<std::array<uint32_t, 8>, 63/3> newNodes;
-			// reset arrays
-			path.fill(0);
-			octNodes.fill(nullptr);
-			for (auto& level: newNodes) level.fill(0);
-			// set starting values
-			int64_t depth = 0;
-			octNodes[0] = octree.get_root();
-			dagNodes[0] = DagNode::conv(nodeLevels[0].data, 1);
-			
-			while (depth >= 0) {
-				auto iChild = path[depth]++;
-				
-				// todo
-				if (iChild == 8) {
-					newNodes[depth].fill(0);
-					std::cout << "normal node\n";
-					depth--;
-				}
-				else if (depth < 63/3 - 1) {
-					// check if the octree contains this child
-					auto* octChild = octNodes[depth]->children[iChild];
-					if (octChild == nullptr) continue;
-					// check if the DAG tree contains this child
-					auto* dagNode = dagNodes[depth];
-					if (dagNode->contains_child(iChild)) {
-						std::cout << depth << '\t' << (uint32_t)iChild <<  "\twalking further down\n";
-						// walk further down as both octree and dag contain this child
-						uint32_t dagChildAddr = dagNode->get_child(iChild);
-						depth++;
-						path[depth] = 0;
-						dagNodes[depth] = DagNode::conv(nodeLevels[depth].data, dagChildAddr);
-						octNodes[depth] = octChild;
-					}
-					else {
-						// node is missing from dag, add it and all its subsequent children
-						std::cout << depth << '\t' << (uint32_t)iChild << "\tmissing from dag\n";
-						// TODO
-						// uint32_t newNode = insert_partial();
-					}
-				}
-				// todo
-				else {
-					std::cout << "leaf clusters\n";
-					// go over every leaf(-cluster)
-					for (auto i = 0; i < 8; i++) {
-						LeafCluster octLc(octNodes[depth]->leaves[i]);
-						// std::cout << std::bitset<64>(octLc.cluster) << '\n';
-						if (dagNodes[depth]->contains_leaf(i)) {
-							std::cout << "has\n";
-							// LeafCluster dagLc = dagNodes[depth]->get_leaf(i);
-						}
-						
-						// if (lc.cluster == LeafCluster::max) continue;
-						// if (lc.cluster == LeafCluster::min) continue;
-						
-						// // check if this leaf cluster already exists
-						// auto temporaryIndex = leafLevel.data.size();
-						// auto [pIter, bNew] = leafLevel.hashMap.emplace(lc.cluster, temporaryIndex);
-						// if (bNew) {
-						// 	uniques[depth+1]++;
-						// 	// insert as new leaf cluster
-						// 	auto [part0, part1] = lc.get_parts();
-						// 	leafLevel.data.push_back(part0);
-						// 	leafLevel.data.push_back(part1);
-						// 	newNodes[depth][iChild] = temporaryIndex;
-						// }
-						// else {
-						// 	dupes[depth+1]++;
-						// 	// simply update references to the existing cluster
-						// 	newNodes[depth][iChild] = pIter->second;
-						// }
-					}
-					// update path tracker to signal that all "children" were iterated
-					path[depth] = 8;
-				}
-			}
-			
-			auto end = std::chrono::steady_clock::now();
-			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-			measurements.emplace_back(dur, "dag  ctor");
-		}
-		// todo: make octree2 call a mini version of this, starting from nodes that didnt exist in DAG
 		auto insert_octree(Octree& octree) {
-			if (nodeLevels[0].data.size() > 1) {
-				// insert_octree2(octree);
-				return;
-			}
 			auto beg = std::chrono::steady_clock::now();
+			uint32_t rootAddr = nodeLevels[0].data.size();
 			
 			// trackers that will be updated during traversal
 			std::array<uint8_t, 63/3> path;
@@ -827,15 +672,13 @@ namespace DAG {
 						children.push_back(dagNodes[depth][i]);
 						children[0] |= 1 << i; // child mask
 					}
-					// add child count to mask
+					// add child count to mask (TODO: deprecate)
 					children[0] |= (children.size() - 1) << 8;
 					// reset node tracker for used-up nodes
 					dagNodes[depth].fill(0);
 					
 					// check path in parent depth to know this node's child ID
-					uint32_t indexInParent;
-					if (depth == 0) indexInParent = 0;
-					else indexInParent = path[depth - 1] - 1;
+					uint32_t indexInParent = path[depth - 1] - 1;
 					
 					// resize data if necessary and then copy over
 					auto& level = nodeLevels[depth];
@@ -850,11 +693,15 @@ namespace DAG {
 					if (bNew) {
 						level.nOccupied += children.size();
 						uniques[depth]++;
-						dagNodes[depth - 1][indexInParent] = temporary;
+						if (depth > 0) {
+							dagNodes[depth - 1][indexInParent] = temporary;
+						}
 					}
 					else {
 						dupes[depth]++;
-						dagNodes[depth - 1][indexInParent] = *pIndex;
+						if (depth > 0) {
+							dagNodes[depth - 1][indexInParent] = *pIndex;
+						}
 					}
 					
 					depth--;
@@ -869,40 +716,205 @@ namespace DAG {
 					octNodes[depth] = pChild;
 					path[depth] = 0;
 				}
-				// node contains leaves
+				// node contains leaf cluster
 				else {
-					// go over every leaf(-cluster)
-					for (auto i = 0; i < 8; i++) {
-						LeafCluster lc(octNodes[depth]->leaves[i]);
-						if (lc.cluster == LeafCluster::max) continue;
-						if (lc.cluster == LeafCluster::min) continue;
-						
-						// check if this leaf cluster already exists
-						auto temporaryIndex = leafLevel.data.size();
-						auto [pIter, bNew] = leafLevel.hashMap.emplace(lc.cluster, temporaryIndex);
-						if (bNew) {
-							uniques[depth+1]++;
-							// insert as new leaf cluster
-							auto [part0, part1] = lc.get_parts();
-							leafLevel.data.push_back(part0);
-							leafLevel.data.push_back(part1);
-							dagNodes[depth][iChild] = temporaryIndex;
-						}
-						else {
-							dupes[depth+1]++;
-							// simply update references to the existing cluster
-							dagNodes[depth][iChild] = pIter->second;
-						}
+					LeafCluster lc(octNodes[depth]->leaves[iChild]);
+					if (lc.cluster == LeafCluster::max) continue;
+					if (lc.cluster == LeafCluster::min) continue;
+					
+					// check if this leaf cluster already exists
+					auto temporaryIndex = leafLevel.data.size();
+					auto [pIter, bNew] = leafLevel.hashMap.emplace(lc.cluster, temporaryIndex);
+					if (bNew) {
+						uniques[depth+1]++;
+						// insert as new leaf cluster
+						auto [part0, part1] = lc.get_parts();
+						leafLevel.data.push_back(part0);
+						leafLevel.data.push_back(part1);
+						dagNodes[depth][iChild] = temporaryIndex;
 					}
-					// update path tracker to signal that all "children" were iterated
-					path[depth] = 8;
+					else {
+						dupes[depth+1]++;
+						// simply update references to the existing cluster
+						dagNodes[depth][iChild] = pIter->second;
+					}
 				}
-				
 			}
 			
 			auto end = std::chrono::steady_clock::now();
 			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
 			measurements.emplace_back(dur, "dag  ctor");
+			return rootAddr;
+		}
+		void merge_dag(uint32_t srcAddr) {
+			auto beg = std::chrono::steady_clock::now();
+			
+			// trackers that will be updated during traversal
+			std::array<uint8_t, 63/3> path;
+			std::array<const DagNode*, 63/3> dstNodes;
+			std::array<const DagNode*, 63/3> srcNodes;
+			std::array<std::array<uint32_t, 8>, 63/3> newNodes;
+			// reset arrays
+			path.fill(0);
+			dstNodes.fill(nullptr);
+			srcNodes.fill(nullptr);
+			for (auto& level: newNodes) level.fill(0);
+			// set starting values
+			int64_t depth = 0;
+			dstNodes[0] = DagNode::conv(nodeLevels[0].data, 1);
+			srcNodes[0] = DagNode::conv(nodeLevels[0].data, srcAddr);
+			
+			while (depth >= 0) {
+				auto iChild = path[depth]++;
+				// all children iterated, go back up and create node
+				if (iChild == 8) {
+					// normal node
+					if (depth > 0) {
+						// gather all children for this new node
+						std::vector<uint32_t> children(1); // init with child mask
+						for (auto i = 0; i < 8; i++) {
+							if (newNodes[depth][i] == 0) continue;
+							children.push_back(newNodes[depth][i]);
+							children[0] |= 1 << i; // child mask
+						}
+						// add child count to mask (TODO: deprecate)
+						children[0] |= (children.size() - 1) << 8;
+						// reset node tracker for used-up nodes
+						newNodes[depth].fill(0);
+						
+						// check path in parent depth to know this node's child ID
+						uint32_t indexInParent = path[depth - 1] - 1;
+						
+						// resize data if necessary and then copy over
+						auto& level = nodeLevels[depth];
+						level.data.resize(level.nOccupied + children.size());
+						std::memcpy(
+							level.data.data() + level.nOccupied,
+							children.data(),
+							children.size() * sizeof(uint32_t));
+						// check if the same node existed previously
+						uint32_t temporary = level.nOccupied;
+						auto [pIndex, bNew] = level.hashSet.emplace(temporary);
+						if (bNew) {
+							level.nOccupied += children.size();
+							uniques[depth]++;
+							newNodes[depth - 1][indexInParent] = temporary;
+						}
+						else {
+							dupes[depth]++;
+							newNodes[depth - 1][indexInParent] = *pIndex;
+						}
+						depth--;
+					}
+					// root node
+					else {
+						// the root node "dst" will always exist and will already have space allocated for all 8 children
+						// therefore, only need to insert into it
+						auto* rootNode = dstNodes[0];
+						
+						// add existing or new children
+						std::vector<uint32_t> children(1); // init with child mask
+						for (auto i = 0; i < 8; i++) {
+							uint32_t addr = 0;
+							// first get existing node
+							if (rootNode->contains_child(i)) {
+								addr = rootNode->get_child_addr(i);
+							}
+							// overwrite with new if present
+							if (newNodes[depth][i] > 0) {
+								addr = newNodes[depth][i];
+							}
+							// skip this child if it doesnt exist
+							if (addr == 0) continue;
+							// add to child vector and child mask
+							children.push_back(addr);
+							children[0] |= 1 << i; // child mask
+						}
+						// add child count to mask (TODO: deprecate)
+						children[0] |= (children.size() - 1) << 8;
+						
+						// overwrite old root node
+						auto& level = nodeLevels[0];
+						std::memcpy(
+							level.data.data() + 1,
+							children.data(),
+							children.size() * sizeof(uint32_t));		
+						depth--;
+					}
+				}
+				// normal child node
+				else if (depth < 63/3 - 1) {
+					auto* dstNode = dstNodes[depth];
+					auto* srcNode = srcNodes[depth];
+					
+					// insert if present in src tree
+					if (srcNode->contains_child(iChild)) {
+						uint32_t srcChildAddr = srcNode->get_child_addr(iChild);
+						
+						// when present in dst tree, walk further down that path
+						if (dstNode->contains_child(iChild)) {
+							uint32_t dstChildAddr = dstNode->get_child_addr(iChild);
+							depth++;
+							path[depth] = 0;
+							dstNodes[depth] = DagNode::conv(nodeLevels[depth].data, dstChildAddr);
+							srcNodes[depth] = DagNode::conv(nodeLevels[depth].data, srcChildAddr);
+						}
+						// else simply add the existing node to "new nodes"
+						else {
+							newNodes[depth][iChild] = srcChildAddr;
+						}
+					}
+					// preserve the already existing node from dst
+					else if (dstNode->contains_child(iChild)) {
+						uint32_t dstChildAddr = dstNode->get_child_addr(iChild);
+						newNodes[depth][iChild] = dstChildAddr;
+					}
+				}
+				// leaf cluster node
+				else {
+					// todo: note that this shouldnt return a leaf cluster, but just an addr
+					uint32_t dstLcAddr = dstNodes[depth]->get_child_addr(iChild);
+					uint32_t srcLcAddr = srcNodes[depth]->get_child_addr(iChild);
+					// leaf clusters are 64 bit, so they take 2 addresses
+					LeafCluster dstLc(leafLevel.data[dstLcAddr], leafLevel.data[dstLcAddr + 1]);
+					LeafCluster srcLc(leafLevel.data[srcLcAddr], leafLevel.data[srcLcAddr + 1]);
+					
+					// merge both leaf clusters
+					LeafCluster resLc(dstLc);
+					dstLc.merge(srcLc);
+					
+					// check if result is equal to either one of the clusters
+					if (resLc == dstLc) {
+						newNodes[depth][iChild] = dstLcAddr;
+					}
+					else if (resLc == srcLc) {
+						newNodes[depth][iChild] = srcLcAddr;
+					}
+					// if not, create a new leaf based on resLc
+					else {
+						// check if this leaf cluster already exists
+						auto temporaryIndex = leafLevel.data.size();
+						auto [pIter, bNew] = leafLevel.hashMap.emplace(resLc.cluster, temporaryIndex);
+						if (bNew) {
+							uniques[depth+1]++;
+							// insert as new leaf cluster
+							auto [part0, part1] = resLc.get_parts();
+							leafLevel.data.push_back(part0);
+							leafLevel.data.push_back(part1);
+							newNodes[depth][iChild] = temporaryIndex;
+						}
+						else {
+							dupes[depth+1]++;
+							// simply update references to the existing cluster
+							newNodes[depth][iChild] = pIter->second;
+						}
+					}
+				}
+			}
+			
+			auto end = std::chrono::steady_clock::now();
+			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+			measurements.emplace_back(dur, "dag  merg");
 		}
 		void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
 			auto beg = std::chrono::steady_clock::now();
@@ -925,7 +937,8 @@ namespace DAG {
 			sort_points(points, mortonCodes);
 			auto normals = calc_normals(pose, mortonCodes);
 			auto octree = get_trie(points, normals);
-			insert_octree(octree);
+			auto dagAddr = insert_octree(octree);
+			merge_dag(dagAddr);
 
 			auto end = std::chrono::steady_clock::now();
 			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
@@ -955,7 +968,7 @@ namespace DAG {
 			//     dataset.read(data);
 			//     std::cout << data.size() << '\n';
 			// }
-			return;
+			// return;
 			lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox(lowerLeft, upperRight);
 			std::vector<std::vector<uint32_t>*> nodeLevelRef;
 			for (auto& level: nodeLevels) nodeLevelRef.push_back(&level.data);
