@@ -211,6 +211,8 @@ namespace DAG {
 				Eigen::Vector3f position = *it_points;
 				// transform into chunk position (leaf chunk in this case)
 				Eigen::Vector3f chunkPosFloat = position * (1.0 / leafResolution);
+				// properly floor instead of relying on float -> int conversion
+				chunkPosFloat = chunkPosFloat.unaryExpr([](float f){ return std::floor(f); });
 				Eigen::Vector3i chunkPos = chunkPosFloat.cast<int32_t>();
 				// calculate morton code and insert into vector
 				MortonCode mc(chunkPos);
@@ -414,9 +416,11 @@ namespace DAG {
 			return normals;
 		}
 		static auto build_trie_whatnot(Octree& octree, Eigen::Vector3f inputPos, Eigen::Vector3f inputNorm, uint32_t tid) {
-			// calculate chunk position as a leaf
-			constexpr float recip = 1.0 / leafResolution;
-			Eigen::Vector3i base_clusterChunk = (inputPos * recip).cast<int32_t>();
+			// convert to chunk position
+			Eigen::Vector3f v = inputPos * (1.0 / leafResolution);
+			// properly floor instead of relying on float -> int conversion
+			v = v.unaryExpr([](float f){ return std::floor(f); });
+			Eigen::Vector3i base_clusterChunk = v.cast<int32_t>();
 			// %2 to get the parent chunk with 2x2x2 leaf clusters
 			base_clusterChunk = base_clusterChunk.unaryExpr([](int32_t val) { return val - val%4; });
 			// convert back to real-world coordinates
