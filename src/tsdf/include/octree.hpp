@@ -71,7 +71,7 @@ struct Octree {
         // depth from 20 (root) to 0 (leaf)
         size_t rDepth = 63/3 - 1;
         
-        // heck if memory block has enough space left
+        // check if memory block has enough space left
         if (_memory_blocks.back().check_remaining() < 63/3) {
             _memory_blocks.emplace_back(1<<16);
         }
@@ -109,6 +109,34 @@ struct Octree {
         // return pointer to the requested child node
         size_t index = (key >> rDepth*3) & 0b111;
         return pNode->children[index];
+    }
+    // insert a node up to a given level
+    Node* insert(Key key, size_t target_depth) {
+        // depth from 20 (root) to 0 (leaf)
+        size_t rDepth = 63/3 - 1;
+        // reverse target depth to fit internal depth iterator
+        target_depth = rDepth - target_depth;
+        
+        // check if memory block has enough space left
+        if (_memory_blocks.back().check_remaining() < 63/3) {
+            _memory_blocks.emplace_back(1<<16);
+        }
+        auto& memblock = _memory_blocks.back();
+        
+        // go from root to leaf parent
+        Node* pNode = _pRoot;
+        while (rDepth >= target_depth) {
+            size_t index = (key >> rDepth*3) & 0b111;
+            Node* pChild = pNode->children[index];
+            if (pChild == nullptr) {
+                pChild = memblock.get_new();
+                pNode->children[index] = pChild;
+            }
+            pNode = pChild;
+            rDepth--;
+        }
+        // return pointer to the requested child node
+        return pNode;
     }
     // emplace chosen leaf and all required nodes inbetween
     void emplace(Key key, Leaf leaf) {

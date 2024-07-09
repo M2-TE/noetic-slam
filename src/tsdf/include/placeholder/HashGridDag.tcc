@@ -119,29 +119,23 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
             // std::cout << vecf.x() << ' ' << vecf.y() << ' ' << vecf.z() << '\n';
             
             uint32_t iLeaf = 0;
-            for (auto xl = 0; xl < 2; xl++) {
+            for (auto zl = 0; zl < 2; zl++) {
                 for (auto yl = 0; yl < 2; yl++) {
-                    for (auto zl = 0; zl < 2; zl++) {
+                    for (auto xl = 0; xl < 2; xl++) {
                         // leaf position
                         Eigen::Vector3f leafOffset = Eigen::Vector3f(xl, yl, zl) * m_voxelsize;
                         Eigen::Vector3f pos = vecf + leafOffset;
                         
-                        float signedDistance = leafCluster.get_sd(iLeaf);
+                        // float signedDistance = leafCluster.get_sd(iLeaf);
+                        float signedDistance = pos.norm() - 5.0f;
                         
                         // create query point
                         size_t qIndex = m_queryPoints.size();
                         m_queryPoints.emplace_back(BaseVecT(pos.x(), pos.y(), pos.z()), signedDistance);
                         
-                        // create 8 cells around the query point
-                        std::array<Eigen::Vector3f, 8> cellOffsets = {
-                            Eigen::Vector3f(+0.5, +0.5, +0.5), Eigen::Vector3f(-0.5, +0.5, +0.5),
-                            Eigen::Vector3f(-0.5, -0.5, +0.5), Eigen::Vector3f(+0.5, -0.5, +0.5),
-                            Eigen::Vector3f(+0.5, +0.5, -0.5), Eigen::Vector3f(-0.5, +0.5, -0.5),
-                            Eigen::Vector3f(-0.5, -0.5, -0.5), Eigen::Vector3f(+0.5, -0.5, -0.5),
-                        };
-                        for (size_t i = 0; i < 8; i++) {
-                            // create cell
-                            Eigen::Vector3f cell_centerf = pos + cellOffsets[i] * m_voxelsize;
+                        // create 1 cell for the query point
+                        {
+                            Eigen::Vector3f cell_centerf = pos + Eigen::Vector3f(.5, .5, .5) * m_voxelsize;
                             BoxT* pBox = new BoxT(BaseVecT(cell_centerf.x(), cell_centerf.y(), cell_centerf.z()));
                             // create morton code of cell
                             float recip = 1.0 / m_voxelsize;
@@ -151,12 +145,10 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
                             uint32_t zCell = (1 << 20) + (uint32_t)leafPosition.z();
                             uint64_t mc = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
                             // emplace cell into map, check if it already existed
-                            auto [iter, bEmplaced] = m_cells.emplace(mc, pBox);
-                            if (!bEmplaced) delete pBox;
+                            auto [iter, _] = m_cells.emplace(mc, pBox);
                             // place query point at the correct cell index
-                            iter->second->setVertex(i, qIndex);
+                            iter->second->setVertex(0, qIndex);
                         }
-                        iLeaf++;
                     }
                 }
             }
@@ -246,7 +238,7 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
             for (int y = -1; y <= 1; y++) {
                 for (int z = -1; z <= 1; z++) {
                     // only need to find neighbour if there isnt one already
-                    if (p_cell->getNeighbor(i_neighbour) == nullptr) {
+                    if (p_cell->getNeighbor(i_neighbour) != nullptr) {
                         i_neighbour++;
                         continue;
                     }
@@ -286,45 +278,20 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
             }
         }
     }
-    // process partially filled cells
-    std::cout << timestamp << "filling empty query points in cells..." << std::endl;
+    
+    // cull incomplete cells
+    std::vector<uint64_t> incompleteCells;
     for (auto it = m_cells.cbegin(); it != m_cells.cend(); it++) {
-        // count up signed distance to fill missing query points
-        float signedDistanceTotal = 0.0f;
+        bool incomplete = false;
         for (auto i = 0; i < 8; i++) {
-            auto vertexIndex = it->second->getVertex(i);
-            if (vertexIndex != BoxT::INVALID_INDEX) {
-                auto& vertex = m_queryPoints[vertexIndex];
-                signedDistanceTotal += vertex.m_distance;
-            }
+            auto vertIndex = it->second->getVertex(i);
+            if (vertIndex == BoxT::INVALID_INDEX) incomplete = true;
         }
-        // cell center as eigen vector
-        Eigen::Vector3f cell_centerf {
-            it->second->m_center.x,
-            it->second->m_center.y,
-            it->second->m_center.z,  
-        };
-        // vertex positions relative to cell center
-        std::array<Eigen::Vector3f, 8> vertexOffsets = {
-            -Eigen::Vector3f(+0.5, +0.5, +0.5), -Eigen::Vector3f(-0.5, +0.5, +0.5),
-            -Eigen::Vector3f(-0.5, -0.5, +0.5), -Eigen::Vector3f(+0.5, -0.5, +0.5),
-            -Eigen::Vector3f(+0.5, +0.5, -0.5), -Eigen::Vector3f(-0.5, +0.5, -0.5),
-            -Eigen::Vector3f(-0.5, -0.5, -0.5), -Eigen::Vector3f(+0.5, -0.5, -0.5),
-        };
-        for (auto i = 0; i < 8; i++) {
-            auto vertexIndex = it->second->getVertex(i);
-            if (vertexIndex == BoxT::INVALID_INDEX) {
-                // create new query point
-                float sd = std::signbit(signedDistanceTotal) 
-                    ? -m_voxelsize 
-                    : m_voxelsize;
-                auto index_qp = m_queryPoints.size();
-                Eigen::Vector3f pos = cell_centerf + vertexOffsets[i];
-                m_queryPoints.emplace_back(BaseVecT(pos.x(), pos.y(), pos.z()), sd);
-                // add query point to cell
-                it->second->setVertex(i, index_qp);
-            }
-        }
+        if (incomplete) incompleteCells.push_back(it->first);
+    }
+    std::cout << timestamp << "culling " << incompleteCells.size() << " cells..." << std::endl;
+    for (auto it = incompleteCells.cbegin(); it != incompleteCells.cend(); it++) {
+        m_cells.erase(*it);
     }
     std::cout << timestamp << "Grid Construction Complete" << std::endl;
 }
