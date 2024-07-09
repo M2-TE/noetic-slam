@@ -126,29 +126,12 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
                         Eigen::Vector3f leafOffset = Eigen::Vector3f(xl, yl, zl) * m_voxelsize;
                         Eigen::Vector3f pos = vecf + leafOffset;
                         
-                        // float signedDistance = leafCluster.get_sd(iLeaf);
-                        float signedDistance = pos.norm() - 5.0f;
+                        float signedDistance = leafCluster.get_sd(iLeaf);
+                        // float signedDistance = pos.norm() - 5.0f;
                         
                         // create query point
                         size_t qIndex = m_queryPoints.size();
                         m_queryPoints.emplace_back(BaseVecT(pos.x(), pos.y(), pos.z()), signedDistance);
-                        
-                        // // create 1 cell for the query point
-                        // {
-                        //     Eigen::Vector3f cell_centerf = pos + Eigen::Vector3f(.5, .5, .5) * m_voxelsize;
-                        //     BoxT* pBox = new BoxT(BaseVecT(cell_centerf.x(), cell_centerf.y(), cell_centerf.z()));
-                        //     // create morton code of cell
-                        //     float recip = 1.0 / m_voxelsize;
-                        //     Eigen::Vector3i leafPosition = (cell_centerf * recip).cast<int32_t>();
-                        //     uint32_t xCell = (1 << 20) + (uint32_t)leafPosition.x();
-                        //     uint32_t yCell = (1 << 20) + (uint32_t)leafPosition.y();
-                        //     uint32_t zCell = (1 << 20) + (uint32_t)leafPosition.z();
-                        //     uint64_t mc = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
-                        //     // emplace cell into map, check if it already existed
-                        //     auto [iter, _] = m_cells.emplace(mc, pBox);
-                        //     // place query point at the correct cell index
-                        //     iter->second->setVertex(0, qIndex);
-                        // }
                         
                         // create 8 cells around the query point
                         std::array<Eigen::Vector3f, 8> cellOffsets = {
