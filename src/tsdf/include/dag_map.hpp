@@ -424,7 +424,6 @@ namespace DAG {
 			Eigen::Vector3i base_clusterChunk = v.cast<int32_t>();
 			// %4 to get the chunk with 4x4x4 leaf clusters
 			base_clusterChunk = base_clusterChunk.unaryExpr([](int32_t val) { return val - val%4; });
-			// std::cout << inputPos.x() << ' ' << inputPos.y() << ' ' << inputPos.z() << '\n';
 			
 			// fill large 3x3x3 neighbourhood around point with signed distances. Most will default to min/max.
 			for (int32_t z4 = -4; z4 <= +4; z4 += 4) {
@@ -435,7 +434,6 @@ namespace DAG {
 						MortonCode code(main_clusterChunk);
 						code.val = code.val >> 3; // shift to cover the 3 LSB (leaves), which wont be encoded
 						Octree::Node* oct_node = octree.insert(code.val, 19);
-						// if (tid == 0) std::cout << std::bitset<64>(code.val) << '\n';
 						
 						// iterate over 2x2x2 sub chunks within the 4x4x4 main chunk
 						uint8_t lc_index = 0;
@@ -949,8 +947,6 @@ namespace DAG {
 				lvr2::FastReconstruction<VecT, lvr2::BilinearFastBox<VecT>> reconstruction(pGrid);
 				reconstruction.getMesh(mesh);
 			}
-			// lvr2::reconstruct::Options options(0, "");
-			// optimizeMesh(options, mesh);
 			
 			// generate mesh buffer from reconstructed mesh
 			auto faceNormals = lvr2::calcFaceNormals(mesh);

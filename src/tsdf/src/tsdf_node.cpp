@@ -40,7 +40,7 @@ public:
         Eigen::Vector3f position { 0, 0, 0 };
         // Eigen::Vector3f position { 10, 10, 10 };
         // Eigen::Vector3f position { -10, -10, -10 };
-        for (size_t i = 0; i < 1; i++) {
+        for (size_t i = 0; i < 5; i++) {
             for (auto& point: points) {
                 Eigen::Vector3d pointd = {
                     dis(gen),
@@ -48,7 +48,7 @@ public:
                     dis(gen)
                 };
                 pointd.normalize();
-                pointd *= 5.0f;
+                pointd *= 10.0f;
                 point = pointd.cast<float>();
                 point += position;
             }
@@ -83,6 +83,7 @@ public:
         exit(0);
     }
     ~TSDF_Node() {
+        dagMap.print_stats();
         dagMap.save_h5();
     }
 
