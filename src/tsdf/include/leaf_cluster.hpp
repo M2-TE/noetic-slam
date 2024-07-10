@@ -30,7 +30,7 @@ struct LeafCluster {
             uint8_t sdLinear = (uint8_t)(sdScaled + (int32_t)range);
             
             // pack the 4 bits of this value into the leaf cluster
-            cluster |= (ClusterT)sdLinear << i*nBits; 
+            cluster |= (ClusterT)sdLinear << i*nBits;
         }
     }
     std::pair<PartT, PartT> get_parts() {
@@ -39,7 +39,7 @@ struct LeafCluster {
         return { part0, part1 };
     }
     // merge by favoring positive numbers
-    void merge_v0(LeafCluster& other) {
+    void merge_(LeafCluster& other) {
         for (ClusterT i = 0; i < 8; i++) {
             // mask out bits for current leaf
             typedef std::make_signed_t<ClusterT> ClusterInt;
@@ -56,6 +56,7 @@ struct LeafCluster {
             bool bOverwrite = false;
             if (std::signbit(a) > std::signbit(b)) bOverwrite = true;
             else if (std::signbit(a) == std::signbit(b) && std::abs(a) > std::abs(b)) bOverwrite = true;
+            // TODO: only prioritize sign when both values arent at their min/max
             
             if (bOverwrite) {
                 // mask out the relevant bits
@@ -79,8 +80,12 @@ struct LeafCluster {
             int32_t a = maskedA - range;
             int32_t b = maskedB - range;
             
+            bool overwrite = false;
+            if (std::abs(a) == std::abs(b) && b > a) overwrite = true;
+            if (std::abs(a) > std::abs(b)) overwrite = true;
+            
             // overwrite if b has a smaller signed distance
-            if (std::abs(a) > std::abs(b)) {
+            if (overwrite) {
                 // mask out the relevant bits
                 ClusterT submask = leafMask << i*nBits;
                 submask = ~submask; // flip

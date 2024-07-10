@@ -105,6 +105,7 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
                 uint64_t part = path[k] - 1;
                 mortonCode |= part << (60 - k*3);
             }
+            
             // revert shift on insertion
             mortonCode = mortonCode << 3;
             
@@ -126,8 +127,8 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
                         Eigen::Vector3f leafOffset = Eigen::Vector3f(xl, yl, zl) * m_voxelsize;
                         Eigen::Vector3f pos = vecf + leafOffset;
                         
-                        float signedDistance = leafCluster.get_sd(iLeaf);
-                        // float signedDistance = pos.norm() - 5.0f;
+                        float signedDistance = leafCluster.get_sd(iLeaf++);
+                        // float signedDistancePerfect = pos.norm() - 5.0f;
                         
                         // create query point
                         size_t qIndex = m_queryPoints.size();
@@ -143,7 +144,6 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
                         for (size_t i = 0; i < 8; i++) {
                             // create cell
                             Eigen::Vector3f cell_centerf = pos + cellOffsets[i] * m_voxelsize;
-                            BoxT* pBox = new BoxT(BaseVecT(cell_centerf.x(), cell_centerf.y(), cell_centerf.z()));
                             // create morton code of cell
                             float recip = 1.0 / m_voxelsize;
                             // convert position back to chunk index
@@ -156,6 +156,7 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
                             uint32_t zCell = (1 << 20) + (uint32_t)leafPosition.z();
                             uint64_t mc = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
                             // emplace cell into map, check if it already existed
+                            BoxT* pBox = new BoxT(BaseVecT(cell_centerf.x(), cell_centerf.y(), cell_centerf.z()));
                             auto [iter, bEmplaced] = m_cells.emplace(mc, pBox);
                             if (!bEmplaced) delete pBox;
                             // place query point at the correct cell index

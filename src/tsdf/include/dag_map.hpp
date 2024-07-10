@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <atomic>
+#include <bitset>
 #include <execution>
 #include <iomanip>
 #include <iostream>
@@ -418,115 +419,66 @@ namespace DAG {
 		static auto build_trie_whatnot(Octree& octree, Eigen::Vector3f inputPos, Eigen::Vector3f inputNorm, uint32_t tid) {
 			// convert to chunk position
 			Eigen::Vector3f v = inputPos * (1.0 / leafResolution);
-			// properly floor instead of relying on float -> int conversion
+			// properly floor instead of relying on float => int conversion
 			v = v.unaryExpr([](float f){ return std::floor(f); });
 			Eigen::Vector3i base_clusterChunk = v.cast<int32_t>();
-			// %2 to get the parent chunk with 2x2x2 leaf clusters
+			// %4 to get the chunk with 4x4x4 leaf clusters
 			base_clusterChunk = base_clusterChunk.unaryExpr([](int32_t val) { return val - val%4; });
-			// convert back to real-world coordinates
-			Eigen::Vector3f base_clusterPos = base_clusterChunk.cast<float>() * leafResolution;
+			// std::cout << inputPos.x() << ' ' << inputPos.y() << ' ' << inputPos.z() << '\n';
 			
-			// DEBUG
-			if (tid < 999) {
-				// fill large 3x3x3 neighbourhood around point with signed distances. Most will default to min/max.
-				base_clusterChunk = base_clusterChunk.unaryExpr([](int32_t val) { return val - val%4; });
-				for (int32_t z4 = -4; z4 <= +4; z4 += 4) {
-					for (int32_t y4 = -4; y4 <= +4; y4 += 4) {
-						for (int32_t x4 = -4; x4 <= +4; x4 += 4) {
-							// position of current main chunk
-							Eigen::Vector3i main_clusterChunk = base_clusterChunk + Eigen::Vector3i(x4, y4, z4);
-							MortonCode code(main_clusterChunk);
-							code.val = code.val >> 3; // shift to cover the 3 LSB (leaves), which wont be encoded
-							Octree::Node* oct_node = octree.insert(code.val, 19);
-							
-							// iterate over 2x2x2 sub chunks within the 4x4x4 main chunk
-							uint8_t lc_index = 0;
-							for (int32_t z2 = 0; z2 <= 2; z2 += 2) {
-								for (int32_t y2 = 0; y2 <= 2; y2 += 2) {
-									for (int32_t x2 = 0; x2 <= 2; x2 += 2) {
-										Eigen::Vector3i sub_clusterChunk = main_clusterChunk + Eigen::Vector3i(x2, y2, z2);
-										
-										// iterate over 1x1x1 leaves within 2x2x2 leaf cluster
-										std::array<float, 8> leaves;
-										auto pLeaf = leaves.begin();
-										for (int32_t x1 = 0; x1 < 2; x1++) {
-											for (int32_t y1 = 0; y1 < 2; y1++) {
-												for (int32_t z1 = 0; z1 < 2; z1++) {
-													Eigen::Vector3i leafChunk = sub_clusterChunk + Eigen::Vector3i(x1, y1, z1);
-													Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
-													// calculate signed distance from leaf to estimated surface
-													*pLeaf++ = inputNorm.dot(leafPos - inputPos);
-												}
+			// fill large 3x3x3 neighbourhood around point with signed distances. Most will default to min/max.
+			for (int32_t z4 = -4; z4 <= +4; z4 += 4) {
+				for (int32_t y4 = -4; y4 <= +4; y4 += 4) {
+					for (int32_t x4 = -4; x4 <= +4; x4 += 4) {
+						// position of current main chunk
+						Eigen::Vector3i main_clusterChunk = base_clusterChunk + Eigen::Vector3i(x4, y4, z4);
+						MortonCode code(main_clusterChunk);
+						code.val = code.val >> 3; // shift to cover the 3 LSB (leaves), which wont be encoded
+						Octree::Node* oct_node = octree.insert(code.val, 19);
+						// if (tid == 0) std::cout << std::bitset<64>(code.val) << '\n';
+						
+						// iterate over 2x2x2 sub chunks within the 4x4x4 main chunk
+						uint8_t lc_index = 0;
+						for (int32_t z2 = 0; z2 <= 2; z2 += 2) {
+							for (int32_t y2 = 0; y2 <= 2; y2 += 2) {
+								for (int32_t x2 = 0; x2 <= 2; x2 += 2) {
+									Eigen::Vector3i sub_clusterChunk = main_clusterChunk + Eigen::Vector3i(x2, y2, z2);
+									
+									// iterate over 1x1x1 leaves within 2x2x2 leaf cluster
+									std::array<float, 8> leaves;
+									auto pLeaf = leaves.begin();
+									for (int32_t z1 = 0; z1 <= 1; z1++) {
+										for (int32_t y1 = 0; y1 <= 1; y1++) {
+											for (int32_t x1 = 0; x1 <= 1; x1++) {
+												Eigen::Vector3i leafChunk = sub_clusterChunk + Eigen::Vector3i(x1, y1, z1);
+												Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
+												
+												// float signedDistance = leafPos.norm() - 5.0f;
+												float signedDistance = inputNorm.dot(leafPos - inputPos);
+												*pLeaf++ = signedDistance;
 											}
 										}
-										
-										uint64_t& oct_leafCluster = oct_node->leaves[lc_index++];
-										
-										if (oct_leafCluster != 0) {
-											LeafCluster lc(leaves);
-											LeafCluster other(oct_leafCluster);
-											lc.merge(other);
-											oct_leafCluster = lc.cluster;
-										}
-										// simply insert
-										else {
-											LeafCluster lc(leaves);
-											oct_leafCluster = lc.cluster;
-										}
-										//
 									}
+									// create leaf cluster from signed distances
+									LeafCluster lc(leaves);
+									
+									// retrieve leaf cluster from octree
+									uint64_t& oct_leafCluster = oct_node->leaves[lc_index++];
+									if (oct_leafCluster != 0 && oct_leafCluster != lc.cluster) {
+										LeafCluster other(oct_leafCluster);
+										lc.merge(other);
+									}
+									// insert leaf cluster into octree
+									oct_leafCluster = lc.cluster;
 								}
 							}
-							//
 						}
+						// if (tid == 0) exit(0);
+						//
 					}
 				}
 			}
-			
-			// // calculate signed distances for neighbours of current leaf cluster as well
-			// base_clusterChunk = base_clusterChunk.unaryExpr([](int32_t val) { return val - val%2; });
-			// for (int32_t z = -1; z <= +1; z++) {
-			// 	for (int32_t y = -1; y <= +1; y++) {
-			// 		for (int32_t x = -1; x <= +1; x++) {
-			// 			// this is be a leaf cluster containing 8 individual leaves
-			// 			Eigen::Vector3i clusterChunk = base_clusterChunk + Eigen::Vector3i(x, y, z) * 2;
-			// 			Eigen::Vector3f clusterPos = base_clusterPos + Eigen::Vector3f(x, y, z) * 2 * leafResolution;
-			// 			// Eigen::Vector3f clusterOffset = clusterPos.cast<float>() * leafResolution;
-
-			// 			// offsets of leaves within
-			// 			std::array<float, 8> leaves;
-			// 			auto pLeaf = leaves.begin();
-			// 			for (auto zl = 0; zl < 2; zl++) {
-			// 				for (auto yl = 0; yl < 2; yl++) {
-			// 					for (auto xl = 0; xl < 2; xl++) {
-			// 						// leaf position
-			// 						Eigen::Vector3f leafOffset = Eigen::Vector3f(xl, yl, zl) * leafResolution;
-			// 						Eigen::Vector3f pos = clusterPos + leafOffset;
-			// 						*pLeaf++ = inputNorm.dot(pos - inputPos);
-			// 					}
-			// 				}
-			// 			}
-						
-			// 			// compare to other existing leaves
-			// 			MortonCode code(clusterChunk);
-			// 			// since we do not explicitly encode leaf positions into morton code, 3 LSB wont be set
-			// 			code.val = code.val >> 3; // EXPERIMENTAL
-			// 			auto& cluster = octree.find(code.val);
-						
-			// 			if (cluster != 0) {
-			// 				LeafCluster lc(leaves);
-			// 				LeafCluster other(cluster);
-			// 				lc.merge(other);
-			// 				cluster = lc.cluster;
-			// 			}
-			// 			// simply insert
-			// 			else {
-			// 				LeafCluster lc(leaves);
-			// 				cluster = lc.cluster;
-			// 			}
-			// 		}
-			// 	}
-			// }
+			// if (tid == 0) exit(0);
 		}
 		auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) {
 			auto beg = std::chrono::steady_clock::now();
@@ -937,19 +889,6 @@ namespace DAG {
 		}
 		void insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
 			auto beg = std::chrono::steady_clock::now();
-			
-			// update bounding box
-			for (auto cur = points.cbegin(); cur != points.cend(); cur++) {
-				float x = cur->x();
-				float y = cur->y();
-				float z = cur->z();
-				if (x < lowerLeft.x) lowerLeft.x = x;
-				if (y < lowerLeft.y) lowerLeft.y = y;
-				if (z < lowerLeft.z) lowerLeft.z = z;
-				if (x > upperRight.x) upperRight.x = x;
-				if (y > upperRight.y) upperRight.y = y;
-				if (z > upperRight.z) upperRight.z = z;
-			}
 			Pose pose = { position, rotation };
 			// TODO: transform points here, if not already transformed
 			auto mortonCodes = calc_morton(points);
