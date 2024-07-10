@@ -27,7 +27,7 @@
 class TSDF_Node {
 public:
     TSDF_Node(ros::NodeHandle nh) {
-        subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
+        subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/keyframe", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
         // subPcl = nh.subscribe("/camera/depth_registered/points", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
 
         // generate random point data
@@ -40,7 +40,7 @@ public:
         Eigen::Vector3f position { 0, 0, 0 };
         // Eigen::Vector3f position { 10, 10, 10 };
         // Eigen::Vector3f position { -10, -10, -10 };
-        for (size_t i = 0; i < 5; i++) {
+        for (size_t i = 0; i < 1; i++) {
             for (auto& point: points) {
                 Eigen::Vector3d pointd = {
                     dis(gen),
@@ -48,7 +48,7 @@ public:
                     dis(gen)
                 };
                 pointd.normalize();
-                pointd *= 10.0f;
+                pointd *= 5.0f;
                 point = pointd.cast<float>();
                 point += position;
             }

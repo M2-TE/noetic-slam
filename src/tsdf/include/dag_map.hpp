@@ -380,8 +380,7 @@ namespace DAG {
 						else normal = (point - pose.pos).normalized();
 						
 						// flip normal if needed
-						Eigen::Vector3f posToPoint = point - pose.pos;
-						float dot = normal.dot(posToPoint);
+						float dot = normal.dot(point - pose.pos);
 						if (dot < 0.0f) normal *= -1.0f;
 						
 						// figure out index of point
@@ -905,7 +904,6 @@ namespace DAG {
 				for (auto& pair: measurements) {
 					std::cout << pair.second << " " << (double)pair.first << " ms\n";
 				}
-				std::cout << std::setprecision(6);
 				std::cout << "\n";
 			}
 			measurements.clear();

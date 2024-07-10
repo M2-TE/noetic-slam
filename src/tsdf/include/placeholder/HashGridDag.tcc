@@ -180,7 +180,9 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
     }
     std::cout << timestamp << "culling " << incompleteCells.size() << " cells..." << std::endl;
     for (auto it = incompleteCells.cbegin(); it != incompleteCells.cend(); it++) {
-        m_cells.erase(*it);
+        auto cell = m_cells.find(*it);
+        delete cell->second;
+        m_cells.erase(cell);
     }
     std::cout << timestamp << "Grid Construction Complete" << std::endl;
 }

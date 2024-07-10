@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <sstream>
@@ -23,8 +24,12 @@ struct LeafCluster {
             float sdNormalized = leaves[i] * (1.0 / maxDist);
             sdNormalized = std::clamp(sdNormalized, -1.0f, 1.0f);
             
+            // convert from linear to quadratic
+            float sdQuad = std::sqrt(sdNormalized);
+            if (sdNormalized < 0) sdQuad *= -1.0f;
+            
             // scale up to fit into nBit integers
-            int32_t sdScaled = (int32_t)(sdNormalized * range);
+            int32_t sdScaled = (int32_t)(sdQuad * range);
             
             // add offset such that values are represented linearly from 0 to max
             uint8_t sdLinear = (uint8_t)(sdScaled + (int32_t)range);
@@ -104,7 +109,11 @@ struct LeafCluster {
         // convert to floating signed distance
         float signedDistance = (float)leaf;
         signedDistance /= (float)range; // normalize signed distance
-        signedDistance *= maxDist; // scale signed distance to real size
+        
+        // convert from quadratic to linear
+        float sdLinear = signedDistance * signedDistance;
+        
+        sdLinear *= maxDist; // scale signed distance to real size
         return signedDistance;
     }
     bool operator==(const LeafCluster& other) const {
