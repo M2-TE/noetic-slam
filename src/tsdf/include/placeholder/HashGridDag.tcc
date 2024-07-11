@@ -128,7 +128,9 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
                         Eigen::Vector3f pos = vecf + leafOffset;
                         
                         float signedDistance = leafCluster.get_sd(iLeaf++);
-                        // float signedDistancePerfect = pos.norm() - 5.0f;
+                        // float signedDistancePerfect = (pos.norm() - 5.0f) * m_voxelsize;
+                        // signedDistance = signedDistancePerfect;
+                        // std::cout << signedDistance << '\t' << signedDistancePerfect << '\n';
                         
                         // create query point
                         size_t qIndex = m_queryPoints.size();
@@ -136,10 +138,14 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
                         
                         // create 8 cells around the query point
                         std::array<Eigen::Vector3f, 8> cellOffsets = {
-                            Eigen::Vector3f(+0.5, +0.5, +0.5), Eigen::Vector3f(-0.5, +0.5, +0.5),
-                            Eigen::Vector3f(-0.5, -0.5, +0.5), Eigen::Vector3f(+0.5, -0.5, +0.5),
-                            Eigen::Vector3f(+0.5, +0.5, -0.5), Eigen::Vector3f(-0.5, +0.5, -0.5),
-                            Eigen::Vector3f(-0.5, -0.5, -0.5), Eigen::Vector3f(+0.5, -0.5, -0.5),
+                            Eigen::Vector3f(+0.5, +0.5, +0.5), 
+                            Eigen::Vector3f(-0.5, +0.5, +0.5),
+                            Eigen::Vector3f(-0.5, -0.5, +0.5), 
+                            Eigen::Vector3f(+0.5, -0.5, +0.5),
+                            Eigen::Vector3f(+0.5, +0.5, -0.5), 
+                            Eigen::Vector3f(-0.5, +0.5, -0.5),
+                            Eigen::Vector3f(-0.5, -0.5, -0.5), 
+                            Eigen::Vector3f(+0.5, -0.5, -0.5),
                         };
                         for (size_t i = 0; i < 8; i++) {
                             // create cell

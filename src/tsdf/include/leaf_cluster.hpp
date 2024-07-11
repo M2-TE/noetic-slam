@@ -21,15 +21,16 @@ struct LeafCluster {
     LeafCluster(std::array<float, 8>& leaves): cluster(0) {
         for (ClusterT i = 0; i < 8; i++) {
             // normalize sd to [-1, 1]
-            float sdNormalized = leaves[i] * (1.0 / maxDist);
+            float sdNormalized = leaves[i] * (1.0 / leafResolution);
             sdNormalized = std::clamp(sdNormalized, -1.0f, 1.0f);
             
-            // convert from linear to quadratic
-            float sdQuad = std::sqrt(sdNormalized);
-            if (sdNormalized < 0) sdQuad *= -1.0f;
+            // // convert from linear to quadratic
+            // float sdQuad = std::sqrt(sdNormalized);
+            // if (sdNormalized < 0) sdQuad *= -1.0f;
+            // sdNormalized = sdQuad;
             
             // scale up to fit into nBit integers
-            int32_t sdScaled = (int32_t)(sdQuad * range);
+            int32_t sdScaled = (int32_t)(sdNormalized * range);
             
             // add offset such that values are represented linearly from 0 to max
             uint8_t sdLinear = (uint8_t)(sdScaled + (int32_t)range);
@@ -110,10 +111,11 @@ struct LeafCluster {
         float signedDistance = (float)leaf;
         signedDistance /= (float)range; // normalize signed distance
         
-        // convert from quadratic to linear
-        float sdLinear = signedDistance * signedDistance;
+        // // convert from quadratic to linear
+        // float sdLinear = signedDistance * signedDistance;
+        // signedDistance = sdLinear;
         
-        sdLinear *= maxDist; // scale signed distance to real size
+        signedDistance *= leafResolution; // scale signed distance to real size
         return signedDistance;
     }
     bool operator==(const LeafCluster& other) const {
@@ -121,13 +123,8 @@ struct LeafCluster {
     }
     
     ClusterT cluster;
-    static constexpr float maxDist = leafResolution;
     static constexpr ClusterT nBits = 8; // 1b sign, rest data
     static constexpr ClusterT leafMask = (1 << nBits) - 1; // mask for a single leaf
     static constexpr ClusterT range = leafMask / 2; // achievable range with data bits
-    // cluster value when all leaves have the maximum positive signed distance
-    static constexpr ClusterT max = 0b1111111011111110111111101111111011111110111111101111111011111110;
-    // cluster value when all leaves have the maximum negative signed distance
-    static constexpr ClusterT min = 0b0000000000000000000000000000000000000000000000000000000000000000;
 };  
 };

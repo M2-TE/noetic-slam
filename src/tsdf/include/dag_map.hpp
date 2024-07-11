@@ -291,7 +291,7 @@ namespace DAG {
 			// rough approximation of points per neighbourhood
 			size_t nPts = mortonCodes.size() / neighMap.size();
 			// decrease neigh level if too many points per neighbourhood are present
-			while (nPts > 20) {
+			while (nPts > 50) {
 				neighLevel--;
 				neighMap = calc_neigh_map(neighLevel);
 				// rough approximation of points per neighbourhood
@@ -324,9 +324,9 @@ namespace DAG {
 					
 					// gather adjacent neighbourhoods
 					std::vector<Neighbourhood*> adjNeighs;
-					for (int32_t x = -1; x <= +1; x++) {
+					for (int32_t z = -1; z <= +1; z++) {
 						for (int32_t y = -1; y <= +1; y++) {
-							for (int32_t z = -1; z <= +1; z++) {
+							for (int32_t x = -1; x <= +1; x++) {
 								Eigen::Vector3i offset { x, y, z };
 								offset *= 1 << neighLevel;
 								MortonCode mc_near(pos_neigh + offset);
@@ -386,6 +386,7 @@ namespace DAG {
 						// figure out index of point
 						size_t index = it_point - mortonCodes.cbegin();
 						normals[index] = normal;
+						// normals[index] = point.normalized();
 					}
 				}
 			};
@@ -420,9 +421,10 @@ namespace DAG {
 			Eigen::Vector3f v = inputPos * (1.0 / leafResolution);
 			// properly floor instead of relying on float => int conversion
 			v = v.unaryExpr([](float f){ return std::floor(f); });
-			Eigen::Vector3i base_clusterChunk = v.cast<int32_t>();
+			Eigen::Vector3i center_clusterChunk = v.cast<int32_t>();
 			// %4 to get the chunk with 4x4x4 leaf clusters
-			base_clusterChunk = base_clusterChunk.unaryExpr([](int32_t val) { return val - val%4; });
+			Eigen::Vector3i base_clusterChunk = center_clusterChunk.unaryExpr([](int32_t val) { return val - val%4; });
+			center_clusterChunk = center_clusterChunk.unaryExpr([](int32_t val) { return val - val%2; });
 			
 			// fill large 3x3x3 neighbourhood around point with signed distances. Most will default to min/max.
 			for (int32_t z4 = -4; z4 <= +4; z4 += 4) {
@@ -433,6 +435,9 @@ namespace DAG {
 						MortonCode code(main_clusterChunk);
 						code.val = code.val >> 3; // shift to cover the 3 LSB (leaves), which wont be encoded
 						Octree::Node* oct_node = octree.insert(code.val, 19);
+						// only proplerly calc signed distances for center chunks
+						bool main_offcenter = true;
+						if (x4 == 0 && y4 == 0 && z4 == 0) main_offcenter = false;
 						
 						// iterate over 2x2x2 sub chunks within the 4x4x4 main chunk
 						uint8_t lc_index = 0;
@@ -440,6 +445,9 @@ namespace DAG {
 							for (int32_t y2 = 0; y2 <= 2; y2 += 2) {
 								for (int32_t x2 = 0; x2 <= 2; x2 += 2) {
 									Eigen::Vector3i sub_clusterChunk = main_clusterChunk + Eigen::Vector3i(x2, y2, z2);
+									
+									bool sub_offcenter = true;
+									if (center_clusterChunk == sub_clusterChunk) sub_offcenter = false;
 									
 									// iterate over 1x1x1 leaves within 2x2x2 leaf cluster
 									std::array<float, 8> leaves;
@@ -450,8 +458,18 @@ namespace DAG {
 												Eigen::Vector3i leafChunk = sub_clusterChunk + Eigen::Vector3i(x1, y1, z1);
 												Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
 												
-												// float signedDistance = leafPos.norm() - 5.0f;
 												float signedDistance = inputNorm.dot(leafPos - inputPos);
+												
+												// for surrounding chunks, only set min/max
+												if (main_offcenter || sub_offcenter) {
+													if (signedDistance > 0) signedDistance = +leafResolution;
+													else 					signedDistance = -leafResolution;
+												}
+												// DEBUG
+												// float signedDistancePerfect = leafPos.norm() - 5.0f;
+												// signedDistance = signedDistancePerfect; // DEBUG
+												// if (tid == 0) std::cout << signedDistance << ' ' << signedDistancePerfect << '\n';
+												
 												*pLeaf++ = signedDistance;
 											}
 										}

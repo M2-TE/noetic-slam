@@ -1,4 +1,5 @@
 #include <chrono>
+#include <fstream>
 #include <random>
 #include <iostream>
 
@@ -28,59 +29,67 @@ class TSDF_Node {
 public:
     TSDF_Node(ros::NodeHandle nh) {
         subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/keyframe", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
-        // subPcl = nh.subscribe("/camera/depth_registered/points", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
-
-        // generate random point data
-        std::vector<Eigen::Vector3f> points(100'000);
-        std::random_device rd;
-        std::mt19937 gen(420);
-        std::uniform_real_distribution<double> dis(-1.0f, 1.0f);
-
-        // insert into tsdf DAG
-        Eigen::Vector3f position { 0, 0, 0 };
-        // Eigen::Vector3f position { 10, 10, 10 };
-        // Eigen::Vector3f position { -10, -10, -10 };
-        for (size_t i = 0; i < 1; i++) {
-            for (auto& point: points) {
-                Eigen::Vector3d pointd = {
-                    dis(gen),
-                    dis(gen),
-                    dis(gen)
-                };
-                pointd.normalize();
-                pointd *= 5.0f;
-                point = pointd.cast<float>();
-                point += position;
-            }
-            dagMap.insert_scan(position, Eigen::Quaternionf::Identity(), points);
-        }
-
-        // // benchmarking VDBFusion
-        // std::vector<Eigen::Vector3d> pointsD(100'000);
-        // std::uniform_real_distribution<double> disD(-10.0f, 10.0f);
-        // openvdb::initialize();
-        // vdbfusion::VDBVolume tsdf_volume(0.02, 0.06, true);
-        // Eigen::Vector3d origin(0.0, 0.0, 0.0);
-        // for (size_t i = 0; i < 10; i++) {
-        //     for (auto& point: pointsD) {
-        //         point = {
-        //             disD(gen),
-        //             disD(gen),
-        //             disD(gen)
-        //         };
-        //         // point.normalize();
-        //         // point *= 10.0f;
-        //     }
-        //     auto beg = std::chrono::steady_clock::now();
-        //     tsdf_volume.Integrate(pointsD, origin, [](float){return 1.0;});
-        //     auto end = std::chrono::steady_clock::now();
-        //     auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-        //     std::cout << "VDBFusion: " << dur << " ms" << std::endl;
-        // }
+        // subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
         
-        dagMap.print_stats();
-        dagMap.save_h5();
-        exit(0);
+        if (false) {
+            // generate random point data
+            std::vector<Eigen::Vector3f> points(100'000);
+            std::random_device rd;
+            std::mt19937 gen(420);
+            std::uniform_real_distribution<double> dis(-1.0f, 1.0f);
+
+            // insert into tsdf DAG
+            Eigen::Vector3f position { 0, 0, 0 };
+            // Eigen::Vector3f position { 10, 10, 10 };
+            // Eigen::Vector3f position { -10, -10, -10 };
+            for (size_t i = 0; i < 1; i++) {
+                for (auto& point: points) {
+                    Eigen::Vector3d pointd = {
+                        dis(gen),
+                        dis(gen),
+                        dis(gen)
+                    };
+                    pointd.normalize();
+                    pointd *= 5.0f;
+                    point = pointd.cast<float>();
+                    point += position;
+                }
+                dagMap.insert_scan(position, Eigen::Quaternionf::Identity(), points);
+            }
+            // std::ofstream output;
+            // output.open("sphere.ascii");
+            // for (auto& point: points) {
+            //     output << point.x() << ' ' << point.y() << ' ' << point.z() << '\n';
+            // }
+            // output.close();
+
+            // // benchmarking VDBFusion
+            // std::vector<Eigen::Vector3d> pointsD(100'000);
+            // std::uniform_real_distribution<double> disD(-10.0f, 10.0f);
+            // openvdb::initialize();
+            // vdbfusion::VDBVolume tsdf_volume(0.02, 0.06, true);
+            // Eigen::Vector3d origin(0.0, 0.0, 0.0);
+            // for (size_t i = 0; i < 10; i++) {
+            //     for (auto& point: pointsD) {
+            //         point = {
+            //             disD(gen),
+            //             disD(gen),
+            //             disD(gen)
+            //         };
+            //         // point.normalize();
+            //         // point *= 10.0f;
+            //     }
+            //     auto beg = std::chrono::steady_clock::now();
+            //     tsdf_volume.Integrate(pointsD, origin, [](float){return 1.0;});
+            //     auto end = std::chrono::steady_clock::now();
+            //     auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+            //     std::cout << "VDBFusion: " << dur << " ms" << std::endl;
+            // }
+            
+            dagMap.print_stats();
+            dagMap.save_h5();
+            exit(0);
+        }
     }
     ~TSDF_Node() {
         dagMap.print_stats();
