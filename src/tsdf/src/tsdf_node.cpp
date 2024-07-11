@@ -31,7 +31,7 @@ public:
         subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/keyframe", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
         // subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
         
-        if (false) {
+        if (true) {
             // generate random point data
             std::vector<Eigen::Vector3f> points(100'000);
             std::random_device rd;
@@ -50,7 +50,7 @@ public:
                         dis(gen)
                     };
                     pointd.normalize();
-                    pointd *= 5.0f;
+                    pointd *= 5.0;
                     point = pointd.cast<float>();
                     point += position;
                 }

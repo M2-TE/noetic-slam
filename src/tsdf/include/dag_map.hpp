@@ -438,6 +438,7 @@ namespace DAG {
 						// only proplerly calc signed distances for center chunks
 						bool main_offcenter = true;
 						if (x4 == 0 && y4 == 0 && z4 == 0) main_offcenter = false;
+						// else continue; // DEBUG
 						
 						// iterate over 2x2x2 sub chunks within the 4x4x4 main chunk
 						uint8_t lc_index = 0;
@@ -451,10 +452,10 @@ namespace DAG {
 									
 									// iterate over 1x1x1 leaves within 2x2x2 leaf cluster
 									std::array<float, 8> leaves;
-									auto pLeaf = leaves.begin();
+									uint8_t iLeaf = 0;
 									for (int32_t z1 = 0; z1 <= 1; z1++) {
 										for (int32_t y1 = 0; y1 <= 1; y1++) {
-											for (int32_t x1 = 0; x1 <= 1; x1++) {
+											for (int32_t x1 = 0; x1 <= 1; x1++, iLeaf++) {
 												Eigen::Vector3i leafChunk = sub_clusterChunk + Eigen::Vector3i(x1, y1, z1);
 												Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
 												
@@ -469,8 +470,7 @@ namespace DAG {
 												// float signedDistancePerfect = leafPos.norm() - 5.0f;
 												// signedDistance = signedDistancePerfect; // DEBUG
 												// if (tid == 0) std::cout << signedDistance << ' ' << signedDistancePerfect << '\n';
-												
-												*pLeaf++ = signedDistance;
+												leaves[iLeaf] = signedDistance;
 											}
 										}
 									}
