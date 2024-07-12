@@ -275,9 +275,6 @@ struct Octree {
                 if (pChild_b == nullptr) continue;
                 // if child nodes are leaves, call resolver
                 if (depth >= pathLength - 2) {
-                    Node* leafPoints_a = nodes_a[depth]->children[iChild];
-                    Node* leafPoints_b = nodes_b[depth]->children[iChild];
-                    
                     // reconstruct morton code from path
                     uint64_t mortonCode = key;
                     for (uint64_t k = 0; k < pathLength - 1; k++) {
@@ -295,6 +292,10 @@ struct Octree {
                     // convert from 21-bit inverted to 32-bit integer
                     cluster_chunk = cluster_chunk.unaryExpr([](auto i){ return i - (1 << 20); });
                     
+                    // get nodes containing the scanpoint pointers
+                    Node* leafPoints_a = nodes_a[depth]->children[iChild];
+                    Node* leafPoints_b = nodes_b[depth]->children[iChild];
+                    
                     // iterate over leaves within clusters
                     uint8_t iLeaf = 0;
                     for (int32_t z = 0; z <= 1; z++) {
@@ -306,21 +307,12 @@ struct Octree {
                                 // assign the closest point to leaf
                                 const Eigen::Vector3f*& closestPoint_a = leafPoints_a->leafPoints[iLeaf];
                                 const Eigen::Vector3f*& closestPoint_b = leafPoints_b->leafPoints[iLeaf];
-                                // std::ostringstream oss;
-                                // oss << *closestPoint_a << '\n'<<'\n';
-                                // oss << *closestPoint_b << '\n'<<'\n';
-                                // oss << '\n';
-                                // std::cout << oss.str();
-                                // if (closestPoint == nullptr) closestPoint = inputPos;
-                                // else {
-                                //     float distSqr = (*inputPos - leafPos).squaredNorm();
-                                //     float distSqrOther = (*closestPoint - leafPos).squaredNorm();
-                                //     if (distSqr < distSqrOther) closestPoint = inputPos;
-                                // }
+                                float distSqr_a = (*closestPoint_a - leafPos).squaredNorm();
+                                float distSqr_b = (*closestPoint_b - leafPos).squaredNorm();
+                                if (distSqr_b < distSqr_a) closestPoint_a = closestPoint_b;
                             }
                         }
                     }
-                    // TODO: handle collision between two clusters of leaf points
                 }
                 else {
                     // walk down path
