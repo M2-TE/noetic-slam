@@ -741,16 +741,25 @@ namespace DAG {
                     for (int32_t z = 0; z <= 1; z++) {
                         for (int32_t y = 0; y <= 1; y++) {
                             for (int32_t x = 0; x <= 1; x++, iLeaf++) {
+								// actual leaf position
                                 Eigen::Vector3i leafChunk = cluster_chunk + Eigen::Vector3i(x, y, z);
                                 Eigen::Vector3f leafPos = leafChunk.cast<float>() * DAG::leafResolution;
 								
-								const Eigen::Vector3f* nearestPoint = clusterPoints->leafPoints[iLeaf];
-								// calculate point index from distance to array start
-								size_t index = nearestPoint - points.data();
-								// use it to retrieve point normal
-								Eigen::Vector3f& normal = normals[index];
 								
-								float signedDistance = normal.dot(leafPos - *nearestPoint);
+								// calculate point index via distance from pointer to array start
+								const Eigen::Vector3f* nearestPoint = clusterPoints->leafPoints[iLeaf];
+								size_t index = nearestPoint - points.data();
+								
+								// check if point is too far away from leaf
+								Eigen::Vector3f diff = leafPos - *nearestPoint;
+								// float distSqr = diff.squaredNorm();
+								// if (distSqr > leafResolution*leafResolution) {
+								// 	// dismiss actual signed distance if point is too far away
+								// 	leaves[iLeaf] = leafResolution;
+								// 	continue;
+								// }
+								// calculate signed distance for current leaf
+								float signedDistance = normals[index].dot(diff);
 								leaves[iLeaf] = signedDistance;
                             }
                         }
