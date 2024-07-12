@@ -416,7 +416,7 @@ namespace DAG {
 			measurements.emplace_back(dur, "norm calc");
 			return normals;
 		}
-		static auto build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, Eigen::Vector3f inputNorm, uint32_t tid) {
+		static auto build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, Eigen::Vector3f inputNorm/*deprecated*/, uint32_t tid) {
 			// convert to chunk position
 			Eigen::Vector3f v = *inputPos * (1.0 / leafResolution);
 			// properly floor instead of relying on float => int conversion
@@ -645,7 +645,7 @@ namespace DAG {
 			measurements.emplace_back(dur, "trie merg");
 			return std::move(octrees[0]);
 		}
-		auto insert_octree(Octree& octree) {
+		auto insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) {
 			auto beg = std::chrono::steady_clock::now();
 			uint32_t rootAddr = nodeLevels[0].data.size();
 			
@@ -720,7 +720,42 @@ namespace DAG {
 				}
 				// node contains leaf cluster
 				else {
-					LeafCluster lc(octNodes[depth]->leaves[iChild]);
+					// reconstruct morton code from path
+					uint64_t mortonCode = 0;
+					for (uint64_t k = 0; k < 63/3; k++) {
+						uint64_t part = path[k] - 1;
+						mortonCode |= part << (60 - k*3);
+					}
+					// revert shift on insertion
+					mortonCode = mortonCode << 3;
+                    // convert to actual cluster chunk position
+                    Eigen::Vector3i cluster_chunk;
+                    std::tie(cluster_chunk.x(), cluster_chunk.y(), cluster_chunk.z()) = mortonnd::MortonNDBmi_3D_64::Decode(mortonCode);
+                    // convert from 21-bit inverted to 32-bit integer
+                    cluster_chunk = cluster_chunk.unaryExpr([](auto i){ return i - (1 << 20); });
+					
+					// iterate over leaves within clusters to calc signed distances
+					Octree::Node* clusterPoints = octNodes[depth]->children[iChild];
+					std::array<float, 8> leaves;
+                    uint8_t iLeaf = 0;
+                    for (int32_t z = 0; z <= 1; z++) {
+                        for (int32_t y = 0; y <= 1; y++) {
+                            for (int32_t x = 0; x <= 1; x++, iLeaf++) {
+                                Eigen::Vector3i leafChunk = cluster_chunk + Eigen::Vector3i(x, y, z);
+                                Eigen::Vector3f leafPos = leafChunk.cast<float>() * DAG::leafResolution;
+								
+								const Eigen::Vector3f* nearestPoint = clusterPoints->leafPoints[iLeaf];
+								// calculate point index from distance to array start
+								size_t index = nearestPoint - points.data();
+								// use it to retrieve point normal
+								Eigen::Vector3f& normal = normals[index];
+								
+								float signedDistance = normal.dot(leafPos - *nearestPoint);
+								leaves[iLeaf] = signedDistance;
+                            }
+                        }
+                    }
+					LeafCluster lc(leaves);
 					
 					// check if this leaf cluster already exists
 					auto temporaryIndex = leafLevel.data.size();
@@ -924,7 +959,7 @@ namespace DAG {
 			sort_points(points, mortonCodes);
 			auto normals = calc_normals(pose, mortonCodes);
 			auto octree = get_trie(points, normals);
-			auto dagAddr = insert_octree(octree);
+			auto dagAddr = insert_octree(octree, points, normals);
 			merge_dag(dagAddr);
 
 			auto end = std::chrono::steady_clock::now();

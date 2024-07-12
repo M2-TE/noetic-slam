@@ -285,7 +285,6 @@ struct Octree {
                     // revert shift on insertion
                     mortonCode = mortonCode << 3;
                     
-                    
                     // convert to actual cluster chunk position
                     Eigen::Vector3i cluster_chunk;
                     std::tie(cluster_chunk.x(), cluster_chunk.y(), cluster_chunk.z()) = mortonnd::MortonNDBmi_3D_64::Decode(mortonCode);
@@ -309,6 +308,7 @@ struct Octree {
                                 const Eigen::Vector3f*& closestPoint_b = leafPoints_b->leafPoints[iLeaf];
                                 float distSqr_a = (*closestPoint_a - leafPos).squaredNorm();
                                 float distSqr_b = (*closestPoint_b - leafPos).squaredNorm();
+                                // overwrite a if b is closer
                                 if (distSqr_b < distSqr_a) closestPoint_a = closestPoint_b;
                             }
                         }
