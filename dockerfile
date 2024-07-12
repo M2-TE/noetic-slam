@@ -67,6 +67,8 @@ ENV ROS_DISTRO=noetic
 
 # Environment
 ENV LIDAR_ADDR=192.168.168.128
+# ENV PCL_TOPIC=/robot/lidar
+# ENV IMU_TOPIC=/robot/imu
 ENV PCL_TOPIC=/ouster/points
 ENV IMU_TOPIC=/ouster/imu
 ENV RVIZ_OUSTER=false
