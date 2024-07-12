@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <bitset>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -7,14 +8,18 @@
 #include <sstream>
 #include <vector>
 //
+#include <Eigen/Eigen>
 #include <parallel_hashmap/phmap.h>
+//
+#include "dag_constants.hpp"
 
 struct Octree {
     typedef uint64_t Key; // only 63 bits in use
     typedef uint64_t Leaf;
     union Node {
+        std::array<const Eigen::Vector3f*, 8> leafPoints;
         std::array<Node*, 8> children;
-        std::array<Leaf, 8> leaves;
+        std::array<Leaf, 8> leaves; // dont really need this anymore tbh
     };
     struct MemoryBlock {
         MemoryBlock(size_t capacity): _capacity(capacity), _size(0) {
@@ -238,7 +243,7 @@ struct Octree {
         return { collisions, depth };
     }
     // merge via previously found collisions
-    void merge(Octree& other, Key key, uint32_t startDepth, void(*resolver)(Leaf&, Leaf&)) {
+    void merge(Octree& other, Key key, uint32_t startDepth) {
         uint32_t pathLength = 63/3 - startDepth;
         std::vector<uint8_t> path(pathLength);
         std::vector<Node*> nodes_a(pathLength);
@@ -270,10 +275,52 @@ struct Octree {
                 if (pChild_b == nullptr) continue;
                 // if child nodes are leaves, call resolver
                 if (depth >= pathLength - 2) {
-                    resolver(
-                        nodes_a[depth]->leaves[iChild], 
-                        nodes_b[depth]->leaves[iChild]
-                    );
+                    Node* leafPoints_a = nodes_a[depth]->children[iChild];
+                    Node* leafPoints_b = nodes_b[depth]->children[iChild];
+                    
+                    // reconstruct morton code from path
+                    uint64_t mortonCode = key;
+                    for (uint64_t k = 0; k < pathLength - 1; k++) {
+                        uint64_t part = path[k] - 1;
+                        uint64_t shiftDist = pathLength*3 - 6 - k*3;
+                        mortonCode |= part << shiftDist;
+                    }
+                    // revert shift on insertion
+                    mortonCode = mortonCode << 3;
+                    
+                    
+                    // convert to actual cluster chunk position
+                    Eigen::Vector3i cluster_chunk;
+                    std::tie(cluster_chunk.x(), cluster_chunk.y(), cluster_chunk.z()) = mortonnd::MortonNDBmi_3D_64::Decode(mortonCode);
+                    // convert from 21-bit inverted to 32-bit integer
+                    cluster_chunk = cluster_chunk.unaryExpr([](auto i){ return i - (1 << 20); });
+                    
+                    // iterate over leaves within clusters
+                    uint8_t iLeaf = 0;
+                    for (int32_t z = 0; z <= 1; z++) {
+                        for (int32_t y = 0; y <= 1; y++) {
+                            for (int32_t x = 0; x <= 1; x++, iLeaf++) {
+                                Eigen::Vector3i leafChunk = cluster_chunk + Eigen::Vector3i(x, y, z);
+                                Eigen::Vector3f leafPos = leafChunk.cast<float>() * DAG::leafResolution;
+                                
+                                // assign the closest point to leaf
+                                const Eigen::Vector3f*& closestPoint_a = leafPoints_a->leafPoints[iLeaf];
+                                const Eigen::Vector3f*& closestPoint_b = leafPoints_b->leafPoints[iLeaf];
+                                // std::ostringstream oss;
+                                // oss << *closestPoint_a << '\n'<<'\n';
+                                // oss << *closestPoint_b << '\n'<<'\n';
+                                // oss << '\n';
+                                // std::cout << oss.str();
+                                // if (closestPoint == nullptr) closestPoint = inputPos;
+                                // else {
+                                //     float distSqr = (*inputPos - leafPos).squaredNorm();
+                                //     float distSqrOther = (*closestPoint - leafPos).squaredNorm();
+                                //     if (distSqr < distSqrOther) closestPoint = inputPos;
+                                // }
+                            }
+                        }
+                    }
+                    // TODO: handle collision between two clusters of leaf points
                 }
                 else {
                     // walk down path
@@ -288,6 +335,15 @@ struct Octree {
                 nodes_a[depth]->children[iChild] = pChild_b;
             }
         }
+    }
+    // allocate some space and return a node for misc use
+    Node* allocate_misc_node() {
+        // check if memory block has enough space left
+        if (_memory_blocks.back().check_remaining() < 63/3) {
+            _memory_blocks.emplace_back(1<<16);
+        }
+        auto& memblock = _memory_blocks.back();
+        return memblock.get_new();
     }
     
 private:

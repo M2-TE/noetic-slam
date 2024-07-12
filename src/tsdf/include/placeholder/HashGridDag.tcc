@@ -102,6 +102,7 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
             // reconstruct morton code from path
             uint64_t mortonCode = 0;
             for (uint64_t k = 0; k < 63/3; k++) {
+                // TODO: verify that path[k] is never 0 before subtracting from it!
                 uint64_t part = path[k] - 1;
                 mortonCode |= part << (60 - k*3);
             }

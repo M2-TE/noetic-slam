@@ -416,9 +416,9 @@ namespace DAG {
 			measurements.emplace_back(dur, "norm calc");
 			return normals;
 		}
-		static auto build_trie_whatnot(Octree& octree, Eigen::Vector3f inputPos, Eigen::Vector3f inputNorm, uint32_t tid) {
+		static auto build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, Eigen::Vector3f inputNorm, uint32_t tid) {
 			// convert to chunk position
-			Eigen::Vector3f v = inputPos * (1.0 / leafResolution);
+			Eigen::Vector3f v = *inputPos * (1.0 / leafResolution);
 			// properly floor instead of relying on float => int conversion
 			v = v.unaryExpr([](float f){ return std::floor(f); });
 			Eigen::Vector3i center_clusterChunk = v.cast<int32_t>();
@@ -435,23 +435,20 @@ namespace DAG {
 						MortonCode code(main_clusterChunk);
 						code.val = code.val >> 3; // shift to cover the 3 LSB (leaves), which wont be encoded
 						Octree::Node* oct_node = octree.insert(code.val, 19);
-						// only proplerly calc signed distances for center chunks
-						bool main_offcenter = true;
-						if (x4 == 0 && y4 == 0 && z4 == 0) main_offcenter = false;
-						// else continue; // DEBUG
 						
 						// iterate over 2x2x2 sub chunks within the 4x4x4 main chunk
-						uint8_t lc_index = 0;
+						uint8_t lc_index = 0; // leaf cluster index
 						for (int32_t z2 = 0; z2 <= 2; z2 += 2) {
 							for (int32_t y2 = 0; y2 <= 2; y2 += 2) {
-								for (int32_t x2 = 0; x2 <= 2; x2 += 2) {
+								for (int32_t x2 = 0; x2 <= 2; x2 += 2, lc_index++) {
 									Eigen::Vector3i sub_clusterChunk = main_clusterChunk + Eigen::Vector3i(x2, y2, z2);
-									
-									bool sub_offcenter = true;
-									if (center_clusterChunk == sub_clusterChunk) sub_offcenter = false;
-									
-									// iterate over 1x1x1 leaves within 2x2x2 leaf cluster
-									std::array<float, 8> leaves;
+									Octree::Node* cluster = oct_node->children[lc_index];
+									// if it doesnt exist yet, allocate some space for the pointers
+									if (cluster == nullptr) {
+										cluster = octree.allocate_misc_node();
+										oct_node->children[lc_index] = cluster;
+									}
+									// iterate over leaves within clusters
 									uint8_t iLeaf = 0;
 									for (int32_t z1 = 0; z1 <= 1; z1++) {
 										for (int32_t y1 = 0; y1 <= 1; y1++) {
@@ -459,13 +456,36 @@ namespace DAG {
 												Eigen::Vector3i leafChunk = sub_clusterChunk + Eigen::Vector3i(x1, y1, z1);
 												Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
 												
-												float signedDistance = inputNorm.dot(leafPos - inputPos);
+												// assign the closest point to leaf
+												const Eigen::Vector3f*& closestPoint = cluster->leafPoints[iLeaf];
+												if (closestPoint == nullptr) closestPoint = inputPos;
+												else {
+													float distSqr = (*inputPos - leafPos).squaredNorm();
+													float distSqrOther = (*closestPoint - leafPos).squaredNorm();
+													if (distSqr < distSqrOther) closestPoint = inputPos;
+												}
+											}
+										}
+									}
+									continue;
+									// OLD
+									
+									// iterate over 1x1x1 leaves within 2x2x2 leaf cluster
+									std::array<float, 8> leaves;
+									iLeaf = 0;
+									for (int32_t z1 = 0; z1 <= 1; z1++) {
+										for (int32_t y1 = 0; y1 <= 1; y1++) {
+											for (int32_t x1 = 0; x1 <= 1; x1++, iLeaf++) {
+												Eigen::Vector3i leafChunk = sub_clusterChunk + Eigen::Vector3i(x1, y1, z1);
+												Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
+												
+												float signedDistance = inputNorm.dot(leafPos - *inputPos);
 												
 												// for surrounding chunks, only set min/max
-												if (main_offcenter || sub_offcenter) {
-													if (signedDistance > 0) signedDistance = +leafResolution;
-													else 					signedDistance = -leafResolution;
-												}
+												// if (main_offcenter || sub_offcenter) {
+												// 	if (signedDistance > 0) signedDistance = +leafResolution;
+												// 	else 					signedDistance = -leafResolution;
+												// }
 												// DEBUG
 												// float signedDistancePerfect = leafPos.norm() - 5.0f;
 												// signedDistance = signedDistancePerfect; // DEBUG
@@ -478,7 +498,7 @@ namespace DAG {
 									LeafCluster lc(leaves);
 									
 									// retrieve leaf cluster from octree
-									uint64_t& oct_leafCluster = oct_node->leaves[lc_index++];
+									uint64_t& oct_leafCluster = oct_node->leaves[lc_index];
 									if (oct_leafCluster != 0 && oct_leafCluster != lc.cluster) {
 										LeafCluster other(oct_leafCluster);
 										lc.merge(other);
@@ -553,7 +573,8 @@ namespace DAG {
 					Octree& octree = octrees[id];
 					// Octree::PathCache cache(octree);
 					for (; pCur < pEnd; pCur++, pNorm++) {
-						build_trie_whatnot(octree, *pCur, *pNorm, id);
+						const Eigen::Vector3f* inputPtr = &*pCur;
+						build_trie_whatnot(octree, inputPtr, *pNorm, id);
 					}
 				});
 				progress += nElements;
@@ -609,14 +630,7 @@ namespace DAG {
 						// resolve assigned collisions
 						uint32_t colIndex = iLocal;
 						while (colIndex < grp.collisions.size()) {
-							grp.trees[0]->merge(*grp.trees[1], grp.collisions[colIndex], grp.collisionDepth,
-								[](Octree::Leaf& leaf_a, Octree::Leaf& leaf_b) {
-								// merge leaves into a
-								LeafCluster lc_a(leaf_a);
-								LeafCluster lc_b(leaf_b);
-								lc_a.merge(lc_b);
-								leaf_a = lc_a.cluster;
-							});
+							grp.trees[0]->merge(*grp.trees[1], grp.collisions[colIndex], grp.collisionDepth);
 							colIndex += stage.groupSize;
 						}
 						// increment completion atomic
