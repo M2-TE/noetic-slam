@@ -306,6 +306,11 @@ struct Octree {
                                 // assign the closest point to leaf
                                 const Eigen::Vector3f*& closestPoint_a = leafPoints_a->leafPoints[iLeaf];
                                 const Eigen::Vector3f*& closestPoint_b = leafPoints_b->leafPoints[iLeaf];
+                                
+                                // check validity of pointer
+                                if (closestPoint_b == nullptr) continue;
+                                if (closestPoint_a == nullptr) closestPoint_a = closestPoint_b;
+                                
                                 float distSqr_a = (*closestPoint_a - leafPos).squaredNorm();
                                 float distSqr_b = (*closestPoint_b - leafPos).squaredNorm();
                                 // overwrite a if b is closer

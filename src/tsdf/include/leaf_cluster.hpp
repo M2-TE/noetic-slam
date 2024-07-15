@@ -18,10 +18,18 @@ struct LeafCluster {
     typedef uint32_t PartT;
     LeafCluster(ClusterT cluster): cluster(cluster) {}
     LeafCluster(PartT part0, PartT part1): cluster((ClusterT)part0 | ((ClusterT)part1 << 32)) {}
-    LeafCluster(std::array<float, 8>& leaves): cluster(0) {
+    LeafCluster(std::array<std::pair<float, bool>, 8>& leaves): cluster(0) {
         for (ClusterT i = 0; i < 8; i++) {
+            // check validity of leaf
+            if (!leaves[i].second) {
+                // store "invalid" leaf by setting all bits
+                static_assert(nBits == 8);
+                cluster |= (ClusterT)0b11111111 << i*nBits;
+                continue;
+            }
+            
             // normalize sd to [-1, 1]
-            float sdNormalized = leaves[i] * (1.0 / leafResolution);
+            float sdNormalized = leaves[i].first * (1.0 / leafResolution);
             sdNormalized = std::clamp(sdNormalized, -1.0f, 1.0f);
             
             // // convert from linear to quadratic
@@ -105,6 +113,11 @@ struct LeafCluster {
         // n bits precision for each leaf
         int32_t leaf = cluster >> index*nBits;
         leaf &= leafMask;
+        
+        if (leaf == 0b11111111) {
+            std::cerr << "TODO: FIX LEAF CLUSTER GET SD\n";
+        }
+        
         // convert back to standard signed
         leaf -= (int32_t)range;
         // convert to floating signed distance

@@ -424,9 +424,12 @@ namespace DAG {
 			Eigen::Vector3i center_clusterChunk = v.cast<int32_t>();
 			// %4 to get the chunk with 4x4x4 leaf clusters
 			Eigen::Vector3i base_clusterChunk = center_clusterChunk.unaryExpr([](int32_t val) { return val - val%4; });
-			center_clusterChunk = center_clusterChunk.unaryExpr([](int32_t val) { return val - val%2; });
 			
-			// fill large 3x3x3 neighbourhood around point with signed distances. Most will default to min/max.
+			// set constraints for which leaf clusters get created
+			Eigen::Vector3i min = center_clusterChunk + Eigen::Vector3i(-1, -1, -1);
+			Eigen::Vector3i max = center_clusterChunk + Eigen::Vector3i(+2, +2, +2);
+			
+			// fill large 3x3x3 neighbourhood around point with signed distances. Most will be discarded
 			for (int32_t z4 = -4; z4 <= +4; z4 += 4) {
 				for (int32_t y4 = -4; y4 <= +4; y4 += 4) {
 					for (int32_t x4 = -4; x4 <= +4; x4 += 4) {
@@ -454,6 +457,14 @@ namespace DAG {
 										for (int32_t y1 = 0; y1 <= 1; y1++) {
 											for (int32_t x1 = 0; x1 <= 1; x1++, iLeaf++) {
 												Eigen::Vector3i leafChunk = sub_clusterChunk + Eigen::Vector3i(x1, y1, z1);
+												// test if leaf falls within the constraints for current scan point
+												bool valid = true;
+												if (leafChunk.x() < min.x() || leafChunk.x() > max.x()) valid = false;
+												if (leafChunk.y() < min.y() || leafChunk.y() > max.y()) valid = false;
+												if (leafChunk.z() < min.z() || leafChunk.z() > max.z()) valid = false;
+												if (!valid) continue;
+												
+												// if valid, calc real position of leaf
 												Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
 												
 												// assign the closest point to leaf
@@ -467,49 +478,10 @@ namespace DAG {
 											}
 										}
 									}
-									continue;
-									// OLD
-									
-									// iterate over 1x1x1 leaves within 2x2x2 leaf cluster
-									std::array<float, 8> leaves;
-									iLeaf = 0;
-									for (int32_t z1 = 0; z1 <= 1; z1++) {
-										for (int32_t y1 = 0; y1 <= 1; y1++) {
-											for (int32_t x1 = 0; x1 <= 1; x1++, iLeaf++) {
-												Eigen::Vector3i leafChunk = sub_clusterChunk + Eigen::Vector3i(x1, y1, z1);
-												Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
-												
-												float signedDistance = inputNorm.dot(leafPos - *inputPos);
-												
-												// for surrounding chunks, only set min/max
-												// if (main_offcenter || sub_offcenter) {
-												// 	if (signedDistance > 0) signedDistance = +leafResolution;
-												// 	else 					signedDistance = -leafResolution;
-												// }
-												// DEBUG
-												// float signedDistancePerfect = leafPos.norm() - 5.0f;
-												// signedDistance = signedDistancePerfect; // DEBUG
-												// if (tid == 0) std::cout << signedDistance << ' ' << signedDistancePerfect << '\n';
-												leaves[iLeaf] = signedDistance;
-											}
-										}
-									}
-									// create leaf cluster from signed distances
-									LeafCluster lc(leaves);
-									
-									// retrieve leaf cluster from octree
-									uint64_t& oct_leafCluster = oct_node->leaves[lc_index];
-									if (oct_leafCluster != 0 && oct_leafCluster != lc.cluster) {
-										LeafCluster other(oct_leafCluster);
-										lc.merge(other);
-									}
-									// insert leaf cluster into octree
-									oct_leafCluster = lc.cluster;
 								}
 							}
 						}
 						// if (tid == 0) exit(0);
-						//
 					}
 				}
 			}
@@ -678,31 +650,33 @@ namespace DAG {
 					children[0] |= (children.size() - 1) << 8;
 					// reset node tracker for used-up nodes
 					dagNodes[depth].fill(0);
-					
-					// check path in parent depth to know this node's child ID
-					uint32_t indexInParent = path[depth - 1] - 1;
-					
-					// resize data if necessary and then copy over
-					auto& level = nodeLevels[depth];
-					level.data.resize(level.nOccupied + children.size());
-					std::memcpy(
-						level.data.data() + level.nOccupied,
-						children.data(),
-						children.size() * sizeof(uint32_t));
-					// check if the same node existed previously
-					uint32_t temporary = level.nOccupied;
-					auto [pIndex, bNew] = level.hashSet.emplace(temporary);
-					if (bNew) {
-						level.nOccupied += children.size();
-						uniques[depth]++;
-						if (depth > 0) {
-							dagNodes[depth - 1][indexInParent] = temporary;
+					// skip node creation when there are no children
+					if (children.size() > 1) {
+						// check path in parent depth to know this node's child ID
+						uint32_t indexInParent = path[depth - 1] - 1;
+						
+						// resize data if necessary and then copy over
+						auto& level = nodeLevels[depth];
+						level.data.resize(level.nOccupied + children.size());
+						std::memcpy(
+							level.data.data() + level.nOccupied,
+							children.data(),
+							children.size() * sizeof(uint32_t));
+						// check if the same node existed previously
+						uint32_t temporary = level.nOccupied;
+						auto [pIndex, bNew] = level.hashSet.emplace(temporary);
+						if (bNew) {
+							level.nOccupied += children.size();
+							uniques[depth]++;
+							if (depth > 0) {
+								dagNodes[depth - 1][indexInParent] = temporary;
+							}
 						}
-					}
-					else {
-						dupes[depth]++;
-						if (depth > 0) {
-							dagNodes[depth - 1][indexInParent] = *pIndex;
+						else {
+							dupes[depth]++;
+							if (depth > 0) {
+								dagNodes[depth - 1][indexInParent] = *pIndex;
+							}
 						}
 					}
 					
@@ -720,6 +694,10 @@ namespace DAG {
 				}
 				// node contains leaf cluster
 				else {
+					// get node containing the points closest to each leaf
+					Octree::Node* clusterPoints = octNodes[depth]->children[iChild];
+					if (clusterPoints == nullptr) continue;
+					
 					// reconstruct morton code from path
 					uint64_t mortonCode = 0;
 					for (uint64_t k = 0; k < 63/3; k++) {
@@ -735,8 +713,7 @@ namespace DAG {
                     cluster_chunk = cluster_chunk.unaryExpr([](auto i){ return i - (1 << 20); });
 					
 					// iterate over leaves within clusters to calc signed distances
-					Octree::Node* clusterPoints = octNodes[depth]->children[iChild];
-					std::array<float, 8> leaves;
+					std::array<std::pair<float, bool>, 8> leaves;
                     uint8_t iLeaf = 0;
                     for (int32_t z = 0; z <= 1; z++) {
                         for (int32_t y = 0; y <= 1; y++) {
@@ -744,27 +721,24 @@ namespace DAG {
 								// actual leaf position
                                 Eigen::Vector3i leafChunk = cluster_chunk + Eigen::Vector3i(x, y, z);
                                 Eigen::Vector3f leafPos = leafChunk.cast<float>() * DAG::leafResolution;
-								
-								
-								// calculate point index via distance from pointer to array start
 								const Eigen::Vector3f* nearestPoint = clusterPoints->leafPoints[iLeaf];
-								size_t index = nearestPoint - points.data();
+								
+								// store leaf validity
+								leaves[iLeaf].second = nearestPoint != nullptr;
+								if (!leaves[iLeaf].second) continue;
 								
 								// check if point is too far away from leaf
 								Eigen::Vector3f diff = leafPos - *nearestPoint;
-								// float distSqr = diff.squaredNorm();
-								// if (distSqr > leafResolution*leafResolution) {
-								// 	// dismiss actual signed distance if point is too far away
-								// 	leaves[iLeaf] = leafResolution;
-								// 	continue;
-								// }
 								// calculate signed distance for current leaf
+								size_t index = nearestPoint - points.data();
 								float signedDistance = normals[index].dot(diff);
-								leaves[iLeaf] = signedDistance;
+								leaves[iLeaf].first = signedDistance;
                             }
                         }
                     }
 					LeafCluster lc(leaves);
+					// skip if all leaves were invalid
+					if (lc.cluster == std::numeric_limits<LeafCluster::ClusterT>().max()) continue;
 					
 					// check if this leaf cluster already exists
 					auto temporaryIndex = leafLevel.data.size();
@@ -998,7 +972,7 @@ namespace DAG {
 			//     dataset.read(data);
 			//     std::cout << data.size() << '\n';
 			// }
-			// return;
+			return;
 			lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox(lowerLeft, upperRight);
 			std::vector<std::vector<uint32_t>*> nodeLevelRef;
 			for (auto& level: nodeLevels) nodeLevelRef.push_back(&level.data);
