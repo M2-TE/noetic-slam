@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <type_traits>
 //
@@ -109,14 +110,13 @@ struct LeafCluster {
             }
         }
     }
-    float get_sd(uint8_t index) {
+    // get signed distance of specified leaf, if it is valid
+    std::optional<float> get_sd(ClusterT index) {
         // n bits precision for each leaf
         int32_t leaf = cluster >> index*nBits;
         leaf &= leafMask;
-        
-        if (leaf == 0b11111111) {
-            std::cerr << "TODO: FIX LEAF CLUSTER GET SD\n";
-        }
+        // return early if leaf is invalid
+        if (leaf == 0b11111111) return std::nullopt;
         
         // convert back to standard signed
         leaf -= (int32_t)range;

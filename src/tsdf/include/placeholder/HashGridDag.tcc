@@ -124,7 +124,9 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
                         Eigen::Vector3i leaf_chunk = cluster_chunk + Eigen::Vector3i(x, y, z);
                         Eigen::Vector3f leaf_pos = leaf_chunk.cast<float>() * m_voxelsize;
                         
-                        float signedDistance = leafCluster.get_sd(iLeaf);
+                        auto sdOpt = leafCluster.get_sd(iLeaf);
+                        if (!sdOpt) continue; // skip invalid leaves
+                        float signedDistance = *sdOpt;
                         // float signedDistancePerfect = leaf_pos.cast<double>().norm() - 5.0f;
                         // signedDistance = signedDistancePerfect;
                         // std::cout << signedDistance << '\t' << signedDistancePerfect << '\n';
@@ -133,7 +135,7 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
                         size_t qIndex = m_queryPoints.size();
                         m_queryPoints.emplace_back(BaseVecT(leaf_pos.x(), leaf_pos.y(), leaf_pos.z()), signedDistance);
                         
-                        // create 8 cells around the query point
+                        // 8 cells around the query point
                         std::array<Eigen::Vector3f, 8> cellOffsets = {
                             Eigen::Vector3f(+0.5, +0.5, +0.5), 
                             Eigen::Vector3f(-0.5, +0.5, +0.5),

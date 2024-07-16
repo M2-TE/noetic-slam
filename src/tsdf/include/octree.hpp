@@ -309,7 +309,7 @@ struct Octree {
                                 
                                 // check validity of pointer
                                 if (closestPoint_b == nullptr) continue;
-                                if (closestPoint_a == nullptr) closestPoint_a = closestPoint_b;
+                                else if (closestPoint_a == nullptr) closestPoint_a = closestPoint_b;
                                 
                                 float distSqr_a = (*closestPoint_a - leafPos).squaredNorm();
                                 float distSqr_b = (*closestPoint_b - leafPos).squaredNorm();
