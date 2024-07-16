@@ -24,7 +24,9 @@
 // todo: move headers to the places that need them
 // todo: separate source for vulkan stuff as well
 // todo: use fmt for logging
-// todo: move Dag::reconstruct into separate cpp file for faster compilation
+// todo: deprecated the structs.hpp
+// todo: replace weird param for lvr2 reconstruct hashgrid with the simple pointer to levels
+// todo: replace need for bounding box in hash grid ctor
 
 class TSDFMap {
 public:

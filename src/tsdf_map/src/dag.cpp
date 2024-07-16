@@ -19,191 +19,17 @@
 #include <thread>
 #include <parallel/algorithm>
 #include <cstdint>
-#include <eigen3/Eigen/Eigen>
-#include <parallel_hashmap/phmap.h>
-#include <parallel_hashmap/btree.h>
-#include <morton-nd/mortonND_BMI2.h>
+//
+#include <Eigen/Eigen>
 //
 #include "dag/constants.hpp"
+#include "dag/norm_est.hpp"
+#include "dag/morton_code.hpp"
+#include "dag/node_levels.hpp"
 #include "dag/octree.hpp"
-#include "dag/structs.hpp"
 #include "dag/node.hpp"
 
-// todo: move static funcs to separate headers
-// https://www.ilikebigbits.com/2017_09_25_plane_from_points_2.html
-static Eigen::Vector3f normal_from_neighbourhood(std::vector<Eigen::Vector3f>& points) {
-	// calculate centroid by through coefficient average
-	Eigen::Vector3f centroid { 0, 0, 0 };
-	for (auto p = points.cbegin(); p != points.cend(); p++) {
-		centroid += *p;
-	}
-	double recip = 1.0 / (double)points.size();
-	centroid *= recip;
-
-	// covariance matrix excluding symmetries
-	double xx = 0.0; double xy = 0.0; double xz = 0.0;
-	double yy = 0.0; double yz = 0.0; double zz = 0.0;
-	for (auto p = points.cbegin(); p != points.cend(); p++) {
-		auto r = *p - centroid;
-		xx += r.x() * r.x();
-		xy += r.x() * r.y();
-		xz += r.x() * r.z();
-		yy += r.y() * r.y();
-		yz += r.y() * r.z();
-		zz += r.z() * r.z();
-	}
-	xx *= recip;
-	xy *= recip;
-	xz *= recip;
-	yy *= recip;
-	yz *= recip;
-	zz *= recip;
-
-	// weighting linear regression based on square determinant
-	Eigen::Vector3f weighted_dir = { 0, 0, 0 };
-
-	// determinant x
-	{
-		double det_x = yy*zz - yz*yz;
-		Eigen::Vector3f axis_dir = {
-			(float)(det_x),
-			(float)(xz*yz - xy*zz),
-			(float)(xy*yz - xz*yy)
-		};
-		double weight = det_x * det_x;
-		if (weighted_dir.dot(axis_dir) < 0.0) weight = -weight;
-		weighted_dir += axis_dir * weight;
-	}
-	// determinant y
-	{
-		double det_y = xx*zz - xz*xz;
-		Eigen::Vector3f axis_dir = {
-			(float)(xz*yz - xy*zz),
-			(float)(det_y),
-			(float)(xy*xz - yz*xx)
-		};
-		double weight = det_y * det_y;
-		if (weighted_dir.dot(axis_dir) < 0.0) weight = -weight;
-		weighted_dir += axis_dir * weight;
-	}
-	// determinant z
-	{
-		double det_z = xx*yy - xy*xy;
-		Eigen::Vector3f axis_dir = {
-			(float)(xy*yz - xz*yy),
-			(float)(xy*xz - yz*xx),
-			(float)(det_z)
-		};
-		double weight = det_z * det_z;
-		if (weighted_dir.dot(axis_dir) < 0.0) weight = -weight;
-		weighted_dir += axis_dir * weight;
-	}
-
-	// return normalized weighted direction as surface normal
-	weighted_dir.normalize();
-	return weighted_dir;
-}
-static Eigen::Vector3f normal_from_neighbourhood(std::vector<Eigen::Vector4d>& points) {
-	// calculate centroid by through coefficient average
-	Eigen::Vector4d centroid { 0, 0, 0, 0 };
-	for (auto p = points.cbegin(); p != points.cend(); p++) {
-		centroid += *p;
-	}
-	double recip = 1.0 / (double)points.size();
-	centroid *= recip;
-
-	// covariance matrix excluding symmetries
-	double xx = 0.0; double xy = 0.0; double xz = 0.0;
-	double yy = 0.0; double yz = 0.0; double zz = 0.0;
-	for (auto p = points.cbegin(); p != points.cend(); p++) {
-		auto r = *p - centroid;
-		xx += r.x() * r.x();
-		xy += r.x() * r.y();
-		xz += r.x() * r.z();
-		yy += r.y() * r.y();
-		yz += r.y() * r.z();
-		zz += r.z() * r.z();
-	}
-	xx *= recip;
-	xy *= recip;
-	xz *= recip;
-	yy *= recip;
-	yz *= recip;
-	zz *= recip;
-
-	// weighting linear regression based on square determinant
-	Eigen::Vector4d weighted_dir = { 0, 0, 0, 0 };
-
-	// determinant x
-	{
-		double det_x = yy*zz - yz*yz;
-		Eigen::Vector4d axis_dir = {
-			det_x,
-			xz*yz - xy*zz,
-			xy*yz - xz*yy,
-			0.0
-		};
-		double weight = det_x * det_x;
-		if (weighted_dir.dot(axis_dir) < 0.0) weight = -weight;
-		weighted_dir += axis_dir * weight;
-	}
-	// determinant y
-	{
-		double det_y = xx*zz - xz*xz;
-		Eigen::Vector4d axis_dir = {
-			xz*yz - xy*zz,
-			det_y,
-			xy*xz - yz*xx,
-			0.0
-		};
-		double weight = det_y * det_y;
-		if (weighted_dir.dot(axis_dir) < 0.0) weight = -weight;
-		weighted_dir += axis_dir * weight;
-	}
-	// determinant z
-	{
-		double det_z = xx*yy - xy*xy;
-		Eigen::Vector4d axis_dir = {
-			xy*yz - xz*yy,
-			xy*xz - yz*xx,
-			det_z,
-			0.0
-		};
-		double weight = det_z * det_z;
-		if (weighted_dir.dot(axis_dir) < 0.0) weight = -weight;
-		weighted_dir += axis_dir * weight;
-	}
-
-	// return normalized weighted direction as surface normal
-	weighted_dir.normalize();
-	return { (float)weighted_dir.x(), (float)weighted_dir.y(), (float)weighted_dir.z() };
-}
-
-static auto calc_morton(std::vector<Eigen::Vector3f>& points) {
-    auto beg = std::chrono::steady_clock::now();
-    
-    // create a vector to hold sortable morton codes alongside position
-    std::vector<std::pair<MortonCode, Eigen::Vector3f>> mortonCodes;
-    mortonCodes.reserve(points.size());
-    
-    // iterate through all points to populate morton code vector
-    for (auto it_points = points.cbegin(); it_points != points.cend(); it_points++) {
-        Eigen::Vector3f position = *it_points;
-        // transform into chunk position (leaf chunk in this case)
-        Eigen::Vector3f chunkPosFloat = position * (1.0 / leafResolution);
-        // properly floor instead of relying on float -> int conversion
-        chunkPosFloat = chunkPosFloat.unaryExpr([](float f){ return std::floor(f); });
-        Eigen::Vector3i chunkPos = chunkPosFloat.cast<int32_t>();
-        // calculate morton code and insert into vector
-        MortonCode mc(chunkPos);
-        mortonCodes.emplace_back(mc.val, position);
-    }
-    
-    auto end = std::chrono::steady_clock::now();
-    auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-    std::cout << "mort calc " << dur << '\n';
-    return mortonCodes;
-}
+// todo: move static funcs to separate headers and move needed header files with them
 static void sort_points(std::vector<Eigen::Vector3f>& points, std::vector<std::pair<MortonCode, Eigen::Vector3f>>& mortonCodes) {
     auto beg = std::chrono::steady_clock::now();
     
@@ -223,7 +49,7 @@ static void sort_points(std::vector<Eigen::Vector3f>& points, std::vector<std::p
     auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
     std::cout << "pnts sort " << dur << '\n';
 }
-static auto calc_normals(Pose pose, std::vector<std::pair<MortonCode, Eigen::Vector3f>>& mortonCodes) {
+static auto calc_normals(Pose pose, std::vector<std::pair<MortonCode, Eigen::Vector3f>>& mortonCodes) -> std::vector<Eigen::Vector3f> {
     auto beg = std::chrono::steady_clock::now();
     
     // construct neighbourhoods of points
@@ -395,7 +221,7 @@ static auto calc_normals(Pose pose, std::vector<std::pair<MortonCode, Eigen::Vec
     std::cout << "norm calc " << dur << '\n';
     return normals;
 }
-static auto build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, Eigen::Vector3f inputNorm/*deprecated*/, uint32_t tid) {
+static void build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, Eigen::Vector3f inputNorm/*deprecated*/, uint32_t tid) {
     // convert to chunk position
     Eigen::Vector3f v = *inputPos * (1.0 / leafResolution);
     // properly floor instead of relying on float => int conversion
@@ -466,7 +292,7 @@ static auto build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, 
     }
     // if (tid == 0) exit(0);
 }
-static auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) {
+static auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) -> Octree {
 			auto beg = std::chrono::steady_clock::now();
 
 			// round threads down to nearest power of two
@@ -598,12 +424,19 @@ static auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Ve
 		}
 
 Dag::Dag() {
+    // create node levels
+    node_levels = new NodeLevel[63/3];
+    leaf_level = new LeafLevel();
     // create a main root node, 1 child mask, 8 children
     for (auto i = 0; i < 9; i++) {
-        nodeLevels[0].data.push_back(0);
+        node_levels[0].data.push_back(0);
     }
-    nodeLevels[0].nOccupied += 9;
+    node_levels[0].nOccupied += 9;
     uniques[0]++;
+}
+Dag::~Dag() {
+    delete node_levels;
+    delete leaf_level;
 }
 void Dag::insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
     auto beg = std::chrono::steady_clock::now();
@@ -635,7 +468,7 @@ void Dag::print_stats() {
 }
 auto Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) -> uint32_t {
     auto beg = std::chrono::steady_clock::now();
-    uint32_t rootAddr = nodeLevels[0].data.size();
+    uint32_t rootAddr = node_levels[0].data.size();
     
     // trackers that will be updated during traversal
     std::array<uint8_t, 63/3> path;
@@ -672,7 +505,7 @@ auto Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, st
                 uint32_t indexInParent = path[depth - 1] - 1;
                 
                 // resize data if necessary and then copy over
-                auto& level = nodeLevels[depth];
+                auto& level = node_levels[depth];
                 level.data.resize(level.nOccupied + children.size());
                 std::memcpy(
                     level.data.data() + level.nOccupied,
@@ -757,14 +590,14 @@ auto Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, st
             if (lc.cluster == std::numeric_limits<LeafCluster::ClusterT>().max()) continue;
             
             // check if this leaf cluster already exists
-            auto temporaryIndex = leafLevel.data.size();
-            auto [pIter, bNew] = leafLevel.hashMap.emplace(lc.cluster, temporaryIndex);
+            auto temporaryIndex = leaf_level->data.size();
+            auto [pIter, bNew] = leaf_level->hashMap.emplace(lc.cluster, temporaryIndex);
             if (bNew) {
                 uniques[depth+1]++;
                 // insert as new leaf cluster
                 auto [part0, part1] = lc.get_parts();
-                leafLevel.data.push_back(part0);
-                leafLevel.data.push_back(part1);
+                leaf_level->data.push_back(part0);
+                leaf_level->data.push_back(part1);
                 dagNodes[depth][iChild] = temporaryIndex;
             }
             else {
@@ -795,8 +628,8 @@ void Dag::merge_dag(uint32_t srcAddr) {
     for (auto& level: newNodes) level.fill(0);
     // set starting values
     int64_t depth = 0;
-    dstNodes[0] = Node::conv(nodeLevels[0].data, 1);
-    srcNodes[0] = Node::conv(nodeLevels[0].data, srcAddr);
+    dstNodes[0] = Node::conv(node_levels[0].data, 1);
+    srcNodes[0] = Node::conv(node_levels[0].data, srcAddr);
     
     while (depth >= 0) {
         auto iChild = path[depth]++;
@@ -820,7 +653,7 @@ void Dag::merge_dag(uint32_t srcAddr) {
                 uint32_t indexInParent = path[depth - 1] - 1;
                 
                 // resize data if necessary and then copy over
-                auto& level = nodeLevels[depth];
+                auto& level = node_levels[depth];
                 level.data.resize(level.nOccupied + children.size());
                 std::memcpy(
                     level.data.data() + level.nOccupied,
@@ -868,7 +701,7 @@ void Dag::merge_dag(uint32_t srcAddr) {
                 children[0] |= (children.size() - 1) << 8;
                 
                 // overwrite old root node
-                auto& level = nodeLevels[0];
+                auto& level = node_levels[0];
                 std::memcpy(
                     level.data.data() + 1,
                     children.data(),
@@ -890,8 +723,8 @@ void Dag::merge_dag(uint32_t srcAddr) {
                     uint32_t dstChildAddr = dstNode->get_child_addr(iChild);
                     depth++;
                     path[depth] = 0;
-                    dstNodes[depth] = Node::conv(nodeLevels[depth].data, dstChildAddr);
-                    srcNodes[depth] = Node::conv(nodeLevels[depth].data, srcChildAddr);
+                    dstNodes[depth] = Node::conv(node_levels[depth].data, dstChildAddr);
+                    srcNodes[depth] = Node::conv(node_levels[depth].data, srcChildAddr);
                 }
                 // else simply add the existing node to "new nodes"
                 else {
@@ -910,8 +743,8 @@ void Dag::merge_dag(uint32_t srcAddr) {
             uint32_t dstLcAddr = dstNodes[depth]->get_child_addr(iChild);
             uint32_t srcLcAddr = srcNodes[depth]->get_child_addr(iChild);
             // leaf clusters are 64 bit, so they take 2 addresses
-            LeafCluster dstLc(leafLevel.data[dstLcAddr], leafLevel.data[dstLcAddr + 1]);
-            LeafCluster srcLc(leafLevel.data[srcLcAddr], leafLevel.data[srcLcAddr + 1]);
+            LeafCluster dstLc(leaf_level->data[dstLcAddr], leaf_level->data[dstLcAddr + 1]);
+            LeafCluster srcLc(leaf_level->data[srcLcAddr], leaf_level->data[srcLcAddr + 1]);
             
             // merge both leaf clusters
             LeafCluster resLc(dstLc);
@@ -927,14 +760,14 @@ void Dag::merge_dag(uint32_t srcAddr) {
             // if not, create a new leaf based on resLc
             else {
                 // check if this leaf cluster already exists
-                auto temporaryIndex = leafLevel.data.size();
-                auto [pIter, bNew] = leafLevel.hashMap.emplace(resLc.cluster, temporaryIndex);
+                auto temporaryIndex = leaf_level->data.size();
+                auto [pIter, bNew] = leaf_level->hashMap.emplace(resLc.cluster, temporaryIndex);
                 if (bNew) {
                     uniques[depth+1]++;
                     // insert as new leaf cluster
                     auto [part0, part1] = resLc.get_parts();
-                    leafLevel.data.push_back(part0);
-                    leafLevel.data.push_back(part1);
+                    leaf_level->data.push_back(part0);
+                    leaf_level->data.push_back(part1);
                     newNodes[depth][iChild] = temporaryIndex;
                 }
                 else {

@@ -1,18 +1,19 @@
 #include "dag/dag.hpp"
 //
-#include <highfive/H5File.hpp>
 #include <placeholder/HashGridDag.tcc>
 #include <lvr2/reconstruction/HashGrid.hpp>
-#include "lvr2/geometry/PMPMesh.hpp"
-#include "lvr2/reconstruction/FastBox.hpp"
-#include "lvr2/reconstruction/FastReconstruction.hpp"
-#include "lvr2/algorithm/NormalAlgorithms.hpp"
+#include <lvr2/geometry/PMPMesh.hpp>
+#include <lvr2/reconstruction/FastBox.hpp>
+#include <lvr2/reconstruction/FastReconstruction.hpp>
+#include <lvr2/algorithm/NormalAlgorithms.hpp>
+//
+#include "dag/node_levels.hpp"
 
 void Dag::reconstruct() {
     lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox;
     std::vector<std::vector<uint32_t>*> nodeLevelRef;
-    for (auto& level: nodeLevels) nodeLevelRef.push_back(&level.data);
-    nodeLevelRef.push_back(&leafLevel.data);
+    for (auto i = 0; i < 63/3; i++) nodeLevelRef.push_back(&node_levels[i].data);
+    nodeLevelRef.push_back(&leaf_level->data);
     
     ///////////////////////// LVR2 ///////////////////////////
     typedef lvr2::BaseVector<float> VecT;

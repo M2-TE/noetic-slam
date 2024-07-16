@@ -1,55 +1,16 @@
 #pragma once
-#include <algorithm>
-#include <bitset>
-#include <cmath>
-#include <concepts>
-#include <cstddef>
+//
 #include <cstdint>
-#include <cstring>
-#include <iostream>
-#include <sstream>
-#include <type_traits>
-#include <vector>
 //
-#include <parallel_hashmap/phmap.h>
-#include <morton-nd/mortonND_BMI2.h>
 #include <Eigen/Eigen>
+#include <parallel_hashmap/phmap.h>
 //
-#include "dag/constants.hpp"
 #include "dag/leaf_cluster.hpp"
-
-struct MortonCode {
-    MortonCode(int x, int y, int z): MortonCode(Eigen::Vector3i(x, y, z)) {}
-    MortonCode(uint64_t code): val(code) {}
-    MortonCode(Eigen::Vector3i vec) {
-        encode(vec);
-    }
-    inline void encode(Eigen::Vector3i vec) {
-        // truncate from two's complement 32-bit to 21-bit integer
-        uint32_t x, y, z;
-        x = (1 << 20) + (uint32_t)vec.x();
-        y = (1 << 20) + (uint32_t)vec.y();
-        z = (1 << 20) + (uint32_t)vec.z();
-        val = mortonnd::MortonNDBmi_3D_64::Encode(x, y, z);
-    }
-    inline Eigen::Vector3i decode() const {
-        auto [x, y, z] = mortonnd::MortonNDBmi_3D_64::Decode(val);
-        x -= 1 << 20;
-        y -= 1 << 20;
-        z -= 1 << 20;
-        return { (int32_t)x, (int32_t)y, (int32_t)z };
-    }
-    inline bool operator==(const MortonCode& other) const { return val == other.val; }
-    inline bool operator<(const MortonCode& other) const { return val < other.val; }
-    inline bool operator>(const MortonCode& other) const { return val > other.val; }
-    uint64_t val;
-};
-
 
 struct NodeLevel {
 private:
     struct HashFunctor {
-        inline size_t operator()(NodeIndex key) const noexcept {
+        inline size_t operator()(uint32_t key) const noexcept {
             std::vector<uint32_t>& data = *pData;
             // count children
             // uint8_t nChildren = std::popcount<uint8_t>(data[key]);
@@ -74,7 +35,7 @@ private:
         std::vector<uint32_t>* pData; // non-owning pointer to raw data array
     };
     struct CompFunctor {
-        inline bool operator()(NodeIndex keyA, NodeIndex keyB) const noexcept {
+        inline bool operator()(uint32_t keyA, uint32_t keyB) const noexcept {
             std::vector<uint32_t>& data = *pData;
             // count children
             // uint8_t nChildren = std::popcount<uint8_t>(data[keyB]);
@@ -90,7 +51,7 @@ private:
     };
 public:
     NodeLevel(): hashSet(0, HashFunctor(&data), CompFunctor(&data)), data(1), nOccupied(1) {}
-    phmap::parallel_flat_hash_set<NodeIndex, HashFunctor, CompFunctor> hashSet;
+    phmap::parallel_flat_hash_set<uint32_t, HashFunctor, CompFunctor> hashSet;
     std::vector<uint32_t> data;
     uint32_t nOccupied;
 };
@@ -100,12 +61,3 @@ struct LeafLevel {
     phmap::parallel_flat_hash_map<LeafCluster::ClusterT, LeafIndex> hashMap;
     std::vector<uint32_t> data;
 };
-
-namespace std {
-    template<>
-    struct hash<MortonCode> {
-        inline size_t operator()(const MortonCode& x) const {
-            return x.val;
-        }
-    };
-}
