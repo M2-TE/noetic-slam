@@ -1,3 +1,5 @@
+#include "dag/dag.hpp"
+//
 #include <algorithm>
 #include <atomic>
 #include <bitset>
@@ -17,20 +19,11 @@
 #include <thread>
 #include <parallel/algorithm>
 #include <cstdint>
-// todo: move headers to the places that need them
 #include <eigen3/Eigen/Eigen>
 #include <parallel_hashmap/phmap.h>
 #include <parallel_hashmap/btree.h>
 #include <morton-nd/mortonND_BMI2.h>
-#include <highfive/H5File.hpp>
-#include <placeholder/HashGridDag.tcc>
-#include <lvr2/reconstruction/HashGrid.hpp>
-#include "lvr2/geometry/PMPMesh.hpp"
-#include "lvr2/reconstruction/FastBox.hpp"
-#include "lvr2/reconstruction/FastReconstruction.hpp"
-#include "lvr2/algorithm/NormalAlgorithms.hpp"
 //
-#include "dag/dag.hpp"
 #include "dag/constants.hpp"
 #include "dag/octree.hpp"
 #include "dag/structs.hpp"
@@ -208,7 +201,7 @@ static auto calc_morton(std::vector<Eigen::Vector3f>& points) {
     
     auto end = std::chrono::steady_clock::now();
     auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-    std::cout << "mort calc" << dur << '\n';
+    std::cout << "mort calc " << dur << '\n';
     return mortonCodes;
 }
 static void sort_points(std::vector<Eigen::Vector3f>& points, std::vector<std::pair<MortonCode, Eigen::Vector3f>>& mortonCodes) {
@@ -228,7 +221,7 @@ static void sort_points(std::vector<Eigen::Vector3f>& points, std::vector<std::p
     
     auto end = std::chrono::steady_clock::now();
     auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-    std::cout << "pnts sort" << dur << '\n';
+    std::cout << "pnts sort " << dur << '\n';
 }
 static auto calc_normals(Pose pose, std::vector<std::pair<MortonCode, Eigen::Vector3f>>& mortonCodes) {
     auto beg = std::chrono::steady_clock::now();
@@ -294,7 +287,7 @@ static auto calc_normals(Pose pose, std::vector<std::pair<MortonCode, Eigen::Vec
     }
     auto end = std::chrono::steady_clock::now();
     auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-    std::cout << "neig calc" << dur << '\n';
+    std::cout << "neig calc " << dur << '\n';
     beg = std::chrono::steady_clock::now();
     
     // build normals using local neighbourhoods
@@ -399,7 +392,7 @@ static auto calc_normals(Pose pose, std::vector<std::pair<MortonCode, Eigen::Vec
     
     end = std::chrono::steady_clock::now();
     dur = std::chrono::duration<double, std::milli> (end - beg).count();
-    std::cout << "norm calc" << dur << '\n';
+    std::cout << "norm calc " << dur << '\n';
     return normals;
 }
 static auto build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, Eigen::Vector3f inputNorm/*deprecated*/, uint32_t tid) {
@@ -604,8 +597,43 @@ static auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Ve
 			return std::move(octrees[0]);
 		}
 
-// todo: move down and in line with the other mem fncs
-uint32_t Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) {
+Dag::Dag() {
+    // create a main root node, 1 child mask, 8 children
+    for (auto i = 0; i < 9; i++) {
+        nodeLevels[0].data.push_back(0);
+    }
+    nodeLevels[0].nOccupied += 9;
+    uniques[0]++;
+}
+void Dag::insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
+    auto beg = std::chrono::steady_clock::now();
+    Pose pose = { position, rotation };
+    // TODO: transform points here, if not already transformed
+    auto mortonCodes = calc_morton(points);
+    sort_points(points, mortonCodes);
+    auto normals = calc_normals(pose, mortonCodes);
+    auto octree = get_trie(points, normals);
+    auto dagAddr = insert_octree(octree, points, normals);
+    merge_dag(dagAddr);
+
+    auto end = std::chrono::steady_clock::now();
+    auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+    std::cout << "full  dur " << dur << '\n';
+}
+void Dag::print_stats() {
+    size_t nUniques = 0;
+    size_t nDupes = 0;
+    size_t nBytes = 0;
+    for (size_t i = 0; i < uniques.size(); i++) {
+        std::cout << std::fixed;
+        std::cout << "Level " << i << ": " << uniques[i] << " uniques, " << dupes[i] << " dupes, ";
+        std::cout << static_cast<double>(uniques[i] * sizeof(uint32_t)) / 1024.0 / 1024.0 << " MiB \n";
+        nUniques += uniques[i];
+        nDupes += dupes[i];
+    }
+    std::cout << static_cast<double>(nUniques * sizeof(uint32_t)) / 1024.0 / 1024.0 << " MiB used in total\n";
+}
+auto Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) -> uint32_t {
     auto beg = std::chrono::steady_clock::now();
     uint32_t rootAddr = nodeLevels[0].data.size();
     
@@ -921,91 +949,4 @@ void Dag::merge_dag(uint32_t srcAddr) {
     auto end = std::chrono::steady_clock::now();
     auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
     std::cout << "dag  merg " << dur << '\n';
-}
-
-Dag::Dag() {
-    // create a main root node, 1 child mask, 8 children
-    for (auto i = 0; i < 9; i++) {
-        nodeLevels[0].data.push_back(0);
-    }
-    nodeLevels[0].nOccupied += 9;
-    uniques[0]++;
-}
-void Dag::insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std::vector<Eigen::Vector3f>& points) {
-    auto beg = std::chrono::steady_clock::now();
-    Pose pose = { position, rotation };
-    // TODO: transform points here, if not already transformed
-    auto mortonCodes = calc_morton(points);
-    sort_points(points, mortonCodes);
-    auto normals = calc_normals(pose, mortonCodes);
-    auto octree = get_trie(points, normals);
-    auto dagAddr = insert_octree(octree, points, normals);
-    merge_dag(dagAddr);
-
-    auto end = std::chrono::steady_clock::now();
-    auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-    std::cout << "full  dur " << dur << '\n';
-}
-void Dag::reconstruct() {
-    lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox;
-    std::vector<std::vector<uint32_t>*> nodeLevelRef;
-    for (auto& level: nodeLevels) nodeLevelRef.push_back(&level.data);
-    nodeLevelRef.push_back(&leafLevel.data);
-    
-    ///////////////////////// LVR2 ///////////////////////////
-    typedef lvr2::BaseVector<float> VecT;
-    
-    // create hash grid from entire tree
-    // generate mesh from hash grid
-    lvr2::PMPMesh<VecT> mesh{};
-    constexpr std::string_view decompositionType = "MC";
-    if (decompositionType == "MC") {
-        auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::FastBox<VecT>>>(boundingBox, nodeLevelRef, leafResolution);
-        lvr2::FastReconstruction<VecT, lvr2::FastBox<VecT>> reconstruction(pGrid);
-        reconstruction.getMesh(mesh);
-    }
-    else if (decompositionType == "PMC") {
-        auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::BilinearFastBox<VecT>>>(boundingBox, nodeLevelRef, leafResolution);
-        lvr2::FastReconstruction<VecT, lvr2::BilinearFastBox<VecT>> reconstruction(pGrid);
-        reconstruction.getMesh(mesh);
-    }
-    
-    // generate mesh buffer from reconstructed mesh
-    auto faceNormals = lvr2::calcFaceNormals(mesh);
-    auto vertexNormals = lvr2::calcVertexNormals(mesh, faceNormals);
-    lvr2::MeshBufferPtr meshBuffer;
-    if (false) {
-        // coloring
-        auto clusterBiMap = lvr2::planarClusterGrowing(mesh, faceNormals, 0.85);
-        lvr2::ClusterPainter painter(clusterBiMap);
-        lvr2::ColorGradient::GradientType t = lvr2::ColorGradient::gradientFromString("GREY");
-        auto clusterColors = boost::optional<lvr2::DenseClusterMap<lvr2::RGB8Color>>(painter.colorize(mesh, t));
-        lvr2::TextureFinalizer<lvr2::BaseVector<float>> finalizer(clusterBiMap);
-        finalizer.setClusterColors(*clusterColors);
-        finalizer.setVertexNormals(vertexNormals);
-        meshBuffer = finalizer.apply(mesh);
-    }
-    else {
-        // Calc normals for vertices
-        lvr2::SimpleFinalizer<lvr2::BaseVector<float>> finalizer;
-        finalizer.setNormalData(vertexNormals);
-        meshBuffer = finalizer.apply(mesh);
-    }
-
-    // save to disk
-    auto model = std::make_shared<lvr2::Model>(meshBuffer);
-    lvr2::ModelFactory::saveModel(model, "yeehaw.ply");
-}
-void Dag::print_stats() {
-    size_t nUniques = 0;
-    size_t nDupes = 0;
-    size_t nBytes = 0;
-    for (size_t i = 0; i < uniques.size(); i++) {
-        std::cout << std::fixed;
-        std::cout << "Level " << i << ": " << uniques[i] << " uniques, " << dupes[i] << " dupes, ";
-        std::cout << static_cast<double>(uniques[i] * sizeof(uint32_t)) / 1024.0 / 1024.0 << " MiB \n";
-        nUniques += uniques[i];
-        nDupes += dupes[i];
-    }
-    std::cout << static_cast<double>(nUniques * sizeof(uint32_t)) / 1024.0 / 1024.0 << " MiB used in total\n";
 }

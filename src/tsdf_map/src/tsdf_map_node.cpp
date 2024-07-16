@@ -21,6 +21,7 @@
 #include "dag/dag.hpp"
 
 // TODO: CLEAN UP DOCKERFILE CRAP
+// todo: move headers to the places that need them
 // todo: separate source for vulkan stuff as well
 // todo: use fmt for logging
 // todo: move Dag::reconstruct into separate cpp file for faster compilation

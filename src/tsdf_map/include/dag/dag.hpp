@@ -10,7 +10,7 @@ struct Dag {
     void print_stats();
 private:
 // TODO: try trailing return type
-    uint32_t insert_octree(struct Octree& octree, std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals);
+    auto insert_octree(struct Octree& octree, std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) -> uint32_t;
     void merge_dag(uint32_t srcAddr);
 
 // todo: remove some of these as they are unnecessary

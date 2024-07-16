@@ -34,6 +34,7 @@ message("${OpenCV_INCLUDE_DIRS}")
 
 add_executable(tsdf_map_node 
     "src/tsdf_map_node.cpp"
+    "src/dag_lvr2.cpp"
     "src/dag.cpp")
 target_include_directories(tsdf_map_node PRIVATE 
     "include/"
