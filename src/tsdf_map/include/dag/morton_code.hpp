@@ -24,6 +24,7 @@ struct MortonCode {
         return { (int32_t)x, (int32_t)y, (int32_t)z };
     }
     inline bool operator==(const MortonCode& other) const { return val == other.val; }
+    inline bool operator!=(const MortonCode& other) const { return val != other.val; }
     inline bool operator<(const MortonCode& other) const { return val < other.val; }
     inline bool operator>(const MortonCode& other) const { return val > other.val; }
     uint64_t val;

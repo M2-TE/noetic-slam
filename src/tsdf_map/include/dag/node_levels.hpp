@@ -10,6 +10,7 @@
 struct NodeLevel {
 private:
     struct HashFunctor {
+        HashFunctor(std::vector<uint32_t>* pData): pData(pData) {}
         inline size_t operator()(uint32_t key) const noexcept {
             std::vector<uint32_t>& data = *pData;
             // count children
@@ -35,6 +36,7 @@ private:
         std::vector<uint32_t>* pData; // non-owning pointer to raw data array
     };
     struct CompFunctor {
+        CompFunctor(std::vector<uint32_t>* pData): pData(pData) {}
         inline bool operator()(uint32_t keyA, uint32_t keyB) const noexcept {
             std::vector<uint32_t>& data = *pData;
             // count children

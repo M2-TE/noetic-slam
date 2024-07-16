@@ -53,9 +53,11 @@ static auto calc_normals(Pose pose, std::vector<std::pair<MortonCode, Eigen::Vec
     auto beg = std::chrono::steady_clock::now();
     
     // construct neighbourhoods of points
+    typedef std::vector<std::pair<MortonCode, Eigen::Vector3f>>::const_iterator MortonIter;
     struct Neighbourhood {
-        std::vector<std::pair<MortonCode, Eigen::Vector3f>>::const_iterator it_beg;
-        std::vector<std::pair<MortonCode, Eigen::Vector3f>>::const_iterator it_end;
+        Neighbourhood(MortonIter it_beg, MortonIter it_end): it_beg(it_beg), it_end(it_end) {}
+        MortonIter it_beg;
+        MortonIter it_end;
     };
     auto calc_neigh_map = [&mortonCodes](size_t neighLevel) {
         // the level up to which is checked to see if two morton codes belong to the same neighbourhood
