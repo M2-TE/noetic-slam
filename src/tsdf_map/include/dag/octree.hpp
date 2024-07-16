@@ -11,7 +11,7 @@
 #include <Eigen/Eigen>
 #include <parallel_hashmap/phmap.h>
 //
-#include "dag_constants.hpp"
+#include "dag/constants.hpp"
 
 struct Octree {
     typedef uint64_t Key; // only 63 bits in use
@@ -301,7 +301,7 @@ struct Octree {
                         for (int32_t y = 0; y <= 1; y++) {
                             for (int32_t x = 0; x <= 1; x++, iLeaf++) {
                                 Eigen::Vector3i leafChunk = cluster_chunk + Eigen::Vector3i(x, y, z);
-                                Eigen::Vector3f leafPos = leafChunk.cast<float>() * DAG::leafResolution;
+                                Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
                                 
                                 // assign the closest point to leaf
                                 const Eigen::Vector3f*& closestPoint_a = leafPoints_a->leafPoints[iLeaf];

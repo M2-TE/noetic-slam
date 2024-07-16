@@ -44,9 +44,9 @@
 #include <fstream>
 #include <iostream>
 
-#include "/root/repo/src/tsdf/ext/morton-nd/include/morton-nd/mortonND_BMI2.h"
-#include "/root/repo/src/tsdf/include/leaf_cluster.hpp"
-#include "/root/repo/src/tsdf/include/dag_node.hpp"
+#include "/root/repo/src/tsdf_map/ext/morton-nd/include/morton-nd/mortonND_BMI2.h"
+#include "/root/repo/src/tsdf_map/include/dag/leaf_cluster.hpp"
+#include "/root/repo/src/tsdf_map/include/dag/node.hpp"
 
 namespace lvr2
 {
@@ -67,12 +67,12 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
 
     // create iteration thingies
     std::array<uint8_t, 63/3> path;
-    std::array<DAG::DagNode*, 63/3> nodes;
+    std::array<Node*, 63/3> nodes;
     path.fill(0);
     nodes.fill(nullptr);
     // initialize
     int64_t depth = 0;
-    nodes[0] = DAG::DagNode::conv(*nodeLevels[0], 1);
+    nodes[0] = Node::conv(*nodeLevels[0], 1);
 
     // begin traversal
     std::cout << timestamp << "Creating Grid..." << std::endl;
@@ -88,7 +88,7 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
                 uint32_t childAddr = pNode->get_child_addr(iChild);
                 depth++;
                 path[depth] = 0;
-                nodes[depth] = DAG::DagNode::conv(*nodeLevels[depth], childAddr);
+                nodes[depth] = Node::conv(*nodeLevels[depth], childAddr);
             }
         }
         else {
@@ -97,7 +97,7 @@ HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vecto
             if (!pNode->contains_child(iChild)) continue;
             uint32_t childAddr = pNode->get_child_addr(iChild);
             auto& leafLevel = *nodeLevels.back();
-            DAG::LeafCluster leafCluster(leafLevel[childAddr + 0], leafLevel[childAddr + 1]);
+            LeafCluster leafCluster(leafLevel[childAddr + 0], leafLevel[childAddr + 1]);
             
             // reconstruct morton code from path
             uint64_t mortonCode = 0;

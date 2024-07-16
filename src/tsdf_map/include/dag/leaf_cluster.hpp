@@ -8,11 +8,8 @@
 #include <sstream>
 #include <type_traits>
 //
-#include "/root/repo/src/tsdf/include/dag_constants.hpp"
-// #include "dag_structs.hpp"
+#include "constants.hpp"
 
-namespace DAG
-{
 struct LeafCluster {
     typedef uint64_t ClusterT;
     typedef std::make_signed_t<ClusterT> ClusterS;
@@ -139,5 +136,4 @@ struct LeafCluster {
     static constexpr ClusterT nBits = 8; // 1b sign, rest data
     static constexpr ClusterT leafMask = (1 << nBits) - 1; // mask for a single leaf
     static constexpr ClusterT range = leafMask / 2; // achievable range with data bits
-};  
 };

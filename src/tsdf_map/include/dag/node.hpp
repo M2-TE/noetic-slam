@@ -5,17 +5,17 @@
 #include <iostream>
 #include <vector>
 //
-#include "leaf_cluster.hpp"
+#include "dag/leaf_cluster.hpp"
 
-namespace DAG
-{
+// TODO: move this stuff out of hpp and into the dag class
+
 // pure helper struct, so no ctor/dtor
-struct DagNode {
-    DagNode() = delete;
-    ~DagNode() = delete;
+struct Node {
+    Node() = delete;
+    ~Node() = delete;
     // reinterpret an explicit node address
-    static DagNode* conv(std::vector<uint32_t>& data, uint32_t addr) {
-        return reinterpret_cast<DagNode*>(&data[addr]);
+    static Node* conv(std::vector<uint32_t>& data, uint32_t addr) {
+        return reinterpret_cast<Node*>(&data[addr]);
     }
     
     // check header mask for a specific child
@@ -61,4 +61,3 @@ struct DagNode {
     uint32_t header; // contains child flags and child count
     std::array<uint32_t, 8> children; // sparse and compacted
 };
-}

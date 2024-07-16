@@ -3,12 +3,7 @@
 #include <random>
 #include <iostream>
 
-// // VDBFusion (benchmarking)
-// #include <openvdb/openvdb.h>
-// #include <vdbfusion/VDBVolume.h>
-// #include <matplot/matplot.h>
-
-#include <Eigen/Eigen>
+// ros crap
 #include <ros/ros.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseArray.h>
@@ -21,17 +16,22 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/ply_io.h>
 //
+#include <Eigen/Eigen>
 #include "dlio_stuff.hpp"
-#include "dag_map.hpp"
+#include "dag/dag.hpp"
 
+// TODO: CLEAN UP DOCKERFILE CRAP
+// todo: separate source for vulkan stuff as well
+// todo: use fmt for logging
+// todo: move Dag::reconstruct into separate cpp file for faster compilation
 
-class TSDF_Node {
+class TSDFMap {
 public:
-    TSDF_Node(ros::NodeHandle nh) {
-        // subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/keyframe", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
-        subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDF_Node::callback_pcl_deskewed, this);
+    TSDFMap(ros::NodeHandle nh) {
+        subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/keyframe", queueSize, &TSDFMap::callback_pcl_deskewed, this);
+        // subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDFMap::callback_pcl_deskewed, this);
         
-        if (false) {
+        if (true) {
             // generate random point data
             std::vector<Eigen::Vector3f> points(100'000);
             std::random_device rd;
@@ -54,7 +54,7 @@ public:
                     point = pointd.cast<float>();
                     point += position;
                 }
-                dagMap.insert_scan(position, Eigen::Quaternionf::Identity(), points);
+                dag.insert_scan(position, Eigen::Quaternionf::Identity(), points);
             }
             // std::ofstream output;
             // output.open("sphere.ascii");
@@ -62,37 +62,15 @@ public:
             //     output << point.x() << ' ' << point.y() << ' ' << point.z() << '\n';
             // }
             // output.close();
-            // // benchmarking VDBFusion
-            // std::vector<Eigen::Vector3d> pointsD(100'000);
-            // std::uniform_real_distribution<double> disD(-10.0f, 10.0f);
-            // openvdb::initialize();
-            // vdbfusion::VDBVolume tsdf_volume(0.02, 0.06, true);
-            // Eigen::Vector3d origin(0.0, 0.0, 0.0);
-            // for (size_t i = 0; i < 10; i++) {
-            //     for (auto& point: pointsD) {
-            //         point = {
-            //             disD(gen),
-            //             disD(gen),
-            //             disD(gen)
-            //         };
-            //         // point.normalize();
-            //         // point *= 10.0f;
-            //     }
-            //     auto beg = std::chrono::steady_clock::now();
-            //     tsdf_volume.Integrate(pointsD, origin, [](float){return 1.0;});
-            //     auto end = std::chrono::steady_clock::now();
-            //     auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-            //     std::cout << "VDBFusion: " << dur << " ms" << std::endl;
-            // }
             
-            dagMap.print_stats();
-            dagMap.save_h5();
+            dag.print_stats();
+            dag.reconstruct();
             exit(0);
         }
     }
-    ~TSDF_Node() {
-        dagMap.print_stats();
-        dagMap.save_h5();
+    ~TSDFMap() {
+        dag.print_stats();
+        dag.reconstruct();
     }
 
 public:
@@ -109,30 +87,24 @@ public:
         }
         pointcloud.clear();
 
-        auto now = std::chrono::steady_clock::now();
-        prev = now;
-
         // insert into tsdf DAG
         Eigen::Vector3f position = {};
         Eigen::Quaternionf rotation = {};
         std::cout << "Inserting " << points.size() << " points.\n";
-        dagMap.insert_scan(position, rotation, points);
+        // dagMap.insert_scan(position, rotation, points);
     }
 
 private:
-    DAG::Map dagMap;
-    uint32_t queueSize = 300000;
+    Dag dag;
+    uint32_t queueSize = 100;
     ros::Subscriber subPath;
     ros::Subscriber subPcl;
-
-    // timers
-    std::chrono::time_point<std::chrono::steady_clock> prev;
 };
 
 int main(int argc, char **argv) {
-    ros::init(argc, argv, "tsdf_node");
+    ros::init(argc, argv, "tsdf_map_node");
     ros::NodeHandle nh;
-    TSDF_Node tsdfNode(nh);
+    TSDFMap node { nh };
     ros::spin();
     return 0;
 }

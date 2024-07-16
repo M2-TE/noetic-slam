@@ -36,6 +36,6 @@
 // #define _LVR2_RECONSTRUCTION_HASHGRID_H_
 
 // temporary
-// #include "/root/repo/src/tsdf/include/placeholder/HashGridDag.hpp"
+// #include "/root/repo/src/tsdf_map/include/placeholder/HashGridDag.hpp"
 // tbd
 // HashGrid(BoundingBox<BaseVecT> boundingBox, std::vector<std::vector<uint32_t>*>& nodeLevels, float voxelsize);
