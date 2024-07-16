@@ -52,9 +52,8 @@ namespace lvr2
 {
 
 template <typename BaseVecT, typename BoxT>
-HashGrid<BaseVecT, BoxT>::HashGrid(BoundingBox<BaseVecT> boundingBox, std::vector<std::vector<uint32_t>*>& nodeLevels, float voxelsize)
+HashGrid<BaseVecT, BoxT>::HashGrid(std::vector<std::vector<uint32_t>*>& nodeLevels, float voxelsize)
 {
-    m_boundingBox = boundingBox;
     m_globalIndex = 0;
     m_coordinateScales.x = 1.0;
     m_coordinateScales.y = 1.0;

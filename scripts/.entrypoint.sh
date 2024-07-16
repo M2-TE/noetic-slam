@@ -9,8 +9,7 @@ then
         -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=mold" \
         -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=mold"
     catkin build
-    source /root/repo/devel/setup.bash
-    bash
+    bash --rcfile <(echo "source /root/repo/devel/setup.bash")
 else
     echo "This script should not be used manually outside the container (or ever, really)"
     exit 1

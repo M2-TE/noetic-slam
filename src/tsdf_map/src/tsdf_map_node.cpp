@@ -20,13 +20,9 @@
 #include "dlio_stuff.hpp"
 #include "dag/dag.hpp"
 
-// TODO: CLEAN UP DOCKERFILE CRAP
 // todo: move headers to the places that need them
 // todo: separate source for vulkan stuff as well
 // todo: use fmt for logging
-// todo: replace weird param for lvr2 reconstruct hashgrid with the simple pointer to levels
-// todo: replace need for bounding box in hash grid ctor
-// todo: better wait stuff for mutexes/atomics during octree ctor and merge
 
 class TSDFMap {
 public:

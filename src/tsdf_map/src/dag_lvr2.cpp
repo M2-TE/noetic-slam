@@ -10,7 +10,6 @@
 #include "dag/node_levels.hpp"
 
 void Dag::reconstruct() {
-    lvr2::BoundingBox<lvr2::BaseVector<float>> boundingBox;
     std::vector<std::vector<uint32_t>*> nodeLevelRef;
     for (auto i = 0; i < 63/3; i++) nodeLevelRef.push_back(&node_levels[i].data);
     nodeLevelRef.push_back(&leaf_level->data);
@@ -23,12 +22,12 @@ void Dag::reconstruct() {
     lvr2::PMPMesh<VecT> mesh{};
     constexpr std::string_view decompositionType = "MC";
     if (decompositionType == "MC") {
-        auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::FastBox<VecT>>>(boundingBox, nodeLevelRef, leafResolution);
+        auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::FastBox<VecT>>>(nodeLevelRef, leafResolution);
         lvr2::FastReconstruction<VecT, lvr2::FastBox<VecT>> reconstruction(pGrid);
         reconstruction.getMesh(mesh);
     }
     else if (decompositionType == "PMC") {
-        auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::BilinearFastBox<VecT>>>(boundingBox, nodeLevelRef, leafResolution);
+        auto pGrid = std::make_shared<lvr2::HashGrid<VecT, lvr2::BilinearFastBox<VecT>>>(nodeLevelRef, leafResolution);
         lvr2::FastReconstruction<VecT, lvr2::BilinearFastBox<VecT>> reconstruction(pGrid);
         reconstruction.getMesh(mesh);
     }
