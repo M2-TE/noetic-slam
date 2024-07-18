@@ -9,6 +9,7 @@
 *.h5
 *.mtl
 *.obj
+*.grid
 
 # catkin build files
 .catkin_tools

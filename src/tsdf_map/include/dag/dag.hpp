@@ -24,4 +24,6 @@ private:
     // meta info about tree levels
     std::array<uint32_t, 63/3+1> uniques = {};
     std::array<uint32_t, 63/3+1> dupes = {};
+    // temporary:
+    std::vector<Eigen::Vector3f> grid_points;
 };

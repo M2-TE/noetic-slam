@@ -297,149 +297,149 @@ static void build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, 
     // if (tid == 0) exit(0);
 }
 static auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) -> Octree {
-			auto beg = std::chrono::steady_clock::now();
+    auto beg = std::chrono::steady_clock::now();
 
-			// round threads down to nearest power of two
-			uint32_t lz = __builtin_clz(std::thread::hardware_concurrency());
-			size_t nThreads = 1 << (32 - lz - 1);
-			// std::cout << "Using " << nThreads << " threads for trie ctor\n";
-			std::vector<std::thread> threads;
-			threads.reserve(nThreads);
-			std::vector<Octree> octrees(nThreads);
+    // round threads down to nearest power of two
+    uint32_t lz = __builtin_clz(std::thread::hardware_concurrency());
+    size_t nThreads = 1 << (32 - lz - 1);
+    // std::cout << "Using " << nThreads << " threads for trie ctor\n";
+    std::vector<std::thread> threads;
+    threads.reserve(nThreads);
+    std::vector<Octree> octrees(nThreads);
 
-			// thread groups throughout the stages
-			struct ThreadGroup {
-                // no sync needed
-				std::vector<Octree::Key> collisions;
-				std::array<Octree*, 2> trees;
-				uint32_t iLeadThread;
-				uint32_t collisionDepth;
-                // sync needed
-                std::unique_ptr<std::condition_variable> cv;
-                std::unique_ptr<std::mutex> mutex;
-                uint32_t nCompleted = 0;
-                bool bPrepared = false;
-			};
-			struct Stage {
-				uint32_t groupSize; // threads per group
-				std::vector<ThreadGroup> groups;
-			};
-			// calc number of total stages
-			uint32_t nStages = std::sqrt(nThreads);
-			std::vector<Stage> stages(nStages);
-			// prepare thread groups for each stage
-			for (uint32_t i = 0; i < nStages; i++) {
-				auto& stage = stages[i];
+    // thread groups throughout the stages
+    struct ThreadGroup {
+        // no sync needed
+        std::vector<Octree::Key> collisions;
+        std::array<Octree*, 2> trees;
+        uint32_t iLeadThread;
+        uint32_t collisionDepth;
+        // sync needed
+        std::unique_ptr<std::condition_variable> cv;
+        std::unique_ptr<std::mutex> mutex;
+        uint32_t nCompleted = 0;
+        bool bPrepared = false;
+    };
+    struct Stage {
+        uint32_t groupSize; // threads per group
+        std::vector<ThreadGroup> groups;
+    };
+    // calc number of total stages
+    uint32_t nStages = std::sqrt(nThreads);
+    std::vector<Stage> stages(nStages);
+    // prepare thread groups for each stage
+    for (uint32_t i = 0; i < nStages; i++) {
+        auto& stage = stages[i];
 
-				// figure out how many groups there are
-				stage.groupSize = 2 << i;
-				uint32_t nGroups = nThreads / stage.groupSize;
+        // figure out how many groups there are
+        stage.groupSize = 2 << i;
+        uint32_t nGroups = nThreads / stage.groupSize;
 
-				// fill each group with info data
-				stage.groups.resize(nGroups);
-				for (uint32_t iGrp = 0; iGrp < nGroups; iGrp++) {
-					auto& grp = stage.groups[iGrp];
-					grp.iLeadThread = iGrp * stage.groupSize;
-					grp.cv = std::make_unique<std::condition_variable>();
-					grp.mutex = std::make_unique<std::mutex>();
-				}
-			}
-			
-			// build smaller octrees on several threads
-			size_t progress = 0;
-			for (size_t id = 0; id < nThreads; id++) {
-				size_t nElements = points.size() / nThreads;
-				if (id == nThreads - 1) nElements = 0; // special value for final thread to read the rest
-				// build one octree per thread
-				threads.emplace_back([&points, &normals, &octrees, id, progress, nElements](){
-					auto pCur = points.cbegin() + progress;
-					auto pEnd = (nElements == 0) ? (points.cend()) : (pCur + nElements);
-					auto pNorm = normals.cbegin() + progress;
-					Octree& octree = octrees[id];
-					// Octree::PathCache cache(octree);
-					for (; pCur < pEnd; pCur++, pNorm++) {
-						const Eigen::Vector3f* inputPtr = &*pCur;
-						build_trie_whatnot(octree, inputPtr, *pNorm, id);
-					}
-				});
-				progress += nElements;
-			}
-			for (auto& thread: threads) thread.join();
-            threads.clear();
+        // fill each group with info data
+        stage.groups.resize(nGroups);
+        for (uint32_t iGrp = 0; iGrp < nGroups; iGrp++) {
+            auto& grp = stage.groups[iGrp];
+            grp.iLeadThread = iGrp * stage.groupSize;
+            grp.cv = std::make_unique<std::condition_variable>();
+            grp.mutex = std::make_unique<std::mutex>();
+        }
+    }
+    
+    // build smaller octrees on several threads
+    size_t progress = 0;
+    for (size_t id = 0; id < nThreads; id++) {
+        size_t nElements = points.size() / nThreads;
+        if (id == nThreads - 1) nElements = 0; // special value for final thread to read the rest
+        // build one octree per thread
+        threads.emplace_back([&points, &normals, &octrees, id, progress, nElements](){
+            auto pCur = points.cbegin() + progress;
+            auto pEnd = (nElements == 0) ? (points.cend()) : (pCur + nElements);
+            auto pNorm = normals.cbegin() + progress;
+            Octree& octree = octrees[id];
+            // Octree::PathCache cache(octree);
+            for (; pCur < pEnd; pCur++, pNorm++) {
+                const Eigen::Vector3f* inputPtr = &*pCur;
+                build_trie_whatnot(octree, inputPtr, *pNorm, id);
+            }
+        });
+        progress += nElements;
+    }
+    for (auto& thread: threads) thread.join();
+    threads.clear();
 
-			auto end = std::chrono::steady_clock::now();
-			auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
-            std::cout << "trie ctor " << dur << '\n';
-			
-			// merge the smaller octrees into one
-			beg = std::chrono::steady_clock::now();
-			for (size_t id = 0; id < nThreads; id++) {
-				threads.emplace_back([&octrees, &stages, id]() {
-					// combine octrees via multiple stages using thread groups
-					for (uint32_t iStage = 0; iStage < stages.size(); iStage++) {
-						auto& stage = stages[iStage];
-						uint32_t iGrp = id / stage.groupSize;
-						uint32_t iLocal = id % stage.groupSize; // block-local index
-						auto& grp = stage.groups[iGrp];
+    auto end = std::chrono::steady_clock::now();
+    auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+    std::cout << "trie ctor " << dur << '\n';
+    
+    // merge the smaller octrees into one
+    beg = std::chrono::steady_clock::now();
+    for (size_t id = 0; id < nThreads; id++) {
+        threads.emplace_back([&octrees, &stages, id]() {
+            // combine octrees via multiple stages using thread groups
+            for (uint32_t iStage = 0; iStage < stages.size(); iStage++) {
+                auto& stage = stages[iStage];
+                uint32_t iGrp = id / stage.groupSize;
+                uint32_t iLocal = id % stage.groupSize; // block-local index
+                auto& grp = stage.groups[iGrp];
 
-						if (grp.iLeadThread == id) { // leader thread
-							// wait for all dependent groups to finish
-							if (iStage > 0) {
-								auto& prevStage = stages[iStage - 1];
-								uint32_t iPrevGrp = id / prevStage.groupSize;
-								auto& grpA = prevStage.groups[iPrevGrp];
-								auto& grpB = prevStage.groups[iPrevGrp + 1];
-								uint8_t res = 0;
-								// wait for group A to be done
-                                std::unique_lock lockA(*grpA.mutex);
-                                grpA.cv->wait(lockA, [&]{ return grpA.nCompleted >= prevStage.groupSize; });
-                                lockA.release();
-								// wait for group B to be done
-                                std::unique_lock lockB(*grpB.mutex);
-                                grpB.cv->wait(lockB, [&]{ return grpB.nCompleted >= prevStage.groupSize; });
-                                lockB.release();
-							}
-							// set up pointers for group trees
-							grp.trees[0] = &octrees[id];
-							grp.trees[1] = &octrees[id + stage.groupSize/2];
+                if (grp.iLeadThread == id) { // leader thread
+                    // wait for all dependent groups to finish
+                    if (iStage > 0) {
+                        auto& prevStage = stages[iStage - 1];
+                        uint32_t iPrevGrp = id / prevStage.groupSize;
+                        auto& grpA = prevStage.groups[iPrevGrp];
+                        auto& grpB = prevStage.groups[iPrevGrp + 1];
+                        uint8_t res = 0;
+                        // wait for group A to be done
+                        std::unique_lock lockA(*grpA.mutex);
+                        grpA.cv->wait(lockA, [&]{ return grpA.nCompleted >= prevStage.groupSize; });
+                        lockA.release();
+                        // wait for group B to be done
+                        std::unique_lock lockB(*grpB.mutex);
+                        grpB.cv->wait(lockB, [&]{ return grpB.nCompleted >= prevStage.groupSize; });
+                        lockB.release();
+                    }
+                    // set up pointers for group trees
+                    grp.trees[0] = &octrees[id];
+                    grp.trees[1] = &octrees[id + stage.groupSize/2];
 
-							// in order to keep a balanced load, have N collisions per thread
-							uint32_t nTargetCollisions = stage.groupSize;
-							std::tie(grp.collisions, grp.collisionDepth) = grp.trees[0]->merge(*grp.trees[1], nTargetCollisions);
+                    // in order to keep a balanced load, have N collisions per thread
+                    uint32_t nTargetCollisions = stage.groupSize;
+                    std::tie(grp.collisions, grp.collisionDepth) = grp.trees[0]->merge(*grp.trees[1], nTargetCollisions);
 
-							// signal that this group thread is fully prepared
-                            grp.mutex->lock();
-                            grp.bPrepared = true;
-                            grp.mutex->unlock();
-                            grp.cv->notify_all();
-						}
-                        // wait until the octree is ready to be worked on
-                        std::unique_lock lock(*grp.mutex);
-                        grp.cv->wait(lock, [&]{ return grp.bPrepared; });
-                        lock.unlock();
-                        
-						// resolve assigned collisions
-						uint32_t colIndex = iLocal;
-						while (colIndex < grp.collisions.size()) {
-							grp.trees[0]->merge(*grp.trees[1], grp.collisions[colIndex], grp.collisionDepth);
-							colIndex += stage.groupSize;
-						}
-						// increment completion counter
-                        grp.mutex->lock();
-                        grp.nCompleted++;
-                        grp.mutex->unlock();
-                        grp.cv->notify_one();
-					}
-				});
-			}
-			for (auto& thread: threads) thread.join();
-            threads.clear();
+                    // signal that this group thread is fully prepared
+                    grp.mutex->lock();
+                    grp.bPrepared = true;
+                    grp.mutex->unlock();
+                    grp.cv->notify_all();
+                }
+                // wait until the octree is ready to be worked on
+                std::unique_lock lock(*grp.mutex);
+                grp.cv->wait(lock, [&]{ return grp.bPrepared; });
+                lock.unlock();
+                
+                // resolve assigned collisions
+                uint32_t colIndex = iLocal;
+                while (colIndex < grp.collisions.size()) {
+                    grp.trees[0]->merge(*grp.trees[1], grp.collisions[colIndex], grp.collisionDepth);
+                    colIndex += stage.groupSize;
+                }
+                // increment completion counter
+                grp.mutex->lock();
+                grp.nCompleted++;
+                grp.mutex->unlock();
+                grp.cv->notify_one();
+            }
+        });
+    }
+    for (auto& thread: threads) thread.join();
+    threads.clear();
 
-			end = std::chrono::steady_clock::now();
-			dur = std::chrono::duration<double, std::milli> (end - beg).count();
-            std::cout << "trie merg " << dur << '\n';
-			return std::move(octrees[0]);
-		}
+    end = std::chrono::steady_clock::now();
+    dur = std::chrono::duration<double, std::milli> (end - beg).count();
+    std::cout << "trie merg " << dur << '\n';
+    return std::move(octrees[0]);
+}
 
 Dag::Dag() {
     // create node levels
@@ -470,6 +470,9 @@ void Dag::insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std
     auto end = std::chrono::steady_clock::now();
     auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
     std::cout << "full  dur " << dur << '\n';
+    
+    // add points to large points vector
+    grid_points.insert(grid_points.end(), points.cbegin(), points.cend());
 }
 void Dag::print_stats() {
     size_t nUniques = 0;
