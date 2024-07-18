@@ -40,7 +40,7 @@ target_include_directories(tsdf_map_node PRIVATE
     "include/"
     "ext/phmap/"
     "ext/lvr2/include/"
-    "ext/morton-nd/include/"
+    "ext/mortonnd/include/"
     "ext/lvr2/ext/HighFive/include/"
     "${HDF5_CXX_INCLUDE_DIRS}"
     "${OpenCV_INCLUDE_DIRS}"
