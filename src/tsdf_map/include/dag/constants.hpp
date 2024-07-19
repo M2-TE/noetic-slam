@@ -10,7 +10,7 @@ struct MortonIndex { Eigen::Vector3f point; uint32_t index; };
 struct Pose { Eigen::Vector3f pos; Eigen::Quaternionf rot; };
 struct Scan { Pose pose; std::vector<NodeIndex> roots; };
 
-static constexpr double leafResolution = 0.05; // voxel size
+static constexpr double leafResolution = 0.1; // voxel size
 static constexpr uint32_t nDagLevels = 63/3; // number of DAG levels including root and leaf clusters (excluding leaves)
 static constexpr uint32_t nAllLevels = nDagLevels + 1; // nDagLevels including implicit leaf depth
 static constexpr std::array<uint32_t, nAllLevels> get_sizes() {

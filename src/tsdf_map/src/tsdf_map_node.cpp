@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cstddef>
 #include <fstream>
 #include <random>
 #include <iostream>
@@ -30,7 +31,7 @@ public:
         subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/keyframe", queueSize, &TSDFMap::callback_pcl_deskewed, this);
         // subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDFMap::callback_pcl_deskewed, this);
         
-        if (true) {
+        if (false) {
             // generate random point data
             std::vector<Eigen::Vector3f> points(100'000);
             std::random_device rd;
@@ -66,8 +67,36 @@ public:
             dag.reconstruct();
             exit(0);
         }
+        else if (true) {
+            
+            std::ifstream file;
+            file.open("debugpoints.bin", std::ofstream::binary);
+            size_t n_points;
+            file.read(reinterpret_cast<char*>(&n_points), sizeof(size_t));
+            std::vector<Eigen::Vector3f> points(n_points);
+            for (auto& point: points) {
+                file.read(reinterpret_cast<char*>(&point), sizeof(Eigen::Vector3f));
+            }
+            Eigen::Vector3f position { 0, 0, 0 };
+            dag.insert_scan(position, Eigen::Quaternionf::Identity(), points);
+            
+            dag.print_stats();
+            dag.reconstruct();
+            exit(0);
+        }
     }
     ~TSDFMap() {
+        if (false) {
+            std::ofstream file;
+            file.open("debugpoints.bin", std::ofstream::binary | std::ofstream::trunc);
+            size_t n_points = ALL_POINTS_DEBUG.size();
+            file.write(reinterpret_cast<char*>(&n_points), sizeof(size_t));
+            for (auto& point: ALL_POINTS_DEBUG) {
+                file.write(reinterpret_cast<char*>(&point), sizeof(Eigen::Vector3f));
+            }
+            std::cout << "Wrote points to debugpoints.bin\n";
+        }
+        
         dag.print_stats();
         dag.reconstruct();
     }
@@ -90,7 +119,20 @@ public:
         Eigen::Vector3f position = {};
         Eigen::Quaternionf rotation = {};
         std::cout << "Inserting " << points.size() << " points.\n";
-        // dagMap.insert_scan(position, rotation, points);
+        
+        // write raw points to file for debug purposes
+        if (false) {
+            ALL_POINTS_DEBUG.insert(ALL_POINTS_DEBUG.end(), points.cbegin(), points.cend());
+        }
+        
+        // dag.insert_scan(position, rotation, points);
+        
+        // DEBUG
+        if (false) {
+            dag.print_stats();
+            dag.reconstruct();
+            exit(0);
+        }
     }
 
 private:
@@ -98,6 +140,7 @@ private:
     uint32_t queueSize = 100;
     ros::Subscriber subPath;
     ros::Subscriber subPcl;
+    std::vector<Eigen::Vector3f> ALL_POINTS_DEBUG;
 };
 
 int main(int argc, char **argv) {

@@ -10,6 +10,7 @@
 *.mtl
 *.obj
 *.grid
+*.bin
 
 # catkin build files
 .catkin_tools
