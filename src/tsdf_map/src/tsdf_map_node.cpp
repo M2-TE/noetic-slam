@@ -31,7 +31,7 @@ public:
         subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/keyframe", queueSize, &TSDFMap::callback_pcl_deskewed, this);
         // subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDFMap::callback_pcl_deskewed, this);
         
-        if (false) {
+        if (true) {
             // generate random point data
             std::vector<Eigen::Vector3f> points(100'000);
             std::random_device rd;
@@ -67,7 +67,7 @@ public:
             dag.reconstruct();
             exit(0);
         }
-        else if (true) {
+        else if (false) {
             
             std::ifstream file;
             file.open("debugpoints.bin", std::ofstream::binary);
