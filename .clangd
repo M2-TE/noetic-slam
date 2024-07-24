@@ -1,9 +1,9 @@
 CompileFlags:
-    CompilationDatabase: build/tsdf
+    CompilationDatabase: build/tsdf_map
     Add: [
-        --include-directory=src/tsdf/include/,
-        --include-directory=src/tsdf/ext/phmap/,
-        --include-directory=src/tsdf/ext/morton-nd/include/,
-        --include-directory=src/tsdf/ext/lvr2/include/,
-        --include-directory=src/tsdf/ext/lvr2/ext/HighFive/include/,
+        --include-directory=src/tsdf_map/include/,
+        --include-directory=src/tsdf_map/ext/phmap/,
+        --include-directory=src/tsdf_map/ext/mortonnd/include/,
+        --include-directory=src/tsdf_map/ext/lvr2/include/,
+        --include-directory=src/tsdf_map/ext/lvr2/ext/HighFive/include/,
     ]
