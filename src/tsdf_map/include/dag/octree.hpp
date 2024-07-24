@@ -1,6 +1,8 @@
 #pragma once
+#include <algorithm>
 #include <array>
 #include <bitset>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -302,19 +304,58 @@ struct Octree {
                             for (int32_t x = 0; x <= 1; x++, iLeaf++) {
                                 Eigen::Vector3i leafChunk = cluster_chunk + Eigen::Vector3i(x, y, z);
                                 Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
-                                
-                                // assign the closest point to leaf
-                                const Eigen::Vector3f*& closestPoint_a = leafPoints_a->leafPoints[iLeaf];
-                                const Eigen::Vector3f*& closestPoint_b = leafPoints_b->leafPoints[iLeaf];
-                                
+
+                                // get clusters of closest points to this leaf
+                                Node* closestPoints_a = leafPoints_a->children[iLeaf];
+                                Node* closestPoints_b = leafPoints_b->children[iLeaf];
+
                                 // check validity of pointer
-                                if (closestPoint_b == nullptr) continue;
-                                else if (closestPoint_a == nullptr) closestPoint_a = closestPoint_b;
+                                if (closestPoints_b == nullptr) continue;
+                                else if (closestPoints_a == nullptr) {
+                                    closestPoints_a = closestPoints_b;
+                                    continue;
+                                }
                                 
-                                float distSqr_a = (*closestPoint_a - leafPos).squaredNorm();
-                                float distSqr_b = (*closestPoint_b - leafPos).squaredNorm();
-                                // overwrite a if b is closer
-                                if (distSqr_b < distSqr_a) closestPoint_a = closestPoint_b;
+                                // count total children in both leaves
+                                std::vector<const Eigen::Vector3f*> children;
+                                children.reserve(closestPoints_a->leafPoints.size() * 2);
+                                for (uint32_t i = 0; i < closestPoints_a->leafPoints.size(); i++) {
+                                    if (closestPoints_a->leafPoints[i] != nullptr) {
+                                        children.push_back(closestPoints_a->leafPoints[i]);
+                                    }
+                                    if (closestPoints_b->leafPoints[i] != nullptr) {
+                                        children.push_back(closestPoints_b->leafPoints[i]);
+                                    }
+                                }
+
+                                // simply merge if they fit
+                                if (children.size() <= closestPoints_a->leafPoints.size()) {
+                                    // refill with merged children
+                                    for (std::size_t i = 0; i < children.size(); i++) {
+                                        closestPoints_a->leafPoints[i] = children[i];
+                                    }
+                                }
+                                // merge only closest points if not
+                                else {
+                                    // calc distances for each point to this leaf
+                                    typedef std::pair<const Eigen::Vector3f*, float> PairedDist;
+                                    std::vector<PairedDist> distances;
+                                    distances.reserve(children.size());
+                                    for (std::size_t i = 0; i < children.size(); i++) {
+                                        float distSqr = (*children[i] - leafPos).squaredNorm();
+                                        distances.emplace_back(children[i], distSqr);
+                                    }
+                                    // sort via distances
+                                    auto sort_fnc = [](PairedDist& a, PairedDist& b){
+                                        return a.second < b.second;
+                                    };
+                                    std::sort(distances.begin(), distances.end(), sort_fnc);
+
+                                    // insert the 8 closest points into a
+                                    for (std::size_t i = 0; i < closestPoints_a->leafPoints.size(); i++) {
+                                        closestPoints_a->leafPoints[i] = distances[i].first;
+                                    }
+                                }
                             }
                         }
                     }

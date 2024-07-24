@@ -275,14 +275,38 @@ static void build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, 
                                         
                                         // if valid, calc real position of leaf
                                         Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
-                                        
-                                        // assign the closest point to leaf
-                                        const Eigen::Vector3f*& closestPoint = cluster->leafPoints[iLeaf];
-                                        if (closestPoint == nullptr) closestPoint = inputPos;
+                                        float distSqr = (*inputPos - leafPos).squaredNorm();
+
+                                        // add to point to the leaf's closest points
+                                        Octree::Node* closestPoints = cluster->children[iLeaf];
+                                        // if not a single point landed on leaf, create new array for potential candidates
+                                        if (closestPoints == nullptr) {
+                                            closestPoints = octree.allocate_misc_node();
+                                            cluster->children[iLeaf] = closestPoints;
+                                            closestPoints->leafPoints[0] = inputPos;
+                                        }
+                                        // add as a candidate for signed distance
                                         else {
-                                            float distSqr = (*inputPos - leafPos).squaredNorm();
-                                            float distSqrOther = (*closestPoint - leafPos).squaredNorm();
-                                            if (distSqr < distSqrOther) closestPoint = inputPos;
+                                            // check to see if theres a free spot (8 points per leaf max)
+                                            float furthest_distance = 0.0f;
+                                            uint32_t furthest_distance_index = 0;
+                                            uint32_t i = 0;
+                                            for (; i < closestPoints->leafPoints.size(); i++) {
+                                                if (closestPoints->leafPoints[i] == nullptr) break;
+                                                // calc distance to find furthest point that can be replaced
+                                                float dist_sqr = (*closestPoints->leafPoints[i] - leafPos).squaredNorm();
+                                                if (dist_sqr > furthest_distance) {
+                                                    furthest_distance = dist_sqr;
+                                                    furthest_distance_index = i;
+                                                }
+                                            }
+                                            // found an empty spot
+                                            if (i < closestPoints->leafPoints.size()) closestPoints->leafPoints[i] = inputPos;
+                                            // replace spot with furthest point if its further than this point
+                                            else if (distSqr < furthest_distance) {
+                                                closestPoints->leafPoints[furthest_distance_index] = inputPos;
+                                            }
+                                            // else discard point for this leaf
                                         }
                                     }
                                 }
@@ -591,18 +615,29 @@ auto Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, st
                         // actual leaf position
                         Eigen::Vector3i leafChunk = cluster_chunk + Eigen::Vector3i(x, y, z);
                         Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
-                        const Eigen::Vector3f* nearestPoint = clusterPoints->leafPoints[iLeaf];
-                        
+
                         // store leaf validity
-                        leaves[iLeaf].second = nearestPoint != nullptr;
+                        Octree::Node* nearestPoints = clusterPoints->children[iLeaf];
+                        leaves[iLeaf].second = nearestPoints != nullptr;
                         if (!leaves[iLeaf].second) continue;
-                        
-                        // check if point is too far away from leaf
-                        Eigen::Vector3f diff = leafPos - *nearestPoint;
-                        // calculate signed distance for current leaf
-                        size_t index = nearestPoint - points.data();
-                        float signedDistance = normals[index].dot(diff);
-                        leaves[iLeaf].first = signedDistance;
+
+                        // calc signed distance for all close points and somehow merge them
+                        float signedDistances = 0.0f;
+                        size_t count = 0;
+                        for (std::size_t i = 0; i < nearestPoints->leafPoints.size(); i++) {
+                            const Eigen::Vector3f* point = nearestPoints->leafPoints[i];
+                            if (point == nullptr) break;
+                            // calc actual index of point
+                            size_t index = point - points.data();
+                            // vector from point to leaf
+                            Eigen::Vector3f diff = leafPos - *point;
+                            // calculate signed distance for current leaf
+                            float signedDistance = normals[index].dot(diff);
+                            // emplace into leaf cluster
+                            signedDistances += signedDistance;
+                        }
+                        // simple average for now
+                        leaves[iLeaf].first = signedDistances / count;
                     }
                 }
             }
@@ -628,7 +663,6 @@ auto Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, st
             }
         }
     }
-    
     auto end = std::chrono::steady_clock::now();
     auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
     std::cout << "dag  ctor " << dur << '\n';
