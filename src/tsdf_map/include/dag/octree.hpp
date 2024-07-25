@@ -306,8 +306,8 @@ struct Octree {
                                 Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
 
                                 // get clusters of closest points to this leaf
-                                Node* closestPoints_a = leafPoints_a->children[iLeaf];
-                                Node* closestPoints_b = leafPoints_b->children[iLeaf];
+                                Node*& closestPoints_a = leafPoints_a->children[iLeaf];
+                                Node*& closestPoints_b = leafPoints_b->children[iLeaf];
 
                                 // check validity of pointer
                                 if (closestPoints_b == nullptr) continue;
@@ -315,15 +315,6 @@ struct Octree {
                                     closestPoints_a = closestPoints_b;
                                     continue;
                                 }
-
-                                // DEBUG BEG
-                                float dist_a = (*closestPoints_a->leafPoints[0] - leafPos).squaredNorm();
-                                float dist_b = (*closestPoints_b->leafPoints[0] - leafPos).squaredNorm();
-                                if (dist_b < dist_a) {
-                                    closestPoints_a = closestPoints_b;
-                                }
-                                continue;
-                                // DEBUG END
                                 
                                 // count total children in both leaves
                                 std::vector<const Eigen::Vector3f*> children;

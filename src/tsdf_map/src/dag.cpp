@@ -288,20 +288,12 @@ static void build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, 
                                         // if not a single point landed on leaf yet, create new array for potential candidates
                                         if (closestPoints == nullptr) {
                                             closestPoints = octree.allocate_misc_node();
-                                            cluster->children[iLeaf] = closestPoints;
                                             closestPoints->leafPoints[0] = inputPos;
+                                            cluster->children[iLeaf] = closestPoints;
                                         }
                                         // add as a candidate for signed distance
                                         else {
                                             float distSqr = (*inputPos - leafPos).squaredNorm();
-                                            // DEBUG BEG
-                                            auto* pointOther = closestPoints->leafPoints[0];
-                                            float distSqrOther = (*pointOther - leafPos).squaredNorm();
-                                            if (distSqr < distSqrOther) {
-                                                closestPoints->leafPoints[0] = inputPos;
-                                            }
-                                            continue;
-                                            // DEBUG END
                                             // check to see if theres a free spot (8 points per leaf max)
                                             float furthest_distance = 0.0f;
                                             uint32_t furthest_distance_index = 0;
