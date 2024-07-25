@@ -1,10 +1,8 @@
 #include "dag/dag.hpp"
 //
 #include <algorithm>
-#include <atomic>
 #include <bitset>
 #include <execution>
-#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -15,7 +13,6 @@
 #include <vector>
 #include <array>
 #include <cmath>
-#include <span>
 #include <thread>
 #include <condition_variable>
 #include <parallel/algorithm>
@@ -29,6 +26,16 @@
 #include "dag/node_levels.hpp"
 #include "dag/octree.hpp"
 #include "dag/node.hpp"
+
+namespace std {
+    auto to_string(Eigen::Vector3f vec) -> std::string {
+        std::ostringstream oss;
+        oss << vec.x() << ' ';
+        oss << vec.y() << ' ';
+        oss << vec.z();
+        return oss.str();
+    }
+}
 
 // todo: move static funcs to separate headers and move needed header files with them
 static void sort_points(std::vector<Eigen::Vector3f>& points, std::vector<std::pair<MortonCode, Eigen::Vector3f>>& mortonCodes) {
@@ -275,11 +282,10 @@ static void build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, 
                                         
                                         // if valid, calc real position of leaf
                                         Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
-                                        float distSqr = (*inputPos - leafPos).squaredNorm();
 
                                         // add to point to the leaf's closest points
                                         Octree::Node* closestPoints = cluster->children[iLeaf];
-                                        // if not a single point landed on leaf, create new array for potential candidates
+                                        // if not a single point landed on leaf yet, create new array for potential candidates
                                         if (closestPoints == nullptr) {
                                             closestPoints = octree.allocate_misc_node();
                                             cluster->children[iLeaf] = closestPoints;
@@ -287,6 +293,15 @@ static void build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, 
                                         }
                                         // add as a candidate for signed distance
                                         else {
+                                            float distSqr = (*inputPos - leafPos).squaredNorm();
+                                            // DEBUG BEG
+                                            auto* pointOther = closestPoints->leafPoints[0];
+                                            float distSqrOther = (*pointOther - leafPos).squaredNorm();
+                                            if (distSqr < distSqrOther) {
+                                                closestPoints->leafPoints[0] = inputPos;
+                                            }
+                                            continue;
+                                            // DEBUG END
                                             // check to see if theres a free spot (8 points per leaf max)
                                             float furthest_distance = 0.0f;
                                             uint32_t furthest_distance_index = 0;
@@ -465,6 +480,7 @@ static auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Ve
     return std::move(octrees[0]);
 }
 
+
 Dag::Dag() {
     // create node levels
     node_levels = new NodeLevel[63/3];
@@ -627,14 +643,16 @@ auto Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, st
                         for (std::size_t i = 0; i < nearestPoints->leafPoints.size(); i++) {
                             const Eigen::Vector3f* point = nearestPoints->leafPoints[i];
                             if (point == nullptr) break;
-                            // calc actual index of point
+                            // calc actual index of point to get corresponding normal
                             size_t index = point - points.data();
+                            Eigen::Vector3f& normal = normals[index];
                             // vector from point to leaf
-                            Eigen::Vector3f diff = leafPos - *point;
+                            Eigen::Vector3f diff = *point - leafPos;
                             // calculate signed distance for current leaf
-                            float signedDistance = normals[index].dot(diff);
+                            float signedDistance = normal.dot(diff);
                             // emplace into leaf cluster
                             signedDistances += signedDistance;
+                            count++;
                         }
                         // simple average for now
                         leaves[iLeaf].first = signedDistances / count;
