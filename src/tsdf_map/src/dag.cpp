@@ -632,12 +632,19 @@ auto Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, st
                         // calc signed distance for all close points and somehow merge them
                         float signedDistances = 0.0f;
                         size_t count = 0;
+
+                        //
+                        Eigen::Vector3f avg_pos = {0, 0, 0};
+                        Eigen::Vector3f avg_norm = {0, 0, 0};
+                        //
                         for (std::size_t i = 0; i < nearestPoints->leafPoints.size(); i++) {
                             const Eigen::Vector3f* point = nearestPoints->leafPoints[i];
                             if (point == nullptr) break;
                             // calc actual index of point to get corresponding normal
                             size_t index = point - points.data();
                             Eigen::Vector3f& normal = normals[index];
+                            avg_pos += *point;
+                            avg_norm += normal;
                             // vector from point to leaf
                             Eigen::Vector3f diff = *point - leafPos;
                             // calculate signed distance for current leaf
@@ -647,7 +654,12 @@ auto Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, st
                             count++;
                         }
                         // simple average for now
-                        leaves[iLeaf].first = signedDistances / count;
+                        leaves[iLeaf].first = signedDistances / (float)count;
+                        avg_pos /= (float)count;
+                        avg_norm /= (float)count;
+                        Eigen::Vector3f diff = avg_pos - leafPos;
+                        leaves[iLeaf].first = avg_norm.dot(diff);
+
                     }
                 }
             }

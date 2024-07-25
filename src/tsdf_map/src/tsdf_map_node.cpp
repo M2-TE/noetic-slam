@@ -46,13 +46,15 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(Point,
     (float, time, time)
     (double, timestamp, timestamp))
 
+bool DEBUG_RECORD_POINTS = false;
+
 class TSDFMap {
 public:
     TSDFMap(ros::NodeHandle nh) {
         subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/keyframe", queueSize, &TSDFMap::callback_pcl_deskewed, this);
         // subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDFMap::callback_pcl_deskewed, this);
         
-        if (true) {
+        if (false) {
             // generate random point data
             std::vector<Eigen::Vector3f> points(100'000);
             std::random_device rd;
@@ -107,7 +109,7 @@ public:
         }
     }
     ~TSDFMap() {
-        if (false) {
+        if (DEBUG_RECORD_POINTS) {
             std::ofstream file;
             file.open("debugpoints.bin", std::ofstream::binary | std::ofstream::trunc);
             size_t n_points = ALL_POINTS_DEBUG.size();
@@ -142,7 +144,7 @@ public:
         std::cout << "Inserting " << points.size() << " points.\n";
         
         // write raw points to file for debug purposes
-        if (false) {
+        if (DEBUG_RECORD_POINTS) {
             ALL_POINTS_DEBUG.insert(ALL_POINTS_DEBUG.end(), points.cbegin(), points.cend());
         }
         
