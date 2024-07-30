@@ -1,5 +1,7 @@
 #!/bin/bash
-
+if [ -z $ROS_DISTRO ]; then
+    ROS_DISTRO="null"
+fi
 if [ $ROS_DISTRO = "noetic" ]; then
     source /opt/ros/noetic/setup.bash
     source ${SCRIPT_DIR}/../devel/setup.bash
