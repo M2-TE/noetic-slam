@@ -28,7 +28,7 @@ private:
             //     case 7: hash = phmap::HashState::combine(0, data[key + 0], data[key + 1], data[key + 2], data[key + 3], data[key + 4], data[key + 5], data[key + 6], data[key + 7]); break;
             //     case 8: hash = phmap::HashState::combine(0, data[key + 0], data[key + 1], data[key + 2], data[key + 3], data[key + 4], data[key + 5], data[key + 6], data[key + 7], data[key + 8]); break;
             // }
-            for (uint8_t i = 0; i <= nChildren; i++) {
+            for (uint8_t i = 1; i <= nChildren; i++) {
                 hash = phmap::HashState::combine(hash, data[key + i]);
             }
             return hash;
