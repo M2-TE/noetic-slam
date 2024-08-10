@@ -201,7 +201,6 @@ static auto calc_normals(Pose pose, std::vector<std::pair<MortonCode, Eigen::Vec
                 // figure out index of point
                 size_t index = it_point - mortonCodes.cbegin();
                 normals[index] = normal;
-                // normals[index] = point.normalized();
             }
         }
     };
@@ -232,19 +231,18 @@ static auto calc_normals(Pose pose, std::vector<std::pair<MortonCode, Eigen::Vec
     std::cout << "norm calc " << dur << '\n';
     return normals;
 }
-static void build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, Eigen::Vector3f inputNorm/*deprecated*/, uint32_t tid) {
+static void build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, uint32_t tid) {
     // convert to chunk position
     Eigen::Vector3f v = *inputPos * (1.0 / leafResolution);
     // properly floor instead of relying on float => int conversion
     v = v.unaryExpr([](float f){ return std::floor(f); });
     Eigen::Vector3i center_clusterChunk = v.cast<int32_t>();
-    // %4 to get the chunk with 4x4x4 leaf clusters
-    Eigen::Vector3i base_clusterChunk = center_clusterChunk.unaryExpr([](int32_t val) { return val - val%4; });
-    
     // set constraints for which leaf clusters get created
     Eigen::Vector3i min = center_clusterChunk + Eigen::Vector3i(-1, -1, -1);
     Eigen::Vector3i max = center_clusterChunk + Eigen::Vector3i(+2, +2, +2);
     
+    // %4 to get the chunk with 4x4x4 leaf clusters
+    Eigen::Vector3i base_clusterChunk = center_clusterChunk.unaryExpr([](int32_t val) { return val - val%4; });
     // fill large 3x3x3 neighbourhood around point with signed distances. Most will be discarded
     for (int32_t z4 = -4; z4 <= +4; z4 += 4) {
         for (int32_t y4 = -4; y4 <= +4; y4 += 4) {
@@ -327,7 +325,7 @@ static void build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, 
     }
     // if (tid == 0) exit(0);
 }
-static auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Vector3f>& normals) -> Octree {
+static auto get_trie(std::vector<Eigen::Vector3f>& points) -> Octree {
     auto beg = std::chrono::steady_clock::now();
 
     // round threads down to nearest power of two
@@ -382,15 +380,14 @@ static auto get_trie(std::vector<Eigen::Vector3f>& points, std::vector<Eigen::Ve
         size_t nElements = points.size() / nThreads;
         if (id == nThreads - 1) nElements = 0; // special value for final thread to read the rest
         // build one octree per thread
-        threads.emplace_back([&points, &normals, &octrees, id, progress, nElements](){
+        threads.emplace_back([&points, &octrees, id, progress, nElements](){
             auto pCur = points.cbegin() + progress;
             auto pEnd = (nElements == 0) ? (points.cend()) : (pCur + nElements);
-            auto pNorm = normals.cbegin() + progress;
             Octree& octree = octrees[id];
             // Octree::PathCache cache(octree);
-            for (; pCur < pEnd; pCur++, pNorm++) {
+            for (; pCur < pEnd; pCur++) {
                 const Eigen::Vector3f* inputPtr = &*pCur;
-                build_trie_whatnot(octree, inputPtr, *pNorm, id);
+                build_trie_whatnot(octree, inputPtr, id);
             }
         });
         progress += nElements;
@@ -495,7 +492,7 @@ void Dag::insert_scan(Eigen::Vector3f position, Eigen::Quaternionf rotation, std
     auto mortonCodes = calc_morton(points);
     sort_points(points, mortonCodes);
     auto normals = calc_normals(pose, mortonCodes);
-    auto octree = get_trie(points, normals);
+    auto octree = get_trie(points);
     auto dagAddr = insert_octree(octree, points, normals);
     merge_dag(dagAddr);
 
@@ -654,7 +651,7 @@ auto Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, st
                             count++;
                         }
                         // simple average for now
-                        leaves[iLeaf].first = signedDistances / (float)count;
+                        // leaves[iLeaf].first = signedDistances / (float)count;
                         avg_pos /= (float)count;
                         avg_norm /= (float)count;
                         Eigen::Vector3f diff = avg_pos - leafPos;

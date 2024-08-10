@@ -60,7 +60,6 @@ HashGrid<BaseVecT, BoxT>::HashGrid(std::vector<std::vector<uint32_t>*>& nodeLeve
     m_coordinateScales.z = 1.0;
     m_voxelsize = voxelsize;
     BoxT::m_voxelsize = m_voxelsize;
-    // calcIndices();
 
     std::cout << "-> Constructing HashGrid from hashDAG" << std::endl;
 
