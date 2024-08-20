@@ -39,14 +39,20 @@ private:
         CompFunctor(std::vector<uint32_t>* pData): pData(pData) {}
         inline bool operator()(uint32_t keyA, uint32_t keyB) const noexcept {
             std::vector<uint32_t>& data = *pData;
+
+            // compare node headers
+            if (data[keyA] != data[keyB]) {
+                return false;
+            }
+
             // count children
             // uint8_t nChildren = std::popcount<uint8_t>(data[keyB]);
             uint32_t nChildren = data[keyB] >> 8;
             // compare entire node
             int cmp = std::memcmp(
-                &data[keyA],
-                &data[keyB],
-                nChildren * sizeof(uint32_t) + sizeof(uint32_t));
+                &data[keyA + 1],
+                &data[keyB + 1],
+                nChildren * sizeof(uint32_t));
             return cmp == 0;
         }
         std::vector<uint32_t>* pData; // non-owning pointer to raw data array
@@ -61,5 +67,5 @@ struct LeafLevel {
     typedef uint32_t LeafIndex; // index into data array
     LeafLevel(): hashMap(), data(1, 0) {}
     phmap::parallel_flat_hash_map<LeafCluster::ClusterT, LeafIndex> hashMap;
-    std::vector<uint32_t> data;
+    std::vector<uint32_t> data; // todo: adjust template to ClusterT
 };

@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_C_COMPILER_LAUNCHER ccache)
+set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
 
 # catkin trashbin
 list(APPEND CATKIN_PACKAGES roscpp)
@@ -51,8 +53,8 @@ target_link_libraries(tsdf_map_node PRIVATE
     # VDBFusion::vdbfusion
     # HighFive::Include
     lvr2_static
-    lvr2las_static
-    lvr2rply_static
+    # lvr2las_static
+    # lvr2rply_static
     ${LVR2_LIB_DEPENDENCIES}
     ${HDF5_CXX_LIBRARIES}
     ${catkin_LIBRARIES})
