@@ -21,7 +21,6 @@ struct Octree {
     union Node {
         std::array<const Eigen::Vector3f*, 8> leafPoints;
         std::array<Node*, 8> children;
-        std::array<Leaf, 8> leaves; // dont really need this anymore tbh
     };
     struct MemoryBlock {
         MemoryBlock(size_t capacity): _capacity(capacity), _size(0) {
@@ -38,7 +37,9 @@ struct Octree {
         MemoryBlock& operator=(MemoryBlock&)  = delete;
         MemoryBlock& operator=(MemoryBlock&&) = delete;
         ~MemoryBlock() {
-            // if (_pData != nullptr) delete _pData;
+            if (_pData) {
+                std::free(_pData);
+            }
         }
         Node* get_new() {
             Node* pNode = _pData + _size++;
@@ -73,32 +74,6 @@ struct Octree {
     ~Octree() = default;
     
     const Node* get_root() { return _pRoot; }
-    // finds leaf via key and emplaces nodes if needed
-    Leaf& find(Key key) {
-        // depth from 20 (root) to 0 (leaf)
-        size_t rDepth = 63/3 - 1;
-        
-        // check if memory block has enough space left
-        if (_memory_blocks.back().check_remaining() < 63/3) {
-            _memory_blocks.emplace_back(1<<16);
-        }
-        auto& memblock = _memory_blocks.back();
-        
-        // go from root to leaf parent
-        Node* pNode = _pRoot;
-        while (rDepth > 0) {
-            size_t index = (key >> rDepth*3) & 0b111;
-            Node* pChild = pNode->children[index];
-            if (pChild == nullptr) {
-                pChild = memblock.get_new();
-                pNode->children[index] = pChild;
-            }
-            pNode = pChild;
-            rDepth--;
-        }
-        // pNode will be leaf parent
-        return pNode->leaves[key & 0b111];
-    }
     // return node via key from given depth (0 root to 20 leaf)
     Node* find(Key key, size_t target_depth) const {
         // depth from 20 (root) to 0 (leaf)
@@ -144,10 +119,6 @@ struct Octree {
         }
         // return pointer to the requested child node
         return pNode;
-    }
-    // emplace chosen leaf and all required nodes inbetween
-    void emplace(Key key, Leaf leaf) {
-        find(key) = leaf;
     }
     // merge up until the depth where minCollisions is met
     std::pair<std::vector<Key>, uint32_t> merge(Octree& other, uint32_t minCollisions) {
@@ -247,12 +218,10 @@ struct Octree {
     // merge via previously found collisions
     void merge(Octree& other, Key key, uint32_t startDepth) {
         uint32_t pathLength = 63/3 - startDepth;
+        if (pathLength == 0) return;
         std::vector<uint8_t> path(pathLength);
         std::vector<Node*> nodes_a(pathLength);
         std::vector<Node*> nodes_b(pathLength);
-        
-        // when start depth is equal to 63/3, it is a special value indicating no need for merging
-        if (pathLength == 0) return;
         
         // find the colliding nodes in both trees
         path[0] = 0;
@@ -275,7 +244,7 @@ struct Octree {
             if (pChild_a != nullptr) {
                 // if this node is missing from B, simply skip it
                 if (pChild_b == nullptr) continue;
-                // if child nodes are leaves, call resolver
+                // if child nodes are leaves, resolve collision
                 if (depth >= pathLength - 2) {
                     // reconstruct morton code from path
                     uint64_t mortonCode = key;
@@ -292,6 +261,10 @@ struct Octree {
                     std::tie(cluster_chunk.x(), cluster_chunk.y(), cluster_chunk.z()) = mortonnd::MortonNDBmi_3D_64::Decode(mortonCode);
                     // convert from 21-bit inverted to 32-bit integer
                     cluster_chunk = cluster_chunk.unaryExpr([](auto i){ return i - (1 << 20); });
+
+                    // Eigen::Vector3f testvec = cluster_chunk.cast<float>() * leafResolution;
+                    // float len = testvec.norm();
+                    // std::cout << "testvec: " << len << ' ' << testvec.x() << ", " << testvec.y() << ", " << testvec.z() << '\n';
                     
                     // get nodes containing the scanpoint pointers
                     Node* leafPoints_a = nodes_a[depth]->children[iChild];
@@ -306,13 +279,13 @@ struct Octree {
                                 Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
 
                                 // get clusters of closest points to this leaf
-                                Node*& closestPoints_a = leafPoints_a->children[iLeaf];
-                                Node*& closestPoints_b = leafPoints_b->children[iLeaf];
+                                Node* closestPoints_a = leafPoints_a->children[iLeaf];
+                                Node* closestPoints_b = leafPoints_b->children[iLeaf];
 
                                 // check validity of pointer
                                 if (closestPoints_b == nullptr) continue;
                                 else if (closestPoints_a == nullptr) {
-                                    closestPoints_a = closestPoints_b;
+                                    leafPoints_a->children[iLeaf] = closestPoints_b;
                                     continue;
                                 }
                                 

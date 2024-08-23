@@ -6,8 +6,7 @@ then
     roscore > /dev/null &
     catkin config --init --cmake-args -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_C_COMPILER=/usr/bin/gcc-11 -DCMAKE_CXX_COMPILER=/usr/bin/g++-11 \
-        -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=mold" \
-        -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=mold"
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_C_COMPILER_LAUNCHER=ccache
     catkin build
     bash --rcfile <(echo "source /root/repo/devel/setup.bash")
 else

@@ -240,6 +240,8 @@ static void build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, 
     // set constraints for which leaf clusters get created
     Eigen::Vector3i min = center_clusterChunk + Eigen::Vector3i(-1, -1, -1);
     Eigen::Vector3i max = center_clusterChunk + Eigen::Vector3i(+2, +2, +2);
+
+    // TODO: simply start iteration on min.x and end on max.x and such
     
     // %4 to get the chunk with 4x4x4 leaf clusters
     Eigen::Vector3i base_clusterChunk = center_clusterChunk.unaryExpr([](int32_t val) { return val - val%4; });
@@ -398,9 +400,9 @@ static auto get_trie(std::vector<Eigen::Vector3f>& points) -> Octree {
     auto end = std::chrono::steady_clock::now();
     auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
     std::cout << "trie ctor " << dur << '\n';
+    beg = std::chrono::steady_clock::now();
     
     // merge the smaller octrees into one
-    beg = std::chrono::steady_clock::now();
     for (size_t id = 0; id < nThreads; id++) {
         threads.emplace_back([&octrees, &stages, id]() {
             // combine octrees via multiple stages using thread groups
@@ -417,7 +419,6 @@ static auto get_trie(std::vector<Eigen::Vector3f>& points) -> Octree {
                         uint32_t iPrevGrp = id / prevStage.groupSize;
                         auto& grpA = prevStage.groups[iPrevGrp];
                         auto& grpB = prevStage.groups[iPrevGrp + 1];
-                        uint8_t res = 0;
                         // wait for group A to be done
                         std::unique_lock lockA(*grpA.mutex);
                         grpA.cv->wait(lockA, [&]{ return grpA.nCompleted >= prevStage.groupSize; });

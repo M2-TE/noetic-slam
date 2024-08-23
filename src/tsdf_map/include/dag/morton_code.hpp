@@ -32,15 +32,6 @@ struct MortonCode {
     uint64_t val;
 };
 
-namespace std {
-    template<>
-    struct hash<MortonCode> {
-        inline size_t operator()(const MortonCode& x) const {
-            return x.val;
-        }
-    };
-}
-
 static auto calc_morton(std::vector<Eigen::Vector3f>& points) -> std::vector<std::pair<MortonCode, Eigen::Vector3f>> {
     auto beg = std::chrono::steady_clock::now();
     

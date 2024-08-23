@@ -3,7 +3,7 @@ FROM ros:noetic-perception
 # set env var during docker build only
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get upgrade -y
-RUN apt-get install -y build-essential cmake git
+RUN apt-get install -y build-essential cmake git ccache
 
 # Use gcc-11 instead of standard gcc-9
 RUN apt-get install -y software-properties-common
@@ -11,12 +11,6 @@ RUN add-apt-repository -y ppa:ubuntu-toolchain-r/test
 RUN apt-get install -y gcc-11 g++-11
 ENV CXX "/usr/bin/g++-11"
 ENV CC "/usr/bin/gcc-11"
-# mold linker
-RUN git clone --depth 1 https://github.com/rui314/mold.git -b stable
-RUN cd mold && ./install-build-deps.sh
-RUN cd mold && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++-11 -B build
-RUN cd mold && cmake --build build -j$(nproc) && cmake --build build --target install
-RUN rm -r mold
 
 ## Dependencies
 # Core:
