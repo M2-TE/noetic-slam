@@ -121,7 +121,7 @@ struct Octree {
         return pNode;
     }
     // merge up until the depth where minCollisions is met
-    std::pair<std::vector<Key>, uint32_t> merge(Octree& other, uint32_t minCollisions) {
+    auto merge(Octree& other, uint32_t minCollisions) -> std::pair<std::vector<Key>, uint32_t> {
         std::vector<Key> collisions;
         phmap::flat_hash_map<Key, Node*> parents_a;
         phmap::flat_hash_map<Key, Node*> layer_a, layer_b;
@@ -209,16 +209,23 @@ struct Octree {
             if (depth > 0 && collisions.size() != prevCollisions) {
                 // break if collision target is met or collisions are decreasing
                 if (collisions.size() >= minCollisions) break;
-                if (collisions.size() < prevCollisions) break;
             }
             prevCollisions = collisions.size();
         }
+
+        // std::ostringstream oss;
+        // oss << "Collisions: " << collisions.size() << ' ' << '(' << minCollisions << ") " << depth << '\n';
+        // std::cout << oss.str();
         return { collisions, depth };
     }
     // merge via previously found collisions
-    void merge(Octree& other, Key key, uint32_t startDepth) {
+    void merge(Octree& other, Key key, uint32_t startDepth, uint32_t thread_i) {
+        auto beg = std::chrono::steady_clock::now();
         uint32_t pathLength = 63/3 - startDepth;
-        if (pathLength == 0) return;
+        if (pathLength <= 1) {
+            std::cout << "no merging job\n";
+            return;
+        }
         std::vector<uint8_t> path(pathLength);
         std::vector<Node*> nodes_a(pathLength);
         std::vector<Node*> nodes_b(pathLength);
@@ -228,6 +235,7 @@ struct Octree {
         nodes_a[0] = find(key, startDepth);
         nodes_b[0] = other.find(key, startDepth);
         uint32_t depth = 0;
+        uint32_t DEBUG_COUNTER = 0;
 
         // begin traversal
         while (path[0] <= 8) {
@@ -237,115 +245,121 @@ struct Octree {
                 depth--;
                 continue;
             }
+            
             // retrieve child nodes
             Node* pChild_a = nodes_a[depth]->children[iChild];
             Node* pChild_b = nodes_b[depth]->children[iChild];
             
-            if (pChild_a != nullptr) {
-                // if this node is missing from B, simply skip it
-                if (pChild_b == nullptr) continue;
-                // if child nodes are leaves, resolve collision
-                if (depth >= pathLength - 2) {
-                    // reconstruct morton code from path
-                    uint64_t mortonCode = key;
-                    for (uint64_t k = 0; k < pathLength - 1; k++) {
-                        uint64_t part = path[k] - 1;
-                        uint64_t shiftDist = pathLength*3 - 6 - k*3;
-                        mortonCode |= part << shiftDist;
-                    }
-                    // revert shift on insertion
-                    mortonCode = mortonCode << 3;
-                    
-                    // convert to actual cluster chunk position
-                    Eigen::Vector3i cluster_chunk;
-                    std::tie(cluster_chunk.x(), cluster_chunk.y(), cluster_chunk.z()) = mortonnd::MortonNDBmi_3D_64::Decode(mortonCode);
-                    // convert from 21-bit inverted to 32-bit integer
-                    cluster_chunk = cluster_chunk.unaryExpr([](auto i){ return i - (1 << 20); });
+            // if this node is missing from B, simply skip it
+            if (pChild_b == nullptr) continue;
+            else if (pChild_a == nullptr) {
+                // add missing child to A
+                nodes_a[depth]->children[iChild] = pChild_b;
+                continue;
+            }
+            // if (thread_i == 0) std::cout << depth << '\n';
+            
+            // if child nodes are leaves, resolve collision
+            if (depth >= pathLength - 2) {
+                DEBUG_COUNTER++;
+                // reconstruct morton code from path
+                uint64_t mortonCode = key;
+                for (uint64_t k = 0; k < pathLength - 1; k++) {
+                    uint64_t part = path[k] - 1;
+                    uint64_t shiftDist = pathLength*3 - 6 - k*3;
+                    mortonCode |= part << shiftDist;
+                }
+                // revert shift on insertion
+                mortonCode = mortonCode << 3;
+                
+                // convert to actual cluster chunk position
+                Eigen::Vector3i cluster_chunk;
+                std::tie(cluster_chunk.x(), cluster_chunk.y(), cluster_chunk.z()) = mortonnd::MortonNDBmi_3D_64::Decode(mortonCode);
+                // convert from 21-bit inverted to 32-bit integer
+                cluster_chunk = cluster_chunk.unaryExpr([](auto i){ return i - (1 << 20); });
+                
+                // get nodes containing the scanpoint pointers
+                Node* leafPoints_a = nodes_a[depth]->children[iChild];
+                Node* leafPoints_b = nodes_b[depth]->children[iChild];
+                
+                // iterate over leaves within clusters
+                uint8_t iLeaf = 0;
+                for (int32_t z = 0; z <= 1; z++) {
+                    for (int32_t y = 0; y <= 1; y++) {
+                        for (int32_t x = 0; x <= 1; x++, iLeaf++) {
+                            Eigen::Vector3i leafChunk = cluster_chunk + Eigen::Vector3i(x, y, z);
+                            Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
 
-                    // Eigen::Vector3f testvec = cluster_chunk.cast<float>() * leafResolution;
-                    // float len = testvec.norm();
-                    // std::cout << "testvec: " << len << ' ' << testvec.x() << ", " << testvec.y() << ", " << testvec.z() << '\n';
-                    
-                    // get nodes containing the scanpoint pointers
-                    Node* leafPoints_a = nodes_a[depth]->children[iChild];
-                    Node* leafPoints_b = nodes_b[depth]->children[iChild];
-                    
-                    // iterate over leaves within clusters
-                    uint8_t iLeaf = 0;
-                    for (int32_t z = 0; z <= 1; z++) {
-                        for (int32_t y = 0; y <= 1; y++) {
-                            for (int32_t x = 0; x <= 1; x++, iLeaf++) {
-                                Eigen::Vector3i leafChunk = cluster_chunk + Eigen::Vector3i(x, y, z);
-                                Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
+                            // get clusters of closest points to this leaf
+                            Node* closestPoints_a = leafPoints_a->children[iLeaf];
+                            Node* closestPoints_b = leafPoints_b->children[iLeaf];
 
-                                // get clusters of closest points to this leaf
-                                Node* closestPoints_a = leafPoints_a->children[iLeaf];
-                                Node* closestPoints_b = leafPoints_b->children[iLeaf];
-
-                                // check validity of pointer
-                                if (closestPoints_b == nullptr) continue;
-                                else if (closestPoints_a == nullptr) {
-                                    leafPoints_a->children[iLeaf] = closestPoints_b;
-                                    continue;
+                            // check validity of pointer
+                            if (closestPoints_b == nullptr) continue;
+                            else if (closestPoints_a == nullptr) {
+                                leafPoints_a->children[iLeaf] = closestPoints_b;
+                                continue;
+                            }
+                            
+                            // count total children in both leaves
+                            std::vector<const Eigen::Vector3f*> children;
+                            children.reserve(closestPoints_a->leafPoints.size() * 2);
+                            for (uint32_t i = 0; i < closestPoints_a->leafPoints.size(); i++) {
+                                if (closestPoints_a->leafPoints[i] != nullptr) {
+                                    children.push_back(closestPoints_a->leafPoints[i]);
                                 }
-                                
-                                // count total children in both leaves
-                                std::vector<const Eigen::Vector3f*> children;
-                                children.reserve(closestPoints_a->leafPoints.size() * 2);
-                                for (uint32_t i = 0; i < closestPoints_a->leafPoints.size(); i++) {
-                                    if (closestPoints_a->leafPoints[i] != nullptr) {
-                                        children.push_back(closestPoints_a->leafPoints[i]);
-                                    }
-                                    if (closestPoints_b->leafPoints[i] != nullptr) {
-                                        children.push_back(closestPoints_b->leafPoints[i]);
-                                    }
+                                if (closestPoints_b->leafPoints[i] != nullptr) {
+                                    children.push_back(closestPoints_b->leafPoints[i]);
                                 }
+                            }
 
-                                // simply merge if they fit
-                                if (children.size() <= closestPoints_a->leafPoints.size()) {
-                                    // refill with merged children
-                                    for (std::size_t i = 0; i < children.size(); i++) {
-                                        closestPoints_a->leafPoints[i] = children[i];
-                                    }
+                            // simply merge if they fit
+                            if (children.size() <= closestPoints_a->leafPoints.size()) {
+                                // refill with merged children
+                                for (std::size_t i = 0; i < children.size(); i++) {
+                                    closestPoints_a->leafPoints[i] = children[i];
                                 }
-                                // merge only closest points if not
-                                else {
-                                    // calc distances for each point to this leaf
-                                    typedef std::pair<const Eigen::Vector3f*, float> PairedDist;
-                                    std::vector<PairedDist> distances;
-                                    distances.reserve(children.size());
-                                    for (std::size_t i = 0; i < children.size(); i++) {
-                                        float distSqr = (*children[i] - leafPos).squaredNorm();
-                                        distances.emplace_back(children[i], distSqr);
-                                    }
-                                    // sort via distances
-                                    auto sort_fnc = [](PairedDist& a, PairedDist& b){
-                                        return a.second < b.second;
-                                    };
-                                    std::sort(distances.begin(), distances.end(), sort_fnc);
+                            }
+                            // merge only closest points if not
+                            else {
+                                // calc distances for each point to this leaf
+                                typedef std::pair<const Eigen::Vector3f*, float> PairedDist;
+                                std::vector<PairedDist> distances;
+                                distances.reserve(children.size());
+                                for (std::size_t i = 0; i < children.size(); i++) {
+                                    float distSqr = (*children[i] - leafPos).squaredNorm();
+                                    distances.emplace_back(children[i], distSqr);
+                                }
+                                // sort via distances
+                                auto sort_fnc = [](PairedDist& a, PairedDist& b){
+                                    return a.second < b.second;
+                                };
+                                std::sort(distances.begin(), distances.end(), sort_fnc);
 
-                                    // insert the 8 closest points into a
-                                    for (std::size_t i = 0; i < closestPoints_a->leafPoints.size(); i++) {
-                                        closestPoints_a->leafPoints[i] = distances[i].first;
-                                    }
+                                // insert the 8 closest points into a
+                                for (std::size_t i = 0; i < closestPoints_a->leafPoints.size(); i++) {
+                                    closestPoints_a->leafPoints[i] = distances[i].first;
                                 }
                             }
                         }
                     }
                 }
-                else {
-                    // walk down path
-                    depth++;
-                    path[depth] = 0;
-                    nodes_a[depth] = pChild_a;
-                    nodes_b[depth] = pChild_b;
-                }
             }
-            else if (pChild_b != nullptr) {
-                // add missing child to A
-                nodes_a[depth]->children[iChild] = pChild_b;
+            else {
+                // walk down path
+                depth++;
+                path[depth] = 0;
+                nodes_a[depth] = pChild_a;
+                nodes_b[depth] = pChild_b;
             }
         }
+
+        auto end = std::chrono::steady_clock::now();
+        auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+        std::ostringstream oss;
+        oss << thread_i <<  " duration: " << dur << ' ' << DEBUG_COUNTER << '\n';
+        // if (thread_i == 0) std::cout << oss.str();
+        // std::cout << oss.str();
     }
     // allocate some space and return a node for misc use
     Node* allocate_misc_node() {

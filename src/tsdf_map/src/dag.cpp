@@ -247,84 +247,80 @@ static void build_trie_whatnot(Octree& octree, const Eigen::Vector3f* inputPos, 
     Eigen::Vector3i base_clusterChunk = center_clusterChunk.unaryExpr([](int32_t val) { return val - val%4; });
     // fill large 3x3x3 neighbourhood around point with signed distances. Most will be discarded
     for (int32_t z4 = -4; z4 <= +4; z4 += 4) {
-        for (int32_t y4 = -4; y4 <= +4; y4 += 4) {
-            for (int32_t x4 = -4; x4 <= +4; x4 += 4) {
-                // position of current main chunk
-                Eigen::Vector3i main_clusterChunk = base_clusterChunk + Eigen::Vector3i(x4, y4, z4);
-                MortonCode code(main_clusterChunk);
-                code.val = code.val >> 3; // shift to cover the 3 LSB (leaves), which wont be encoded
-                Octree::Node* oct_node = octree.insert(code.val, 19);
+    for (int32_t y4 = -4; y4 <= +4; y4 += 4) {
+    for (int32_t x4 = -4; x4 <= +4; x4 += 4) {
+        // position of current main chunk
+        Eigen::Vector3i main_clusterChunk = base_clusterChunk + Eigen::Vector3i(x4, y4, z4);
+        MortonCode code(main_clusterChunk);
+        code.val = code.val >> 3; // shift to cover the 3 LSB (leaves), which wont be encoded
+        Octree::Node* oct_node = octree.insert(code.val, 19);
+        
+        // iterate over 2x2x2 sub chunks within the 4x4x4 main chunk
+        uint8_t lc_index = 0; // leaf cluster index
+        for (int32_t z2 = 0; z2 <= 2; z2 += 2) {
+        for (int32_t y2 = 0; y2 <= 2; y2 += 2) {
+        for (int32_t x2 = 0; x2 <= 2; x2 += 2, lc_index++) {
+            Eigen::Vector3i sub_clusterChunk = main_clusterChunk + Eigen::Vector3i(x2, y2, z2);
+            Octree::Node* cluster = oct_node->children[lc_index];
+            // if it doesnt exist yet, allocate some space for the pointers
+            if (cluster == nullptr) {
+                cluster = octree.allocate_misc_node();
+                oct_node->children[lc_index] = cluster;
+            }
+            // iterate over leaves within clusters
+            uint8_t iLeaf = 0;
+            for (int32_t z1 = 0; z1 <= 1; z1++) {
+            for (int32_t y1 = 0; y1 <= 1; y1++) {
+            for (int32_t x1 = 0; x1 <= 1; x1++, iLeaf++) {
+                Eigen::Vector3i leafChunk = sub_clusterChunk + Eigen::Vector3i(x1, y1, z1);
+                // test if leaf falls within the constraints for current scan point
+                bool valid = true;
+                if (leafChunk.x() < min.x() || leafChunk.x() > max.x()) valid = false;
+                if (leafChunk.y() < min.y() || leafChunk.y() > max.y()) valid = false;
+                if (leafChunk.z() < min.z() || leafChunk.z() > max.z()) valid = false;
+                if (!valid) continue;
                 
-                // iterate over 2x2x2 sub chunks within the 4x4x4 main chunk
-                uint8_t lc_index = 0; // leaf cluster index
-                for (int32_t z2 = 0; z2 <= 2; z2 += 2) {
-                    for (int32_t y2 = 0; y2 <= 2; y2 += 2) {
-                        for (int32_t x2 = 0; x2 <= 2; x2 += 2, lc_index++) {
-                            Eigen::Vector3i sub_clusterChunk = main_clusterChunk + Eigen::Vector3i(x2, y2, z2);
-                            Octree::Node* cluster = oct_node->children[lc_index];
-                            // if it doesnt exist yet, allocate some space for the pointers
-                            if (cluster == nullptr) {
-                                cluster = octree.allocate_misc_node();
-                                oct_node->children[lc_index] = cluster;
-                            }
-                            // iterate over leaves within clusters
-                            uint8_t iLeaf = 0;
-                            for (int32_t z1 = 0; z1 <= 1; z1++) {
-                                for (int32_t y1 = 0; y1 <= 1; y1++) {
-                                    for (int32_t x1 = 0; x1 <= 1; x1++, iLeaf++) {
-                                        Eigen::Vector3i leafChunk = sub_clusterChunk + Eigen::Vector3i(x1, y1, z1);
-                                        // test if leaf falls within the constraints for current scan point
-                                        bool valid = true;
-                                        if (leafChunk.x() < min.x() || leafChunk.x() > max.x()) valid = false;
-                                        if (leafChunk.y() < min.y() || leafChunk.y() > max.y()) valid = false;
-                                        if (leafChunk.z() < min.z() || leafChunk.z() > max.z()) valid = false;
-                                        if (!valid) continue;
-                                        
-                                        // if valid, calc real position of leaf
-                                        Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
+                // if valid, calc real position of leaf
+                Eigen::Vector3f leafPos = leafChunk.cast<float>() * leafResolution;
 
-                                        // add to point to the leaf's closest points
-                                        Octree::Node* closestPoints = cluster->children[iLeaf];
-                                        // if not a single point landed on leaf yet, create new array for potential candidates
-                                        if (closestPoints == nullptr) {
-                                            closestPoints = octree.allocate_misc_node();
-                                            closestPoints->leafPoints[0] = inputPos;
-                                            cluster->children[iLeaf] = closestPoints;
-                                        }
-                                        // add as a candidate for signed distance
-                                        else {
-                                            float distSqr = (*inputPos - leafPos).squaredNorm();
-                                            // check to see if theres a free spot (8 points per leaf max)
-                                            float furthest_distance = 0.0f;
-                                            uint32_t furthest_distance_index = 0;
-                                            uint32_t i = 0;
-                                            for (; i < closestPoints->leafPoints.size(); i++) {
-                                                if (closestPoints->leafPoints[i] == nullptr) break;
-                                                // calc distance to find furthest point that can be replaced
-                                                float dist_sqr = (*closestPoints->leafPoints[i] - leafPos).squaredNorm();
-                                                if (dist_sqr > furthest_distance) {
-                                                    furthest_distance = dist_sqr;
-                                                    furthest_distance_index = i;
-                                                }
-                                            }
-                                            // found an empty spot
-                                            if (i < closestPoints->leafPoints.size()) closestPoints->leafPoints[i] = inputPos;
-                                            // replace spot with furthest point if its further than this point
-                                            else if (distSqr < furthest_distance) {
-                                                closestPoints->leafPoints[furthest_distance_index] = inputPos;
-                                            }
-                                            // else discard point for this leaf
-                                        }
-                                    }
-                                }
-                            }
+                // add to point to the leaf's closest points
+                Octree::Node* closestPoints = cluster->children[iLeaf];
+                // if not a single point landed on leaf yet, create new array for potential candidates
+                if (closestPoints == nullptr) {
+                    closestPoints = octree.allocate_misc_node();
+                    closestPoints->leafPoints[0] = inputPos;
+                    cluster->children[iLeaf] = closestPoints;
+                }
+                // add as a candidate for signed distance
+                else {
+                    float distSqr = (*inputPos - leafPos).squaredNorm();
+                    // check to see if theres a free spot (8 points per leaf max)
+                    float furthest_distance = 0.0f;
+                    uint32_t furthest_distance_index = 0;
+                    uint32_t i = 0;
+                    for (; i < closestPoints->leafPoints.size(); i++) {
+                        if (closestPoints->leafPoints[i] == nullptr) break;
+                        // calc distance to find furthest point that can be replaced
+                        float dist_sqr = (*closestPoints->leafPoints[i] - leafPos).squaredNorm();
+                        if (dist_sqr > furthest_distance) {
+                            furthest_distance = dist_sqr;
+                            furthest_distance_index = i;
                         }
                     }
+                    // found an empty spot
+                    if (i < closestPoints->leafPoints.size()) {
+                        closestPoints->leafPoints[i] = inputPos;
+                    }
+                    // replace spot with furthest point if its further than this point
+                    else if (distSqr < furthest_distance) {
+                        closestPoints->leafPoints[furthest_distance_index] = inputPos;
+                    }
+                    // else discard point for this leaf
                 }
-                // if (tid == 0) exit(0);
-            }
-        }
-    }
+            }}}
+        }}}
+        // if (tid == 0) exit(0);
+    }}}
     // if (tid == 0) exit(0);
 }
 static auto get_trie(std::vector<Eigen::Vector3f>& points) -> Octree {
@@ -442,6 +438,9 @@ static auto get_trie(std::vector<Eigen::Vector3f>& points) -> Octree {
                     grp.mutex->unlock();
                     grp.cv->notify_all();
                 }
+                // std::ostringstream oss;
+                // oss << "stage " << iStage << " thread " << id << " group " << iGrp << " local " << iLocal << '\n';
+                // std::cout << oss.str();
                 // wait until the octree is ready to be worked on
                 std::unique_lock lock(*grp.mutex);
                 grp.cv->wait(lock, [&]{ return grp.bPrepared; });
@@ -450,7 +449,7 @@ static auto get_trie(std::vector<Eigen::Vector3f>& points) -> Octree {
                 // resolve assigned collisions
                 uint32_t colIndex = iLocal;
                 while (colIndex < grp.collisions.size()) {
-                    grp.trees[0]->merge(*grp.trees[1], grp.collisions[colIndex], grp.collisionDepth);
+                    grp.trees[0]->merge(*grp.trees[1], grp.collisions[colIndex], grp.collisionDepth, id);
                     colIndex += stage.groupSize;
                 }
                 // increment completion counter
@@ -532,6 +531,8 @@ auto Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, st
     // set starting values
     int64_t depth = 0;
     octNodes[0] = octree.get_root();
+
+    uint32_t DEBUG_COUNTER = 0;
     
     // iterate through octree and insert into hashDAG
     while (depth >= 0) {
@@ -539,6 +540,7 @@ auto Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, st
         
         // when all children were iterated
         if (iChild == 8) {
+            DEBUG_COUNTER++;
             // gather all children for this new node
             std::vector<uint32_t> children(1);
             for (auto i = 0; i < 8; i++) {
@@ -551,32 +553,30 @@ auto Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, st
             // reset node tracker for used-up nodes
             dagNodes[depth].fill(0);
             // skip node creation when there are no children
-            if (children.size() > 1) {
-                // check path in parent depth to know this node's child ID
-                uint32_t indexInParent = path[depth - 1] - 1;
-                
-                // resize data if necessary and then copy over
-                auto& level = node_levels[depth];
-                level.data.resize(level.nOccupied + children.size());
-                std::memcpy(
-                    level.data.data() + level.nOccupied,
-                    children.data(),
-                    children.size() * sizeof(uint32_t));
-                // check if the same node existed previously
-                uint32_t temporary = level.nOccupied;
-                auto [pIndex, bNew] = level.hashSet.emplace(temporary);
-                if (bNew) {
-                    level.nOccupied += children.size();
-                    uniques[depth]++;
-                    if (depth > 0) {
-                        dagNodes[depth - 1][indexInParent] = temporary;
-                    }
+            // check path in parent depth to know this node's child ID
+            uint32_t indexInParent = path[depth - 1] - 1;
+            
+            // resize data if necessary and then copy over
+            auto& level = node_levels[depth];
+            level.data.resize(level.nOccupied + children.size());
+            std::memcpy(
+                level.data.data() + level.nOccupied,
+                children.data(),
+                children.size() * sizeof(uint32_t));
+            // check if the same node existed previously
+            uint32_t temporary = level.nOccupied;
+            auto [pIndex, bNew] = level.hashSet.emplace(temporary);
+            if (bNew) {
+                level.nOccupied += children.size();
+                uniques[depth]++;
+                if (depth > 0) {
+                    dagNodes[depth - 1][indexInParent] = temporary;
                 }
-                else {
-                    dupes[depth]++;
-                    if (depth > 0) {
-                        dagNodes[depth - 1][indexInParent] = *pIndex;
-                    }
+            }
+            else {
+                dupes[depth]++;
+                if (depth > 0) {
+                    dagNodes[depth - 1][indexInParent] = *pIndex;
                 }
             }
             
@@ -686,6 +686,7 @@ auto Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, st
     auto end = std::chrono::steady_clock::now();
     auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
     std::cout << "dag  ctor " << dur << '\n';
+    std::cout << DEBUG_COUNTER << '\n';
     return rootAddr;
 }
 void Dag::merge_dag(uint32_t srcAddr) {
