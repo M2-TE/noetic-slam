@@ -643,12 +643,12 @@ auto Dag::insert_octree(Octree& octree, std::vector<Eigen::Vector3f>& points, st
                             Eigen::Vector3f& normal = normals[index];
                             avg_pos += *point;
                             avg_norm += normal;
-                            // vector from point to leaf
-                            Eigen::Vector3f diff = *point - leafPos;
-                            // calculate signed distance for current leaf
-                            float signedDistance = normal.dot(diff);
-                            // emplace into leaf cluster
-                            signedDistances += signedDistance;
+                            // // vector from point to leaf
+                            // Eigen::Vector3f diff = *point - leafPos;
+                            // // calculate signed distance for current leaf
+                            // float signedDistance = normal.dot(diff);
+                            // // emplace into leaf cluster
+                            // signedDistances += signedDistance;
                             count++;
                         }
                         // simple average for now
