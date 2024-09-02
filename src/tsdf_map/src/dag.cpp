@@ -469,7 +469,6 @@ static auto get_trie(std::vector<Eigen::Vector3f>& points) -> Octree {
     return std::move(octrees[0]);
 }
 
-
 Dag::Dag() {
     // create node levels
     node_levels = new NodeLevel[63/3];
@@ -803,7 +802,7 @@ void Dag::merge_dag(uint32_t srcAddr) {
                     srcNodes[depth] = Node::conv(node_levels[depth].data, srcChildAddr);
                 }
                 // else simply add the existing node to "new nodes"
-                else {
+                else if (dstNode->contains_child(iChild)) {
                     newNodes[depth][iChild] = srcChildAddr;
                 }
             }
