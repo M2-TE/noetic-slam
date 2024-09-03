@@ -17,27 +17,30 @@ list(APPEND CATKIN_PACKAGES nav_msgs)
 list(APPEND CATKIN_PACKAGES pcl_ros)
 list(APPEND CATKIN_PACKAGES pcl_conversions)
 
-## Find catkin and catkin packages
+# Find catkin and catkin packages
 find_package(catkin REQUIRED COMPONENTS ${CATKIN_PACKAGES})
 catkin_package(CATKIN_DEPENDS ${CATKIN_PACKAGES})
 
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 find_package(Boost 1.71 REQUIRED)
+find_package(HDF5 REQUIRED COMPONENTS C CXX HL)
 # list(APPEND CMAKE_MODULE_PATH "/usr/local/lib/cmake/OpenVDB")
 # find_package(Threads REQUIRED)
 # find_package(VDBFusion REQUIRED)
-find_package(HDF5 REQUIRED COMPONENTS C CXX HL)
-# add_subdirectory("ext/highfive/")
-# add_subdirectory("ext/lvr2/ext/HighFive/")
-find_package(OpenCV REQUIRED)
 add_subdirectory("ext/lvr2/")
-message("${OpenCV_INCLUDE_DIRS}")
 
+# fetch project dependencies
+include(FetchContent)
+set(FETCHCONTENT_QUIET OFF)
+set(FETCHCONTENT_UPDATES_DISCONNECTED OFF)
+set(CHAD_POPCOUNT_INSTRUCTION __builtin_popcount)
+FetchContent_Declare(chad_tsdf GIT_REPOSITORY "https://github.com/M2-TE/chad_tsdf.git" GIT_TAG "main" GIT_SHALLOW ON)
+FetchContent_MakeAvailable(chad_tsdf)
 
 add_executable(tsdf_map_node 
-    "src/tsdf_map_node.cpp"
-    "src/dag_lvr2.cpp"
-    "src/dag.cpp")
+    # "src/dag.cpp"
+    # "src/dag_lvr2.cpp"
+    "src/tsdf_map_node.cpp")
 target_include_directories(tsdf_map_node PRIVATE 
     "include/"
     "ext/phmap/"
@@ -55,6 +58,7 @@ target_link_libraries(tsdf_map_node PRIVATE
     lvr2_static
     # lvr2las_static
     # lvr2rply_static
+    chad_tsdf
     ${LVR2_LIB_DEPENDENCIES}
     ${HDF5_CXX_LIBRARIES}
     ${catkin_LIBRARIES})

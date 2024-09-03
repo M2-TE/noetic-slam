@@ -19,6 +19,8 @@
 //
 #include <Eigen/Eigen>
 #include "dag/dag.hpp"
+#include "placeholder/chad_grid.hpp"
+#include "placeholder/chad_reconstruction.hpp"
 
 // todo: move headers to the places that need them
 // todo: separate source for vulkan stuff as well
@@ -35,7 +37,7 @@ struct Point {
         double timestamp; // absolute timestamp in seconds
     };
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-} 
+}
 EIGEN_ALIGN16;
 POINT_CLOUD_REGISTER_POINT_STRUCT(Point,
     (float, x, x)
@@ -77,17 +79,16 @@ public:
                     point = pointd.cast<float>();
                     point += position;
                 }
-                dag.insert_scan(position, Eigen::Quaternionf::Identity(), points);
+                dag.insert(points, position, Eigen::Quaternionf::Identity());
             }
+            dag.print_stats();
+            reconstruct();
             // std::ofstream output;
             // output.open("sphere.ascii");
             // for (auto& point: points) {
             //     output << point.x() << ' ' << point.y() << ' ' << point.z() << '\n';
             // }
             // output.close();
-            
-            dag.print_stats();
-            dag.reconstruct();
             exit(0);
         }
         else if (true) {
@@ -101,10 +102,9 @@ public:
                 file.read(reinterpret_cast<char*>(&point), sizeof(Eigen::Vector3f));
             }
             Eigen::Vector3f position { 0, 0, 0 };
-            dag.insert_scan(position, Eigen::Quaternionf::Identity(), points);
-            
+            dag.insert(points, position, Eigen::Quaternionf::Identity());
             dag.print_stats();
-            // dag.reconstruct();
+            reconstruct();
             exit(0);
         }
     }
@@ -121,10 +121,88 @@ public:
         }
         
         dag.print_stats();
-        dag.reconstruct();
+        // dag.reconstruct();
     }
+    
+    void reconstruct() {
+        typedef lvr2::BaseVector<float> VecT;
+        typedef lvr2::BilinearFastBox<VecT> BoxT;
+        
+        // create hash grid from entire tree
+        // generate mesh from hash grid
+        lvr2::PMPMesh<VecT> mesh{};
+        std::string decomp_type = "PMC";
+        if (decomp_type == "MC") {
+        }
+        else if (decomp_type == "PMC") {
+            std::shared_ptr<ChadGrid<VecT, BoxT>> grid_p = std::make_shared<ChadGrid<VecT, BoxT>>();
+            
+            // // store all the points into .grid file
+            // std::ofstream output;
+            // output.open("hashgrid.grid", std::ofstream::trunc | std::ofstream::binary);
+            // // store header data
+            // float voxel_res = leafResolution;
+            // output.write(reinterpret_cast<char*>(&voxel_res), sizeof(float));
+            // size_t n_scan_points = grid_points.size();
+            // output.write(reinterpret_cast<char*>(&n_scan_points), sizeof(size_t));
+            // size_t n_query_points = pGrid->getQueryPoints().size();
+            // output.write(reinterpret_cast<char*>(&n_query_points), sizeof(size_t));
+            // size_t n_cells = pGrid->getNumberOfCells();
+            // output.write(reinterpret_cast<char*>(&n_cells), sizeof(size_t));
+            // // store raw scan points (vec3)
+            // for (auto cur = grid_points.cbegin(); cur != grid_points.cend(); cur++) {
+            //     const Eigen::Vector3f* ptr = &(*cur);
+            //     output.write(reinterpret_cast<const char*>(ptr), sizeof(Eigen::Vector3f));
+            // }
+            // // store query points (vec3 + float)
+            // auto& query_points = pGrid->getQueryPoints();
+            // for (auto cur = query_points.cbegin(); cur != query_points.cend(); cur++) {
+            //     auto _pos = cur->m_position;
+            //     Eigen::Vector3f pos { _pos.x, _pos.y, _pos.z };
+            //     float signed_distance = cur->m_distance;
+            //     output.write(reinterpret_cast<const char*>(&pos), sizeof(Eigen::Vector3f));
+            //     output.write(reinterpret_cast<const char*>(&signed_distance), sizeof(float));
+            // }
+            // // store cells (8x uint32_t)
+            // for (auto cur = pGrid->firstCell(); cur != pGrid->lastCell(); cur++) {
+            //     auto* cell = cur->second;
+            //     for (size_t i = 0; i < 8; i++) {
+            //         uint32_t i_query_point = cell->getVertex(i);
+            //         output.write(reinterpret_cast<const char*>(&i_query_point), sizeof(uint32_t));
+            //     }
+            // }
+            // output.close();
+            
+            ChadReconstruction<VecT, BoxT> reconstruction { grid_p };
+            reconstruction.getMesh(mesh);
+        }
+        
+        // generate mesh buffer from reconstructed mesh
+        auto norm_face = lvr2::calcFaceNormals(mesh);
+        auto norm_vert = lvr2::calcVertexNormals(mesh, norm_face);
+        lvr2::MeshBufferPtr mesh_buffer_p;
+        if (false) {
+            // coloring
+            auto cluster_map = lvr2::planarClusterGrowing(mesh, norm_face, 0.85);
+            lvr2::ClusterPainter cluster_painter { cluster_map };
+            lvr2::ColorGradient::GradientType t = lvr2::ColorGradient::gradientFromString("GREY");
+            auto cluster_colors = boost::optional<lvr2::DenseClusterMap<lvr2::RGB8Color>>(cluster_painter.colorize(mesh, t));
+            lvr2::TextureFinalizer<lvr2::BaseVector<float>> finalizer { cluster_map };
+            finalizer.setClusterColors(*cluster_colors);
+            finalizer.setVertexNormals(norm_vert);
+            mesh_buffer_p = finalizer.apply(mesh);
+        }
+        else {
+            // calc normals for vertices
+            lvr2::SimpleFinalizer<lvr2::BaseVector<float>> finalizer;
+            finalizer.setNormalData(norm_vert);
+            mesh_buffer_p = finalizer.apply(mesh);
+        }
 
-public:
+        // save to disk
+        auto model_p = std::make_shared<lvr2::Model>(mesh_buffer_p);
+        lvr2::ModelFactory::saveModel(model_p, "yeehaw.ply");
+    }
     void callback_pcl_deskewed(const sensor_msgs::PointCloud2ConstPtr& msg) {
         // extract pcl
         pcl::PointCloud<Point> pointcloud = {};
@@ -153,13 +231,12 @@ public:
         // DEBUG
         if (false) {
             dag.print_stats();
-            dag.reconstruct();
             exit(0);
         }
     }
 
 private:
-    Dag dag;
+    DAG dag;
     uint32_t queueSize = 100;
     ros::Subscriber subPath;
     ros::Subscriber subPcl;
