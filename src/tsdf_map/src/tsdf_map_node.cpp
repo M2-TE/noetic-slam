@@ -135,7 +135,9 @@ public:
         if (decomp_type == "MC") {
         }
         else if (decomp_type == "PMC") {
-            std::shared_ptr<ChadGrid<VecT, BoxT>> grid_p = std::make_shared<ChadGrid<VecT, BoxT>>();
+            auto node_levels = dag.get_node_levels();
+            auto leaf_level = dag.get_leaf_level();
+            auto grid_p = std::make_shared<ChadGrid<VecT, BoxT>>(node_levels, leaf_level);
             
             // // store all the points into .grid file
             // std::ofstream output;

@@ -10,8 +10,12 @@
 
 template<typename BaseVecT, typename BoxT>
 struct ChadGrid: public lvr2::GridBase {
-    ChadGrid(): lvr2::GridBase(false) {
+    ChadGrid(std::array<std::vector<uint32_t>*, 63/3 - 1> node_levels, std::vector<uint64_t>& leaf_level): lvr2::GridBase(false) {
         std::cout << "ChadGrid created" << std::endl;
+    }
+
+    ChadGrid(std::array<std::vector<uint32_t>*, 63/3 - 1> node_levels, std::vector<uint32_t>& leaf_level): lvr2::GridBase(false) {
+        std::cout << "uint32_t ctor for ChadGrid not yet implemented" << std::endl;
     }
     ~ChadGrid() {
         lvr2::GridBase::~GridBase();
