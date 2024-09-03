@@ -116,75 +116,73 @@ HashGrid<BaseVecT, BoxT>::HashGrid(std::vector<std::vector<uint32_t>*>& nodeLeve
             
             uint32_t iLeaf = 0;
             for (int32_t z = 0; z < 2; z++) {
-                for (int32_t y = 0; y < 2; y++) {
-                    for (int32_t x = 0; x < 2; x++, iLeaf++) {
-                        // leaf position
-                        Eigen::Vector3i leaf_chunk = cluster_chunk + Eigen::Vector3i(x, y, z);
-                        Eigen::Vector3f leaf_pos = leaf_chunk.cast<float>() * m_voxelsize;
-                        
-                        auto sdOpt = leafCluster.get_sd(iLeaf);
-                        if (!sdOpt) continue; // skip invalid leaves
-                        float signedDistance = *sdOpt;
-                        // float signedDistancePerfect = leaf_pos.cast<double>().norm() - 5.0f;
-                        // signedDistance = signedDistancePerfect;
-                        // std::cout << signedDistance << '\t' << signedDistancePerfect << '\n';
-                        
-                        // create query point
-                        size_t qIndex = m_queryPoints.size();
-                        m_queryPoints.emplace_back(BaseVecT(leaf_pos.x(), leaf_pos.y(), leaf_pos.z()), signedDistance);
-                        
-                        // // 1 cell for the query point
-                        // {
-                        //     Eigen::Vector3f cell_centerf = leaf_pos + Eigen::Vector3f(.5, .5, .5) * m_voxelsize;
-                        //     BoxT* pBox = new BoxT(BaseVecT(cell_centerf.x(), cell_centerf.y(), cell_centerf.z()));
-                        //     // create morton code of cell
-                        //     float recip = 1.0 / m_voxelsize;
-                        //     Eigen::Vector3i leafPosition = (cell_centerf * recip).cast<int32_t>();
-                        //     uint32_t xCell = (1 << 20) + (uint32_t)leafPosition.x();
-                        //     uint32_t yCell = (1 << 20) + (uint32_t)leafPosition.y();
-                        //     uint32_t zCell = (1 << 20) + (uint32_t)leafPosition.z();
-                        //     uint64_t mc = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
-                        //     // emplace cell into map, check if it already existed
-                        //     auto [iter, _] = m_cells.emplace(mc, pBox);
-                        //     // place query point at the correct cell index
-                        //     iter->second->setVertex(0, qIndex);
-                        // }
-                        
-                        // 8 cells around the query point
-                        std::array<Eigen::Vector3f, 8> cellOffsets = {
-                            Eigen::Vector3f(+0.5, +0.5, +0.5), 
-                            Eigen::Vector3f(-0.5, +0.5, +0.5),
-                            Eigen::Vector3f(-0.5, -0.5, +0.5), 
-                            Eigen::Vector3f(+0.5, -0.5, +0.5),
-                            Eigen::Vector3f(+0.5, +0.5, -0.5), 
-                            Eigen::Vector3f(-0.5, +0.5, -0.5),
-                            Eigen::Vector3f(-0.5, -0.5, -0.5), 
-                            Eigen::Vector3f(+0.5, -0.5, -0.5),
-                        };
-                        for (size_t i = 0; i < 8; i++) {
-                            // create cell
-                            Eigen::Vector3f cell_centerf = leaf_pos + cellOffsets[i] * m_voxelsize;
-                            // create morton code of cell
-                            float recip = 1.0 / m_voxelsize;
-                            // convert position back to chunk index
-                            Eigen::Vector3f leafPosF = cell_centerf * recip;
-                            leafPosF = leafPosF.unaryExpr([](float f){ return std::floor(f); });
-                            Eigen::Vector3i leafPosition = leafPosF.cast<int32_t>();
-                            // prepare for morton code conversion
-                            uint32_t xCell = (1 << 20) + (uint32_t)leafPosition.x();
-                            uint32_t yCell = (1 << 20) + (uint32_t)leafPosition.y();
-                            uint32_t zCell = (1 << 20) + (uint32_t)leafPosition.z();
-                            uint64_t mc = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
-                            // emplace cell into map, check if it already existed
-                            BoxT* pBox = new BoxT(BaseVecT(cell_centerf.x(), cell_centerf.y(), cell_centerf.z()));
-                            auto [iter, bEmplaced] = m_cells.emplace(mc, pBox);
-                            if (!bEmplaced) delete pBox;
-                            // place query point at the correct cell index
-                            iter->second->setVertex(i, qIndex);
-                        }
-                    }
+            for (int32_t y = 0; y < 2; y++) {
+            for (int32_t x = 0; x < 2; x++, iLeaf++) {
+                // leaf position
+                Eigen::Vector3i leaf_chunk = cluster_chunk + Eigen::Vector3i(x, y, z);
+                Eigen::Vector3f leaf_pos = leaf_chunk.cast<float>() * m_voxelsize;
+                
+                auto sdOpt = leafCluster.get_sd(iLeaf);
+                if (!sdOpt) continue; // skip invalid leaves
+                float signedDistance = *sdOpt;
+                // float signedDistancePerfect = leaf_pos.cast<double>().norm() - 5.0f;
+                // signedDistance = signedDistancePerfect;
+                // std::cout << signedDistance << '\t' << signedDistancePerfect << '\n';
+                
+                // create query point
+                size_t qIndex = m_queryPoints.size();
+                m_queryPoints.emplace_back(BaseVecT(leaf_pos.x(), leaf_pos.y(), leaf_pos.z()), signedDistance);
+                
+                // // 1 cell for the query point
+                // {
+                //     Eigen::Vector3f cell_centerf = leaf_pos + Eigen::Vector3f(.5, .5, .5) * m_voxelsize;
+                //     BoxT* pBox = new BoxT(BaseVecT(cell_centerf.x(), cell_centerf.y(), cell_centerf.z()));
+                //     // create morton code of cell
+                //     float recip = 1.0 / m_voxelsize;
+                //     Eigen::Vector3i leafPosition = (cell_centerf * recip).cast<int32_t>();
+                //     uint32_t xCell = (1 << 20) + (uint32_t)leafPosition.x();
+                //     uint32_t yCell = (1 << 20) + (uint32_t)leafPosition.y();
+                //     uint32_t zCell = (1 << 20) + (uint32_t)leafPosition.z();
+                //     uint64_t mc = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
+                //     // emplace cell into map, check if it already existed
+                //     auto [iter, _] = m_cells.emplace(mc, pBox);
+                //     // place query point at the correct cell index
+                //     iter->second->setVertex(0, qIndex);
+                // }
+                
+                // 8 cells around the query point
+                std::array<Eigen::Vector3f, 8> cellOffsets = {
+                    Eigen::Vector3f(+0.5, +0.5, +0.5), 
+                    Eigen::Vector3f(-0.5, +0.5, +0.5),
+                    Eigen::Vector3f(-0.5, -0.5, +0.5), 
+                    Eigen::Vector3f(+0.5, -0.5, +0.5),
+                    Eigen::Vector3f(+0.5, +0.5, -0.5), 
+                    Eigen::Vector3f(-0.5, +0.5, -0.5),
+                    Eigen::Vector3f(-0.5, -0.5, -0.5), 
+                    Eigen::Vector3f(+0.5, -0.5, -0.5),
+                };
+                for (size_t i = 0; i < 8; i++) {
+                    // create cell
+                    Eigen::Vector3f cell_centerf = leaf_pos + cellOffsets[i] * m_voxelsize;
+                    // create morton code of cell
+                    float recip = 1.0 / m_voxelsize;
+                    // convert position back to chunk index
+                    Eigen::Vector3f leafPosF = cell_centerf * recip;
+                    leafPosF = leafPosF.unaryExpr([](float f){ return std::floor(f); });
+                    Eigen::Vector3i leafPosition = leafPosF.cast<int32_t>();
+                    // prepare for morton code conversion
+                    uint32_t xCell = (1 << 20) + (uint32_t)leafPosition.x();
+                    uint32_t yCell = (1 << 20) + (uint32_t)leafPosition.y();
+                    uint32_t zCell = (1 << 20) + (uint32_t)leafPosition.z();
+                    uint64_t mc = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
+                    // emplace cell into map, check if it already existed
+                    BoxT* pBox = new BoxT(BaseVecT(cell_centerf.x(), cell_centerf.y(), cell_centerf.z()));
+                    auto [iter, bEmplaced] = m_cells.emplace(mc, pBox);
+                    if (!bEmplaced) delete pBox;
+                    // place query point at the correct cell index
+                    iter->second->setVertex(i, qIndex);
                 }
-            }
+            }}}
         }
     }
     
@@ -192,12 +190,10 @@ HashGrid<BaseVecT, BoxT>::HashGrid(std::vector<std::vector<uint32_t>*>& nodeLeve
     // std::cout << timestamp << "processing " << m_cells.size() << " cells..." << std::endl;
     // for (auto it = m_cells.cbegin(); it != m_cells.cend(); it++) {
     //     BoxT* p_cell = it->second;
-        
     //     auto center_v = p_cell->getCenter();
     //     Eigen::Vector3f center_f { center_v.x, center_v.y, center_v.z };
     //     float voxelsPerUnit = 1.0 / m_voxelsize;
     //     Eigen::Vector3i center_i = (center_f * voxelsPerUnit).cast<int32_t>();
-
     //     // neighbour vertex lookup tables (forbidden technique)
     //     // indices in current cell
     //     constexpr uint8_t lookup_A[] = {
@@ -265,7 +261,6 @@ HashGrid<BaseVecT, BoxT>::HashGrid(std::vector<std::vector<uint32_t>*>& nodeLeve
     //         0, 4, 0, 4, // +1 +1 +0
     //         0, 0, 0, 0, // +1 +1 +1
     //     };
-
     //     size_t i_neighbour = 0;
     //     for (int x = -1; x <= 1; x++) {
     //         for (int y = -1; y <= 1; y++) {
@@ -275,20 +270,17 @@ HashGrid<BaseVecT, BoxT>::HashGrid(std::vector<std::vector<uint32_t>*>& nodeLeve
     //                     i_neighbour++;
     //                     continue;
     //                 }
-                    
     //                 Eigen::Vector3i neigh_i = center_i + Eigen::Vector3i(x, y, z);
     //                 uint32_t xCell = (1 << 20) + (uint32_t)neigh_i.x();
     //                 uint32_t yCell = (1 << 20) + (uint32_t)neigh_i.y();
     //                 uint32_t zCell = (1 << 20) + (uint32_t)neigh_i.z();
     //                 uint64_t morton_code = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
-                    
     //                 // find neighbor and exchange phone numbers
     //                 auto it_neighbour = m_cells.find(morton_code);
     //                 if (it_neighbour != nullptr) {
     //                     auto p_neig = it_neighbour->second;
     //                     p_cell->setNeighbor(i_neighbour, p_neig);
     //                     p_neig->setNeighbor(26 - i_neighbour, p_cell);
-
     //                     // update aliasing vertices
     //                     auto i_lookup = i_neighbour * 4;
     //                     for (auto i = 0; i < 4; i++) {

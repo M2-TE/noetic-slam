@@ -137,7 +137,8 @@ public:
         else if (decomp_type == "PMC") {
             auto node_levels = dag.get_node_levels();
             auto leaf_level = dag.get_leaf_level();
-            auto grid_p = std::make_shared<ChadGrid<VecT, BoxT>>(node_levels, leaf_level);
+            double voxel_res = dag.get_voxel_resolution();
+            auto grid_p = std::make_shared<ChadGrid<VecT, BoxT>>(node_levels, leaf_level, voxel_res);
             
             // // store all the points into .grid file
             // std::ofstream output;
