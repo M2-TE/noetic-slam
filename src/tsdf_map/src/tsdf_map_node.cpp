@@ -56,7 +56,7 @@ public:
         subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/keyframe", queueSize, &TSDFMap::callback_pcl_deskewed, this);
         // subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDFMap::callback_pcl_deskewed, this);
         
-        if (false) {
+        if (true) {
             // generate random point data
             std::vector<Eigen::Vector3f> points(100'000);
             std::random_device rd;
@@ -205,6 +205,7 @@ public:
         // save to disk
         auto model_p = std::make_shared<lvr2::Model>(mesh_buffer_p);
         lvr2::ModelFactory::saveModel(model_p, "yeehaw.ply");
+        std::cout << "Saved mesh to yeehaw.ply\n";
     }
     void callback_pcl_deskewed(const sensor_msgs::PointCloud2ConstPtr& msg) {
         // extract pcl

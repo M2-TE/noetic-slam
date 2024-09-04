@@ -11,9 +11,6 @@
 #include <lvr2/reconstruction/FastReconstruction.hpp>
 #include <lvr2/algorithm/NormalAlgorithms.hpp>
 #include <morton-nd/mortonND_BMI2.h>
-// TODO: set these two up in CMake (for chad_tsdf too)
-#define LEAF_BITS 8
-#define LEAF_RESOLUTION 0.1
 #include "dag/leaf_cluster.hpp"
 #include "dag/node.hpp"
 
@@ -27,6 +24,8 @@ struct ChadGrid: public lvr2::GridBase {
         m_voxelsize = voxel_res;
         BoxT::m_voxelsize = voxel_res;
 
+        std::cout << "using fabricated signed distances" << std::endl;
+
         // trackers that will be updated during traversal
         static constexpr std::size_t max_depth = 63/3 - 1;
         std::array<uint8_t, max_depth> path;
@@ -38,7 +37,6 @@ struct ChadGrid: public lvr2::GridBase {
 
         uint_fast32_t depth = 0;
         while(true) {
-            std::cout << depth << '\n';
             auto child_i = path[depth]++;
             if (child_i == 8) {
                 if (depth > 0) depth--;
@@ -63,7 +61,7 @@ struct ChadGrid: public lvr2::GridBase {
                 if (!node_p->contains_child(child_i)) continue;
                 uint32_t child_addr = node_p->get_child_addr(child_i);
                 // construct helper class for leaf cluster data
-                LeafCluster leaf_cluster{ (*node_levels.back())[child_addr] };
+                LeafCluster leaf_cluster{ leaf_level[child_addr] };
 
                 // reconstruct morton code from path
                 uint64_t code = 0;
@@ -74,14 +72,13 @@ struct ChadGrid: public lvr2::GridBase {
                 // convert into chunk position of leaf cluster
                 Eigen::Vector3i cluster_chunk;
                 std::tie(cluster_chunk.x(), cluster_chunk.y(), cluster_chunk.z()) = mortonnd::MortonNDBmi_3D_64::Decode(code);
-                std::cout << cluster_chunk << std::endl;
                 // convert from 21-bit inverted to 32-bit integer
                 cluster_chunk = cluster_chunk.unaryExpr([](auto i){ return i - (1 << 20); });
                 
                 uint32_t leaf_i = 0;
-                for (int32_t z = 0; z < 2; z++) {
-                for (int32_t y = 0; y < 2; y++) {
-                for (int32_t x = 0; x < 2; x++, leaf_i++) {
+                for (int32_t z = 0; z <= 1; z++) {
+                for (int32_t y = 0; y <= 1; y++) {
+                for (int32_t x = 0; x <= 1; x++, leaf_i++) {
                     // leaf position
                     Eigen::Vector3i leaf_chunk = cluster_chunk + Eigen::Vector3i(x, y, z);
                     Eigen::Vector3f leaf_pos = leaf_chunk.cast<float>() * m_voxelsize;
@@ -89,10 +86,10 @@ struct ChadGrid: public lvr2::GridBase {
                     auto sd_opt = leaf_cluster.get_leaf(leaf_i);
                     if (!sd_opt) continue; // skip invalid leaves
                     // signed distance for this leaf
-                    float sd = *sd_opt;
-                    // float signedDistancePerfect = leaf_pos.cast<double>().norm() - 5.0f;
-                    // signedDistance = signedDistancePerfect;
-                    // std::cout << signedDistance << '\t' << signedDistancePerfect << '\n';
+                    float sd = sd_opt.value();
+                    float sd_perfect = leaf_pos.cast<double>().norm() - 5.0;
+                    sd_perfect = std::clamp(sd_perfect, -m_voxelsize, +m_voxelsize);
+                    sd = sd_perfect;
                     
                     // create query point
                     size_t querypoint_i = m_queryPoints.size();
@@ -136,17 +133,15 @@ struct ChadGrid: public lvr2::GridBase {
                         cell_pos = cell_pos.unaryExpr([](float f){ return std::floor(f); });
                         Eigen::Vector3i cell_chunk = cell_pos.cast<int32_t>();
                         // convert to 21-bit ints
-                        // TODO: use unaryExpr() instead
-                        uint32_t xCell = (1 << 20) + (uint32_t)cell_chunk.x();
-                        uint32_t yCell = (1 << 20) + (uint32_t)cell_chunk.y();
-                        uint32_t zCell = (1 << 20) + (uint32_t)cell_chunk.z();
-                        uint64_t mc = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
+                        cell_chunk = cell_chunk.unaryExpr([](auto i){ return i + (1 << 20); });
+                        uint64_t mc = mortonnd::MortonNDBmi_3D_64::Encode(cell_chunk.x(), cell_chunk.y(), cell_chunk.z());
                         // emplace cell into map, check if it already existed
-                        BoxT* box_p = new BoxT(BaseVecT(cell_center.x(), cell_center.y(), cell_center.z()));
-                        auto [iter, bEmplaced] = m_cells.emplace(mc, box_p);
-                        if (!bEmplaced) delete box_p;
+                        auto [box_it, emplaced] = m_cells.emplace(mc, nullptr);
+                        if (emplaced) {
+                            box_it->second = new BoxT(BaseVecT(cell_center.x(), cell_center.y(), cell_center.z()));
+                        }
                         // place query point at the correct cell index
-                        iter->second->setVertex(i, querypoint_i);
+                        box_it->second->setVertex(i, querypoint_i);
                     }
                 }}}
             }

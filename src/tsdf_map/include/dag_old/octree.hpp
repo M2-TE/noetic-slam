@@ -359,7 +359,7 @@ struct Octree {
         std::ostringstream oss;
         oss << thread_i <<  " duration: " << dur << ' ' << DEBUG_COUNTER << '\n';
         // if (thread_i == 0) std::cout << oss.str();
-        // std::cout << oss.str();
+        std::cout << oss.str();
     }
     // allocate some space and return a node for misc use
     Node* allocate_misc_node() {
