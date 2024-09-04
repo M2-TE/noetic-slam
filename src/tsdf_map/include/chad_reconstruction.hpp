@@ -1,6 +1,6 @@
 #pragma once
 #include <lvr2/reconstruction/FastReconstruction.hpp>
-#include "placeholder/chad_grid.hpp"
+#include "chad_grid.hpp"
 
 template<typename BaseVecT, typename BoxT>
 struct ChadReconstruction: public lvr2::FastReconstructionBase<BaseVecT> {

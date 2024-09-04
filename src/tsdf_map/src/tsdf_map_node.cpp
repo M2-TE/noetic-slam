@@ -19,8 +19,8 @@
 //
 #include <Eigen/Eigen>
 #include "dag/dag.hpp"
-#include "placeholder/chad_grid.hpp"
-#include "placeholder/chad_reconstruction.hpp"
+#include "chad_grid.hpp"
+#include "chad_reconstruction.hpp"
 
 // todo: move headers to the places that need them
 // todo: separate source for vulkan stuff as well

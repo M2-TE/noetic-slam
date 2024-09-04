@@ -95,23 +95,6 @@ struct ChadGrid: public lvr2::GridBase {
                     size_t querypoint_i = m_queryPoints.size();
                     m_queryPoints.emplace_back(BaseVecT(leaf_pos.x(), leaf_pos.y(), leaf_pos.z()), sd);
                     
-                    // // 1 cell for the query point
-                    // {
-                    //     Eigen::Vector3f cell_centerf = leaf_pos + Eigen::Vector3f(.5, .5, .5) * m_voxelsize;
-                    //     BoxT* pBox = new BoxT(BaseVecT(cell_centerf.x(), cell_centerf.y(), cell_centerf.z()));
-                    //     // create morton code of cell
-                    //     float recip = 1.0 / m_voxelsize;
-                    //     Eigen::Vector3i leafPosition = (cell_centerf * recip).cast<int32_t>();
-                    //     uint32_t xCell = (1 << 20) + (uint32_t)leafPosition.x();
-                    //     uint32_t yCell = (1 << 20) + (uint32_t)leafPosition.y();
-                    //     uint32_t zCell = (1 << 20) + (uint32_t)leafPosition.z();
-                    //     uint64_t mc = mortonnd::MortonNDBmi_3D_64::Encode(xCell, yCell, zCell);
-                    //     // emplace cell into map, check if it already existed
-                    //     auto [iter, _] = m_cells.emplace(mc, pBox);
-                    //     // place query point at the correct cell index
-                    //     iter->second->setVertex(0, qIndex);
-                    // }
-                    
                     // 8 cells around the query point
                     std::array<Eigen::Vector3f, 8> cell_offsets = {
                         Eigen::Vector3f(+0.5, +0.5, +0.5), 
