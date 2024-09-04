@@ -147,10 +147,6 @@ struct ChadGrid: public lvr2::GridBase {
         }
         std::cout << "ChadGrid created" << std::endl;
     }
-
-    ChadGrid(std::array<std::vector<uint32_t>*, 63/3 - 1> node_levels, std::vector<uint32_t>& leaf_level): lvr2::GridBase(false) {
-        std::cout << "uint32_t ctor for ChadGrid not yet implemented" << std::endl;
-    }
     ~ChadGrid() {
         lvr2::GridBase::~GridBase();
     }
@@ -181,8 +177,35 @@ struct ChadGrid: public lvr2::GridBase {
     void addLatticePoint(int i, int j, int k, float distance = 0.0) override {
         std::cout << "addLatticePoint called" << std::endl;
     }
-    void saveGrid(string file) override {
-        std::cout << "saveGrid called" << std::endl;
+    void saveGrid(std::string file) override {
+        // store all the points into .grid file
+        std::ofstream output;
+        output.open(file, std::ofstream::trunc | std::ofstream::binary);
+        // store header data
+        float voxel_res = LEAF_RESOLUTION;
+        output.write(reinterpret_cast<char*>(&voxel_res), sizeof(float));
+        size_t query_points_n = getQueryPoints().size();
+        output.write(reinterpret_cast<char*>(&query_points_n), sizeof(size_t));
+        size_t cells_n = getNumberOfCells();
+        output.write(reinterpret_cast<char*>(&cells_n), sizeof(size_t));
+        // store query points (vec3 + float)
+        auto& query_points = getQueryPoints();
+        for (auto cur = query_points.cbegin(); cur != query_points.cend(); cur++) {
+            Eigen::Vector3f pos { cur->m_position.x, cur->m_position.y, cur->m_position.z };
+            float signed_distance = cur->m_distance;
+            output.write(reinterpret_cast<const char*>(&pos), sizeof(Eigen::Vector3f));
+            output.write(reinterpret_cast<const char*>(&signed_distance), sizeof(float));
+        }
+        // store cells (8x uint32_t)
+        for (auto cur = firstCell(); cur != lastCell(); cur++) {
+            auto* cell = cur->second;
+            for (size_t i = 0; i < 8; i++) {
+                uint32_t i_query_point = cell->getVertex(i);
+                output.write(reinterpret_cast<const char*>(&i_query_point), sizeof(uint32_t));
+            }
+        }
+        output.close();
+        std::cout << "Saved grid as " << file << '\n';
     }
 
 private:
