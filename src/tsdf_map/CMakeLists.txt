@@ -1,12 +1,15 @@
 cmake_minimum_required(VERSION 3.15)
-project(tsdf LANGUAGES CXX)
+project(tsdf_map LANGUAGES CXX)
 
 list(APPEND CMAKE_CXX_FLAGS "-march=native -ltbb")
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
-
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_C_COMPILER_LAUNCHER ccache)
+set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
+
+# catkin trashbin
 list(APPEND CATKIN_PACKAGES roscpp)
 list(APPEND CATKIN_PACKAGES sensor_msgs)
 list(APPEND CATKIN_PACKAGES geometry_msgs)
@@ -14,45 +17,54 @@ list(APPEND CATKIN_PACKAGES nav_msgs)
 list(APPEND CATKIN_PACKAGES pcl_ros)
 list(APPEND CATKIN_PACKAGES pcl_conversions)
 
-## Find catkin and catkin packages
+# Find catkin and catkin packages
 find_package(catkin REQUIRED COMPONENTS ${CATKIN_PACKAGES})
 catkin_package(CATKIN_DEPENDS ${CATKIN_PACKAGES})
 
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
-find_package(Boost 1.84 REQUIRED)
+find_package(Boost 1.71 REQUIRED)
+find_package(HDF5 REQUIRED COMPONENTS C CXX HL)
 # list(APPEND CMAKE_MODULE_PATH "/usr/local/lib/cmake/OpenVDB")
 # find_package(Threads REQUIRED)
 # find_package(VDBFusion REQUIRED)
-find_package(HDF5 REQUIRED COMPONENTS C CXX HL)
-# add_subdirectory("ext/highfive/")
-# add_subdirectory("ext/lvr2/ext/HighFive/")
-find_package(OpenCV REQUIRED)
 add_subdirectory("ext/lvr2/")
-message("${OpenCV_INCLUDE_DIRS}")
 
+# fetch project dependencies
+include(FetchContent)
+set(FETCHCONTENT_QUIET OFF)
+set(FETCHCONTENT_UPDATES_DISCONNECTED OFF)
+set(CHAD_POPCOUNT_INSTRUCTION __builtin_popcount)
+set(CHAD_LEAF_RESOLUTION 0.1)
+set(CHAD_LEAF_BITS 8)
+FetchContent_Declare(chad_tsdf GIT_REPOSITORY "https://github.com/M2-TE/chad_tsdf.git" GIT_TAG "main" GIT_SHALLOW ON)
+FetchContent_MakeAvailable(chad_tsdf)
 
-add_executable(tsdf_node "src/tsdf_node.cpp")
-target_include_directories(tsdf_node PRIVATE 
+add_executable(tsdf_map_node 
+    # "src/dag.cpp"
+    # "src/dag_lvr2.cpp"
+    "src/tsdf_map_node.cpp")
+target_include_directories(tsdf_map_node PRIVATE 
     "include/"
     "ext/phmap/"
     "ext/lvr2/include/"
-    "ext/morton-nd/include/"
+    "ext/mortonnd/include/"
     "ext/lvr2/ext/HighFive/include/"
     "${HDF5_CXX_INCLUDE_DIRS}"
     "${OpenCV_INCLUDE_DIRS}"
     "${catkin_INCLUDE_DIRS}")
-target_link_libraries(tsdf_node PRIVATE
+target_link_libraries(tsdf_map_node PRIVATE
     Eigen3::Eigen
     Boost::boost
     # VDBFusion::vdbfusion
     # HighFive::Include
     lvr2_static
-    lvr2las_static
-    lvr2rply_static
+    # lvr2las_static
+    # lvr2rply_static
+    chad_tsdf
     ${LVR2_LIB_DEPENDENCIES}
     ${HDF5_CXX_LIBRARIES}
     ${catkin_LIBRARIES})
-target_compile_definitions(tsdf_node PRIVATE BOOST_BIND_GLOBAL_PLACEHOLDERS)
+target_compile_definitions(tsdf_map_node PRIVATE BOOST_BIND_GLOBAL_PLACEHOLDERS)
 
-install(TARGETS tsdf_node DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION} )
+install(TARGETS tsdf_map_node DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION} )
 # install(DIRECTORY cfg launch DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})

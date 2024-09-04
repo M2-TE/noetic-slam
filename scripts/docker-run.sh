@@ -1,5 +1,7 @@
 #!/bin/bash
-
+if [ -z $ROS_DISTRO ]; then
+    ROS_DISTRO="null"
+fi
 if [ $ROS_DISTRO = "noetic" ]; then
     catkin config --init --cmake-args -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=/usr/bin/gcc-11 -DCMAKE_CXX_COMPILER=/usr/bin/g++-11
     catkin build

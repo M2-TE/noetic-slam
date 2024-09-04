@@ -1,5 +1,7 @@
 #!/bin/bash
-
+if [ -z $ROS_DISTRO ]; then
+    ROS_DISTRO="null"
+fi
 if [ $ROS_DISTRO = "noetic" ]; then
     if [ -z "$1" ]; then
         echo "usage: scripts/ouster-replay [bags/*.bag]"
