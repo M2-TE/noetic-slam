@@ -35,7 +35,7 @@ set(FETCHCONTENT_QUIET OFF)
 set(FETCHCONTENT_UPDATES_DISCONNECTED OFF)
 set(CHAD_POPCOUNT_INSTRUCTION __builtin_popcount)
 set(CHAD_LEAF_RESOLUTION 0.1)
-set(CHAD_LEAF_BITS 8)
+set(CHAD_LEAF_BITS 4)
 FetchContent_Declare(chad_tsdf GIT_REPOSITORY "https://github.com/M2-TE/chad_tsdf.git" GIT_TAG "main" GIT_SHALLOW ON)
 FetchContent_MakeAvailable(chad_tsdf)
 

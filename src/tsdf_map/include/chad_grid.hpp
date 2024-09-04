@@ -24,7 +24,7 @@ struct ChadGrid: public lvr2::GridBase {
         m_voxelsize = voxel_res;
         BoxT::m_voxelsize = voxel_res;
 
-        std::cout << "using fabricated signed distances" << std::endl;
+        // std::cout << "using fabricated signed distances" << std::endl;
 
         // trackers that will be updated during traversal
         static constexpr std::size_t max_depth = 63/3 - 1;
@@ -87,9 +87,10 @@ struct ChadGrid: public lvr2::GridBase {
                     if (!sd_opt) continue; // skip invalid leaves
                     // signed distance for this leaf
                     float sd = sd_opt.value();
-                    float sd_perfect = leaf_pos.cast<double>().norm() - 5.0;
-                    sd_perfect = std::clamp(sd_perfect, -m_voxelsize, +m_voxelsize);
-                    sd = sd_perfect;
+                    // float sd_perfect = leaf_pos.cast<double>().norm() - 5.0;
+                    // sd_perfect = std::clamp(sd_perfect, -m_voxelsize, +m_voxelsize);
+                    // sd = sd_perfect;
+                    // std::cout << "perfect: " << sd_perfect << " actual: " << sd_opt.value() << '\n';
                     
                     // create query point
                     size_t querypoint_i = m_queryPoints.size();
@@ -97,13 +98,13 @@ struct ChadGrid: public lvr2::GridBase {
                     
                     // 8 cells around the query point
                     std::array<Eigen::Vector3f, 8> cell_offsets = {
-                        Eigen::Vector3f(+0.5, +0.5, +0.5), 
+                        Eigen::Vector3f(+0.5, +0.5, +0.5),
                         Eigen::Vector3f(-0.5, +0.5, +0.5),
-                        Eigen::Vector3f(-0.5, -0.5, +0.5), 
+                        Eigen::Vector3f(-0.5, -0.5, +0.5),
                         Eigen::Vector3f(+0.5, -0.5, +0.5),
-                        Eigen::Vector3f(+0.5, +0.5, -0.5), 
+                        Eigen::Vector3f(+0.5, +0.5, -0.5),
                         Eigen::Vector3f(-0.5, +0.5, -0.5),
-                        Eigen::Vector3f(-0.5, -0.5, -0.5), 
+                        Eigen::Vector3f(-0.5, -0.5, -0.5),
                         Eigen::Vector3f(+0.5, -0.5, -0.5),
                     };
                     for (size_t i = 0; i < 8; i++) {
