@@ -9,10 +9,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_C_COMPILER_LAUNCHER ccache)
 set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
 
-# main executable
-add_executable(tsdf_map_node "src/tsdf_map_node.cpp")
-target_include_directories(tsdf_map_node PRIVATE "include/")
-
 # catkin trashbin
 list(APPEND CATKIN_PACKAGES roscpp)
 list(APPEND CATKIN_PACKAGES sensor_msgs)
@@ -22,18 +18,16 @@ list(APPEND CATKIN_PACKAGES pcl_ros)
 list(APPEND CATKIN_PACKAGES pcl_conversions)
 find_package(catkin REQUIRED COMPONENTS ${CATKIN_PACKAGES})
 catkin_package(CATKIN_DEPENDS ${CATKIN_PACKAGES})
+
+# main executable
+add_executable(tsdf_map_node "src/tsdf_map_node.cpp")
+target_include_directories(tsdf_map_node PRIVATE "include/")
 target_include_directories(tsdf_map_node PRIVATE SYSTEM "${catkin_INCLUDE_DIRS}")
 target_link_libraries(tsdf_map_node PRIVATE ${catkin_LIBRARIES})
 
-# system dependencies TODO: put these into the proj deps that need em
-find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+# system dependencies
+find_package(Eigen3 REQUIRED NO_MODULE)
 target_link_libraries(tsdf_map_node PRIVATE Eigen3::Eigen)
-find_package(Boost 1.71 REQUIRED)
-target_link_libraries(tsdf_map_node PRIVATE Boost::boost)
-target_compile_definitions(tsdf_map_node PRIVATE BOOST_BIND_GLOBAL_PLACEHOLDERS)
-find_package(HDF5 REQUIRED COMPONENTS C CXX HL)
-target_include_directories(tsdf_map_node PRIVATE SYSTEM "${HDF5_CXX_INCLUDE_DIRS}")
-target_link_libraries(tsdf_map_node PRIVATE ${HDF5_CXX_LIBRARIES})
 
 ## fetch project dependencies
 include(FetchContent)
@@ -42,7 +36,7 @@ set(FETCHCONTENT_UPDATES_DISCONNECTED OFF)
 # tsdf mapping backend
 set(CHAD_POPCOUNT_INSTRUCTION __builtin_popcount)
 set(CHAD_LEAF_RESOLUTION 0.1)
-set(CHAD_LEAF_BITS 8)
+set(CHAD_LEAF_BITS 4)
 FetchContent_Declare(chad_tsdf GIT_REPOSITORY "https://github.com/M2-TE/chad_tsdf.git" GIT_TAG "main" GIT_SHALLOW ON)
 FetchContent_MakeAvailable(chad_tsdf)
 target_link_libraries(tsdf_map_node PRIVATE chad_tsdf)
@@ -57,7 +51,10 @@ target_link_libraries(tsdf_map_node PRIVATE morton-nd::MortonND)
 # lvr2
 FetchContent_Declare(lvr2 GIT_REPOSITORY "https://gitlab.informatik.uni-osnabrueck.de/Las_Vegas_Reconstruction/Develop.git" GIT_TAG "master" GIT_SHALLOW ON)
 FetchContent_MakeAvailable(lvr2)
-target_include_directories(tsdf_map_node PRIVATE SYSTEM "${lvr2_SOURCE_DIR}/include/" "${lvr2_SOURCE_DIR}/ext/HighFive/include/")
+target_include_directories(tsdf_map_node PRIVATE SYSTEM "${lvr2_SOURCE_DIR}/include/")
+target_include_directories(tsdf_map_node PRIVATE SYSTEM "${lvr2_SOURCE_DIR}/ext/HighFive/include/")
+find_package(HDF5 REQUIRED COMPONENTS C CXX HL)
+target_include_directories(tsdf_map_node PRIVATE SYSTEM "${HDF5_CXX_INCLUDE_DIRS}")
 target_link_libraries(tsdf_map_node PRIVATE lvr2_static ${LVR2_LIB_DEPENDENCIES})
 # octomap
 # set(BUILD_OCTOVIS_SUBPROJECT OFF)
