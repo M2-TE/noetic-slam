@@ -4,13 +4,3 @@
 [submodule "src/ouster"]
 	path = src/ouster
 	url = https://github.com/ouster-lidar/ouster-ros.git
-[submodule "src/tsdf_map/ext/phmap"]
-	path = src/tsdf_map/ext/phmap
-	url = https://github.com/greg7mdp/parallel-hashmap.git
-[submodule "src/tsdf_map/ext/mortonnd"]
-	path = src/tsdf_map/ext/mortonnd
-	url = https://github.com/morton-nd/morton-nd.git
-[submodule "src/tsdf_map/ext/lvr2"]
-	path = src/tsdf_map/ext/lvr2
-	url = https://gitlab.informatik.uni-osnabrueck.de/Las_Vegas_Reconstruction/Develop.git
-	branch = develop
