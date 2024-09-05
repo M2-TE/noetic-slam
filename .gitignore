@@ -12,6 +12,10 @@
 *.grid
 *.bin
 
+# octomap war crimes
+lib/
+bin/
+
 # catkin build files
 .catkin_tools
 build/

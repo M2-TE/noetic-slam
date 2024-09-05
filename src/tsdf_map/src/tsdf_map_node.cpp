@@ -17,6 +17,9 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/ply_io.h>
 //
+#include <fmt/base.h>
+#include <octomap/octomap.h>
+#include <octomap/OcTree.h>
 #include <Eigen/Eigen>
 #include "dag/dag.hpp"
 #include "chad_grid.hpp"
@@ -24,7 +27,6 @@
 
 // todo: move headers to the places that need them
 // todo: separate source for vulkan stuff as well
-// todo: use fmt for logging
 
 struct Point {
     Point(): data{0.f, 0.f, 0.f, 1.f} {}
@@ -55,10 +57,11 @@ public:
     TSDFMap(ros::NodeHandle nh) {
         subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/keyframe", queueSize, &TSDFMap::callback_pcl_deskewed, this);
         // subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDFMap::callback_pcl_deskewed, this);
-        
+        std::vector<Eigen::Vector3f> points;
+        // simulate sphere
         if (false) {
             // generate random point data
-            std::vector<Eigen::Vector3f> points(100'000);
+            points.resize(100'000);
             std::random_device rd;
             std::mt19937 gen(420);
             std::uniform_real_distribution<double> dis(-1.0f, 1.0f);
@@ -81,32 +84,59 @@ public:
                 }
                 dag.insert(points, position, Eigen::Quaternionf::Identity());
             }
-            dag.print_stats();
-            reconstruct();
-            // std::ofstream output;
-            // output.open("sphere.ascii");
-            // for (auto& point: points) {
-            //     output << point.x() << ' ' << point.y() << ' ' << point.z() << '\n';
-            // }
-            // output.close();
-            exit(0);
         }
+        // load a bunch of points
         else if (true) {
-            
             std::ifstream file;
             file.open("debugpoints.bin", std::ofstream::binary);
             size_t n_points;
             file.read(reinterpret_cast<char*>(&n_points), sizeof(size_t));
-            std::vector<Eigen::Vector3f> points(n_points);
+            points.resize(n_points);
             for (auto& point: points) {
                 file.read(reinterpret_cast<char*>(&point), sizeof(Eigen::Vector3f));
             }
-            Eigen::Vector3f position { 0, 0, 0 };
-            dag.insert(points, position, Eigen::Quaternionf::Identity());
-            dag.print_stats();
-            reconstruct();
-            exit(0);
         }
+
+        // chad_tsdf backend
+        if (false) {
+            Eigen::Vector3f position{ 0, 0, 0 };
+            Eigen::Quaternionf rotation = Eigen::Quaternionf::Identity();
+            dag.insert(points, position, rotation);
+            dag.print_stats();
+            // reconstruct();
+        }
+        // octomap backend
+        else if (false) {
+            octomap::Pointcloud cloud;
+            for (auto& point: points) {
+                cloud.push_back({ point.x(), point.y(), point.z() });
+            }
+
+            auto beg = std::chrono::high_resolution_clock::now();
+            octomap::OcTree tree{ 0.1 };
+            auto end = std::chrono::high_resolution_clock::now();
+            auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
+            fmt::println("OcTree ctor {}", dur.count());
+            beg = std::chrono::high_resolution_clock::now();
+            tree.insertPointCloud(cloud, { 0, 0, 0 });
+            end = std::chrono::high_resolution_clock::now();
+            dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
+            fmt::println("OcTree insert {}", dur.count());
+            beg = std::chrono::high_resolution_clock::now();
+            tree.updateInnerOccupancy();
+            end = std::chrono::high_resolution_clock::now();
+            dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
+            fmt::println("OcTree update {}", dur.count());
+
+            // fmt::println("{} MiB", (double)tree.memoryFullGrid() / 1024.0 / 1024.0);
+            fmt::println("{} MiB", (double)tree.memoryUsage() / 1024.0 / 1024.0);
+        }
+        else if (true) {
+
+        }
+        // TODO: VDBFusion backend
+        // TODO: Voxblox backend
+        exit(0);
     }
     ~TSDFMap() {
         if (DEBUG_RECORD_POINTS) {
