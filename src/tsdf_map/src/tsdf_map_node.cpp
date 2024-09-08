@@ -18,11 +18,16 @@
 #include <pcl/io/ply_io.h>
 //
 #include <fmt/base.h>
+// Octomap
 #include <octomap/octomap.h>
 #include <octomap/OcTree.h>
+// Voxblox
 #include <voxblox/core/common.h>
 #include <voxblox/core/tsdf_map.h>
 #include <voxblox/integrator/tsdf_integrator.h>
+// VDBFusion
+#include <vdbfusion/VDBVolume.h>
+// Other
 #include <Eigen/Eigen>
 #include "dag/dag.hpp"
 #include "chad_grid.hpp"
@@ -101,7 +106,7 @@ public:
         }
 
         // chad_tsdf backend
-        if (true) {
+        if (false) {
             Eigen::Vector3f position{ 0, 0, 0 };
             Eigen::Quaternionf rotation = Eigen::Quaternionf::Identity();
             dag.insert(points, position, rotation);
@@ -135,7 +140,7 @@ public:
             fmt::println("{} MiB", (double)tree.memoryUsage() / 1024.0 / 1024.0);
         }
         // voxblox backend
-        else if (true) {
+        else if (false) {
             // set up map
             voxblox::TsdfMap::Config cfg;
             cfg.tsdf_voxel_size = LEAF_RESOLUTION;
@@ -163,7 +168,26 @@ public:
             auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
             fmt::println("voxblox ctor {}", dur.count());
         }
-        // TODO: VDBFusion backend
+        // VDBFusion backend
+        else if (true) {
+            // truncation of same size as voxel size
+            vdbfusion::VDBVolume volume(LEAF_RESOLUTION, LEAF_RESOLUTION);
+            // vdbfusion::VDBFusion fusion(volume);
+            Eigen::Vector3d position{ 0, 0, 0 };
+            // convert to double prec points
+            std::vector<Eigen::Vector3d> pointsd;
+            pointsd.reserve(points.size());
+            for (auto& point: points) {
+                pointsd.emplace_back(point.cast<double>());
+            }
+            // integrate into tsdf volume
+            auto beg = std::chrono::high_resolution_clock::now();
+            volume.Integrate(pointsd, position, [](float f){ return f; });
+            auto end = std::chrono::high_resolution_clock::now();
+            auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
+            fmt::println("vdbfusion ctor {}", dur.count());
+            // fusion.save("vdbfusion.vdb");
+        }
         exit(0);
     }
     ~TSDFMap() {

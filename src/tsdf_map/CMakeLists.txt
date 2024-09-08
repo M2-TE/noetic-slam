@@ -63,10 +63,10 @@ find_package(HDF5 REQUIRED COMPONENTS C CXX HL)
 target_include_directories(tsdf_map_node PRIVATE SYSTEM "${HDF5_CXX_INCLUDE_DIRS}")
 target_link_libraries(tsdf_map_node PRIVATE lvr2_static ${LVR2_LIB_DEPENDENCIES})
 # vdbfusion
-# TODO
+FetchContent_Declare(vdbfusion GIT_REPOSITORY "https://github.com/PRBonn/vdbfusion.git" GIT_TAG "v0.1.6" GIT_SHALLOW ON)
+FetchContent_MakeAvailable(vdbfusion)
+target_link_libraries(tsdf_map_node PRIVATE VDBFusion::vdbfusion)
 # voxblox
-# FetchContent_Declare(catkin_simple GIT_REPOSITORY "https://github.com/catkin/catkin_simple.git" GIT_TAG "master" GIT_SHALLOW ON)
-# FetchContent_MakeAvailable(catkin_simple)
 FetchContent_Declare(voxblox GIT_REPOSITORY "https://github.com/M2-TE/voxblox.git" GIT_TAG "master" GIT_SHALLOW ON)
 FetchContent_MakeAvailable(voxblox)
 add_subdirectory("${voxblox_SOURCE_DIR}/voxblox" "${voxblox_BINARY_DIR}")
