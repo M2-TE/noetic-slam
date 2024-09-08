@@ -20,6 +20,9 @@
 #include <fmt/base.h>
 #include <octomap/octomap.h>
 #include <octomap/OcTree.h>
+#include <voxblox/core/common.h>
+#include <voxblox/core/tsdf_map.h>
+#include <voxblox/integrator/tsdf_integrator.h>
 #include <Eigen/Eigen>
 #include "dag/dag.hpp"
 #include "chad_grid.hpp"
@@ -98,7 +101,7 @@ public:
         }
 
         // chad_tsdf backend
-        if (false) {
+        if (true) {
             Eigen::Vector3f position{ 0, 0, 0 };
             Eigen::Quaternionf rotation = Eigen::Quaternionf::Identity();
             dag.insert(points, position, rotation);
@@ -113,7 +116,7 @@ public:
             }
 
             auto beg = std::chrono::high_resolution_clock::now();
-            octomap::OcTree tree{ 0.1 };
+            octomap::OcTree tree{ LEAF_RESOLUTION };
             auto end = std::chrono::high_resolution_clock::now();
             auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
             fmt::println("OcTree ctor {}", dur.count());
@@ -131,11 +134,36 @@ public:
             // fmt::println("{} MiB", (double)tree.memoryFullGrid() / 1024.0 / 1024.0);
             fmt::println("{} MiB", (double)tree.memoryUsage() / 1024.0 / 1024.0);
         }
+        // voxblox backend
         else if (true) {
+            // set up map
+            voxblox::TsdfMap::Config cfg;
+            cfg.tsdf_voxel_size = LEAF_RESOLUTION;
+            cfg.tsdf_voxels_per_side = 16;
+            voxblox::TsdfMap map{ cfg };
+            // set up integrator
+            voxblox::TsdfIntegratorBase::Config int_cfg;
+            int_cfg.default_truncation_distance = 0.1;
+            voxblox::SimpleTsdfIntegrator integrator{ int_cfg, map.getTsdfLayerPtr() };
+            // voxblox::MergedTsdfIntegrator integrator{ int_cfg, map.getTsdfLayerPtr() };
+            // voxblox::FastTsdfIntegrator integrator{ int_cfg, map.getTsdfLayerPtr() };
+            // write into voxblox pointcloud
+            voxblox::Pointcloud pointcloud;
+            voxblox::Colors colors;
+            for (auto& point: points) {
+                pointcloud.emplace_back(point.x(), point.y(), point.z());
+                colors.emplace_back(0, 255, 0);
+            }
+            // integrate pointcloud
 
+            auto beg = std::chrono::high_resolution_clock::now();
+            voxblox::Transformation T_G_C;
+            integrator.integratePointCloud(T_G_C, pointcloud, colors);
+            auto end = std::chrono::high_resolution_clock::now();
+            auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
+            fmt::println("voxblox ctor {}", dur.count());
         }
         // TODO: VDBFusion backend
-        // TODO: Voxblox backend
         exit(0);
     }
     ~TSDFMap() {

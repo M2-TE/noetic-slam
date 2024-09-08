@@ -65,9 +65,12 @@ target_link_libraries(tsdf_map_node PRIVATE lvr2_static ${LVR2_LIB_DEPENDENCIES}
 # vdbfusion
 # TODO
 # voxblox
-FetchContent_Declare(voxblox GIT_REPOSITORY "https://github.com/ethz-asl/voxblox.git" GIT_TAG "master" SOURCE_SUBDIR "voxblox" GIT_SHALLOW ON )
+# FetchContent_Declare(catkin_simple GIT_REPOSITORY "https://github.com/catkin/catkin_simple.git" GIT_TAG "master" GIT_SHALLOW ON)
+# FetchContent_MakeAvailable(catkin_simple)
+FetchContent_Declare(voxblox GIT_REPOSITORY "https://github.com/M2-TE/voxblox.git" GIT_TAG "master" GIT_SHALLOW ON)
 FetchContent_MakeAvailable(voxblox)
-# target_link_libraries(tsdf_map_node PRIVATE voxblox)
+add_subdirectory("${voxblox_SOURCE_DIR}/voxblox" "${voxblox_BINARY_DIR}")
+target_link_libraries(tsdf_map_node PRIVATE voxblox)
 # octomap
 set(BUILD_OCTOVIS_SUBPROJECT OFF)
 set(BUILD_DYNAMICETD3D_SUBPROJECT OFF)
