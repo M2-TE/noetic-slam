@@ -106,7 +106,7 @@ public:
         }
 
         // chad_tsdf backend
-        if (false) {
+        if (true) {
             Eigen::Vector3f position{ 0, 0, 0 };
             Eigen::Quaternionf rotation = Eigen::Quaternionf::Identity();
             dag.insert(points, position, rotation);
