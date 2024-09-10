@@ -70,7 +70,7 @@ public:
 
         std::vector<Eigen::Vector3f> points;
         // simulate sphere
-        if (false) {
+        if (true) {
             // generate random point data
             points.resize(100'000);
             std::random_device rd;
@@ -93,8 +93,10 @@ public:
                     point = pointd.cast<float>();
                     point += position;
                 }
-                // dag.insert(points, position, Eigen::Quaternionf::Identity());
+                dag.insert(points, position, Eigen::Quaternionf::Identity());
             }
+            dag.print_stats();
+            reconstruct();
         }
         // load a bunch of points
         else if (true) {
@@ -107,7 +109,6 @@ public:
                 file.read(reinterpret_cast<char*>(&point), sizeof(Eigen::Vector3f));
             }
         }
-
 
         return;
         std::this_thread::sleep_for(std::chrono::seconds(10)); // pause to allow more precise measurement of heap allocs
