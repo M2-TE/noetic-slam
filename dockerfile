@@ -14,7 +14,7 @@ ENV CC "/usr/bin/gcc-11"
 
 ## Dependencies
 # Core:
-RUN apt-get install -y python3-catkin-tools ros-noetic-pcl-ros
+RUN apt-get install -y python3-catkin-tools ros-noetic-pcl-ros heaptrack gdb
 # Ouster:
 RUN apt-get install -y ros-noetic-rviz libeigen3-dev libjsoncpp-dev libspdlog-dev libcurl4-openssl-dev
 # DLIO:
