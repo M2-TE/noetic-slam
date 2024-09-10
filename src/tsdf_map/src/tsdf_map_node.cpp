@@ -1,4 +1,5 @@
 #include <chrono>
+#include <thread>
 #include <cstddef>
 #include <fstream>
 #include <random>
@@ -33,6 +34,7 @@
 #include "chad_grid.hpp"
 #include "chad_reconstruction.hpp"
 
+
 // todo: move headers to the places that need them
 // todo: separate source for vulkan stuff as well
 
@@ -65,6 +67,7 @@ public:
     TSDFMap(ros::NodeHandle nh) {
         subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/keyframe", queueSize, &TSDFMap::callback_pcl_deskewed, this);
         // subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDFMap::callback_pcl_deskewed, this);
+
         std::vector<Eigen::Vector3f> points;
         // simulate sphere
         if (false) {
@@ -90,7 +93,7 @@ public:
                     point = pointd.cast<float>();
                     point += position;
                 }
-                dag.insert(points, position, Eigen::Quaternionf::Identity());
+                // dag.insert(points, position, Eigen::Quaternionf::Identity());
             }
         }
         // load a bunch of points
@@ -105,6 +108,9 @@ public:
             }
         }
 
+
+        return;
+        std::this_thread::sleep_for(std::chrono::seconds(10)); // pause to allow more precise measurement of heap allocs
         // chad_tsdf backend
         if (true) {
             Eigen::Vector3f position{ 0, 0, 0 };
@@ -112,6 +118,7 @@ public:
             dag.insert(points, position, rotation);
             dag.print_stats();
             // reconstruct();
+            exit(0);
         }
         // octomap backend
         else if (false) {
@@ -122,22 +129,16 @@ public:
 
             auto beg = std::chrono::high_resolution_clock::now();
             octomap::OcTree tree{ LEAF_RESOLUTION };
+            tree.insertPointCloud(cloud, { 0, 0, 0 });
+            tree.updateInnerOccupancy();
             auto end = std::chrono::high_resolution_clock::now();
             auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
-            fmt::println("OcTree ctor {}", dur.count());
-            beg = std::chrono::high_resolution_clock::now();
-            tree.insertPointCloud(cloud, { 0, 0, 0 });
-            end = std::chrono::high_resolution_clock::now();
-            dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
-            fmt::println("OcTree insert {}", dur.count());
-            beg = std::chrono::high_resolution_clock::now();
-            tree.updateInnerOccupancy();
-            end = std::chrono::high_resolution_clock::now();
-            dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
-            fmt::println("OcTree update {}", dur.count());
+            fmt::println("octomap {}", dur.count());
 
             // fmt::println("{} MiB", (double)tree.memoryFullGrid() / 1024.0 / 1024.0);
             fmt::println("{} MiB", (double)tree.memoryUsage() / 1024.0 / 1024.0);
+
+            exit(0);
         }
         // voxblox backend
         else if (false) {
@@ -149,9 +150,9 @@ public:
             // set up integrator
             voxblox::TsdfIntegratorBase::Config int_cfg;
             int_cfg.default_truncation_distance = 0.1;
-            voxblox::SimpleTsdfIntegrator integrator{ int_cfg, map.getTsdfLayerPtr() };
-            // voxblox::MergedTsdfIntegrator integrator{ int_cfg, map.getTsdfLayerPtr() };
-            // voxblox::FastTsdfIntegrator integrator{ int_cfg, map.getTsdfLayerPtr() };
+            // voxblox::FastTsdfIntegrator integrator{ int_cfg, map.getTsdfLayerPtr() }; // faster integration
+            voxblox::MergedTsdfIntegrator integrator{ int_cfg, map.getTsdfLayerPtr() }; // smaller footprint
+            // voxblox::SimpleTsdfIntegrator integrator{ int_cfg, map.getTsdfLayerPtr() }; // ew
             // write into voxblox pointcloud
             voxblox::Pointcloud pointcloud;
             voxblox::Colors colors;
@@ -167,9 +168,10 @@ public:
             auto end = std::chrono::high_resolution_clock::now();
             auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
             fmt::println("voxblox ctor {}", dur.count());
+            exit(0);
         }
         // VDBFusion backend
-        else if (true) {
+        else if (false) {
             // truncation of same size as voxel size
             vdbfusion::VDBVolume volume(LEAF_RESOLUTION, LEAF_RESOLUTION);
             // vdbfusion::VDBFusion fusion(volume);
@@ -187,8 +189,8 @@ public:
             auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
             fmt::println("vdbfusion ctor {}", dur.count());
             // fusion.save("vdbfusion.vdb");
+            exit(0);
         }
-        exit(0);
     }
     ~TSDFMap() {
         if (DEBUG_RECORD_POINTS) {

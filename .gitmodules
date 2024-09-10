@@ -4,3 +4,7 @@
 [submodule "src/ouster"]
 	path = src/ouster
 	url = https://github.com/ouster-lidar/ouster-ros.git
+[submodule "src/file_player_mulran"]
+	path = src/file_player_mulran
+	url = https://github.com/RPM-Robotics-Lab/file_player_mulran.git
+	branch = noetic

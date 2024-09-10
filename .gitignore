@@ -22,3 +22,6 @@ build/
 devel/
 logs/
 log/
+
+# heaptrack outputs
+heaptrack.*.*.gz
