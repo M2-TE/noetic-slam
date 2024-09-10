@@ -285,25 +285,25 @@ public:
         // ALL_POINTS_DEBUG.insert(ALL_POINTS_DEBUG.end(), points.cbegin(), points.cend());
 
         // DEBUG
-        // static int i = 0;
-        // if (++i >= 50) {
-        //     // std::ofstream file;
-        //     // file.open("debugpoints.bin", std::ofstream::binary | std::ofstream::trunc);
-        //     // size_t n_points = ALL_POINTS_DEBUG.size();
-        //     // file.write(reinterpret_cast<char*>(&n_points), sizeof(size_t));
-        //     // for (auto& point: ALL_POINTS_DEBUG) {
-        //     //     file.write(reinterpret_cast<char*>(&point), sizeof(Eigen::Vector3f));
-        //     // }
-        //     // std::cout << "Wrote points to debugpoints.bin\n";
-        //     dag.print_stats();
-        //     reconstruct();
-        //     exit(0);
-        // }
+        static int i = 0;
+        if (++i >= 80) {
+            // std::ofstream file;
+            // file.open("debugpoints.bin", std::ofstream::binary | std::ofstream::trunc);
+            // size_t n_points = ALL_POINTS_DEBUG.size();
+            // file.write(reinterpret_cast<char*>(&n_points), sizeof(size_t));
+            // for (auto& point: ALL_POINTS_DEBUG) {
+            //     file.write(reinterpret_cast<char*>(&point), sizeof(Eigen::Vector3f));
+            // }
+            // std::cout << "Wrote points to debugpoints.bin\n";
+            dag.print_stats();
+            reconstruct();
+            exit(0);
+        }
     }
 
 private:
     DAG dag;
-    Eigen::Vector3f cur_pos = { 0, 0, 5 };
+    Eigen::Vector3f cur_pos = { 0, 0, 0 };
     Eigen::Quaternionf cur_rot = {};
     uint32_t queueSize = 100;
     ros::Subscriber sub_pcl;
