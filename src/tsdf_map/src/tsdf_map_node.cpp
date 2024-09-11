@@ -1,4 +1,5 @@
 #include <chrono>
+#include <linux/sysinfo.h>
 #include <thread>
 #include <cstddef>
 #include <fstream>
@@ -7,6 +8,7 @@
 
 // ros crap
 #include <ros/ros.h>
+#include <ros/callback_queue.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseArray.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -34,32 +36,7 @@
 #include "dag/dag.hpp"
 #include "chad_grid.hpp"
 #include "chad_reconstruction.hpp"
-
-
-// todo: move headers to the places that need them
-// todo: separate source for vulkan stuff as well
-
-struct Point {
-    Point(): data{0.f, 0.f, 0.f, 1.f} {}
-
-    PCL_ADD_POINT4D;
-    float intensity; // intensity
-    union {
-        std::uint32_t t; // time since beginning of scan in nanoseconds
-        float time; // time since beginning of scan in seconds
-        double timestamp; // absolute timestamp in seconds
-    };
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-}
-EIGEN_ALIGN16;
-POINT_CLOUD_REGISTER_POINT_STRUCT(Point,
-    (float, x, x)
-    (float, y, y)
-    (float, z, z)
-    (float, intensity, intensity)
-    (std::uint32_t, t, t)
-    (float, time, time)
-    (double, timestamp, timestamp))
+#include "utils.hpp"
 
 class TSDFMap {
 public:
@@ -197,9 +174,12 @@ public:
         }
     }
     ~TSDFMap() {
-        dag.print_stats();
-        exit(0);
-        save_chad();
+        // TODO: write final timings and memory footprint
+        fmt::println("min: {} ms", min.count());
+        fmt::println("max: {} ms", max.count());
+        fmt::println("avg: {} ms", total.count() / frame_count);
+        // dag.print_stats();
+        // save_chad();
     }
     
     void reconstruct(uint32_t root_addr, std::string_view mesh_name, bool save_grid) {
@@ -258,6 +238,9 @@ public:
         }
         reconstruct(1, "maps/mesh.ply", true);
     }
+    void insert(std::vector<Eigen::Vector3f>& points) {
+        dag.insert(points, cur_pos, cur_rot);
+    }
     void callback_pos(const geometry_msgs::PoseStampedConstPtr& msg) {
         // extract position
         cur_pos = {
@@ -286,33 +269,61 @@ public:
         }
         pointcloud.clear();
 
-        // insert into tsdf DAG
-        fmt::println("Inserting {} points at pos {} {} {}", points.size(), cur_pos.x(), cur_pos.y(), cur_pos.z());
-        dag.insert(points, cur_pos, cur_rot);
+        // insert points
+        fmt::println("Inserting {} points", points.size());
+        auto beg = std::chrono::high_resolution_clock::now();
+        insert(points);
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::milliseconds dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
+        fmt::println("insertion time: {}", dur.count());
 
-        // DEBUG
-        // if (dag._subtrees.size() >= 5) {
-        //     save_chad();
-        //     exit(0);
-        // }
+        // measure physical memory footprint
+        double mb = (double)read_phys_mem_kb() / 1024.0;
+        fmt::println("Memory: {} MiB", mb);
+        
+        // update trackers
+        frame_count++;
+        total += dur;
+        min = std::min(min, dur);
+        max = std::max(max, dur);
+
+        // write to csv
+        std::ofstream file;
+        file.open("insertion_times.csv", std::ofstream::app);
+        file << frame_count << ',' 
+            << mb << ',' 
+            << dur.count()
+            << '\n';
+        file.close();
     }
 
 private:
     DAG dag;
     Eigen::Vector3f cur_pos = { 0, 0, 0 };
     Eigen::Quaternionf cur_rot = {};
-    uint32_t queueSize = 3;
+    uint32_t queueSize = 100;
     ros::Subscriber sub_pcl;
     ros::Subscriber sub_pos;
-    // std::vector<Eigen::Vector3f> ALL_POINTS_DEBUG;
+    int baseline_memory;
+    std::chrono::milliseconds min = std::chrono::milliseconds::max();
+    std::chrono::milliseconds max = std::chrono::milliseconds::min();
+    std::chrono::milliseconds total = std::chrono::milliseconds::zero();
+    size_t frame_count = 0;
 };
 
 int main(int argc, char **argv) {
-    std::this_thread::sleep_for(std::chrono::seconds(5));
     fmt::println("Starting tsdf_map_node");
     ros::init(argc, argv, "tsdf_map_node");
     ros::NodeHandle nh;
     TSDFMap node { nh };
+    int baseline_memory = read_phys_mem_kb();
+    std::ofstream file;
+    file.open("insertion_times.csv", std::ofstream::trunc);
+    file << "frame_count" << ',' 
+        << "memory" << ',' 
+        << "duration"
+        << '\n';
+    file.close();
     ros::spin();
     return 0;
 }
