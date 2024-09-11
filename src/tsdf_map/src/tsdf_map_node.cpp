@@ -197,6 +197,8 @@ public:
         }
     }
     ~TSDFMap() {
+        dag.print_stats();
+        exit(0);
         save_chad();
     }
     
@@ -289,10 +291,10 @@ public:
         dag.insert(points, cur_pos, cur_rot);
 
         // DEBUG
-        if (dag._subtrees.size() >= 5) {
-            save_chad();
-            exit(0);
-        }
+        // if (dag._subtrees.size() >= 5) {
+        //     save_chad();
+        //     exit(0);
+        // }
     }
 
 private:
@@ -306,6 +308,8 @@ private:
 };
 
 int main(int argc, char **argv) {
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    fmt::println("Starting tsdf_map_node");
     ros::init(argc, argv, "tsdf_map_node");
     ros::NodeHandle nh;
     TSDFMap node { nh };
