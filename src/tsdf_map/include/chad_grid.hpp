@@ -16,15 +16,13 @@
 
 template<typename BaseVecT, typename BoxT>
 struct ChadGrid: public lvr2::GridBase {
-    ChadGrid(std::array<std::vector<uint32_t>*, 63/3 - 1> node_levels, std::vector<LeafCluster::ClusterValue>& leaf_level, double voxel_res): lvr2::GridBase(false) {
+    ChadGrid(std::array<std::vector<uint32_t>*, 63/3 - 1> node_levels, std::vector<LeafCluster::ClusterValue>& leaf_level, uint32_t root_addr, double voxel_res): lvr2::GridBase(false) {
         m_globalIndex = 0;
         m_coordinateScales.x = 1.0;
         m_coordinateScales.y = 1.0;
         m_coordinateScales.z = 1.0;
         m_voxelsize = voxel_res;
         BoxT::m_voxelsize = voxel_res;
-
-        // std::cout << "using fabricated signed distances" << std::endl;
 
         // trackers that will be updated during traversal
         static constexpr std::size_t max_depth = 63/3 - 1;
@@ -33,7 +31,7 @@ struct ChadGrid: public lvr2::GridBase {
         path.fill(0);
         nodes.fill(nullptr);
         // initialize
-        nodes[0] = Node::from_addr(*node_levels[0], 1);
+        nodes[0] = Node::from_addr(*node_levels[0], root_addr);
 
         uint_fast32_t depth = 0;
         while(true) {

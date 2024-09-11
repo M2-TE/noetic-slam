@@ -19,6 +19,7 @@
 #include <pcl/io/ply_io.h>
 //
 #include <fmt/base.h>
+#include <fmt/format.h>
 // Octomap
 #include <octomap/octomap.h>
 #include <octomap/OcTree.h>
@@ -70,9 +71,9 @@ public:
 
         std::vector<Eigen::Vector3f> points;
         // simulate sphere
-        if (false) {
+        if (true) {
             // generate random point data
-            points.resize(1'000);
+            points.resize(100'000);
             std::random_device rd;
             std::mt19937 gen(420);
             std::uniform_real_distribution<double> dis(-1.0f, 1.0f);
@@ -81,7 +82,7 @@ public:
             std::vector<Eigen::Vector3f> positions = {
                 { 0, 0, 0 },
             };
-            for (auto i = 0; i < 1000; i++) {
+            for (auto i = 0; i < 0; i++) {
                 positions.emplace_back(0.0f, 0.0f, 0.0f);
             }
             for (size_t i = 0; i < positions.size(); i++) {
@@ -92,14 +93,14 @@ public:
                         dis(gen)
                     };
                     pointd.normalize();
-                    pointd *= 1.0;
+                    pointd *= 5.0;
                     point = pointd.cast<float>();
                     point += positions[i];
                 }
                 dag.insert(points, positions[i], Eigen::Quaternionf::Identity());
                 // dag.print_stats();
             }
-            reconstruct();
+            save_chad();
             exit(0);
         }
         // load a bunch of points
@@ -114,14 +115,13 @@ public:
             }
         }
 
-        // std::this_thread::sleep_for(std::chrono::seconds(10)); // pause to allow more precise measurement of heap allocs
+        // std::this_thread::sleep_for(std::chrono::seconds(10)); // pause to allow heap capture
         // chad_tsdf backend
         if (true) {
             Eigen::Vector3f position{ 0, 0, 0 };
             Eigen::Quaternionf rotation = Eigen::Quaternionf::Identity();
             dag.insert(points, position, rotation);
-            dag.print_stats();
-            reconstruct();
+            save_chad();
             exit(0);
         }
         // octomap backend
@@ -197,11 +197,10 @@ public:
         }
     }
     ~TSDFMap() {
-        dag.print_stats();
-        reconstruct();
+        save_chad();
     }
     
-    void reconstruct() {
+    void reconstruct(uint32_t root_addr, std::string_view mesh_name, bool save_grid) {
         typedef lvr2::BaseVector<float> VecT;
         typedef lvr2::BilinearFastBox<VecT> BoxT;
         
@@ -214,8 +213,8 @@ public:
         else if (decomp_type == "PMC") {
             auto node_levels = dag.get_node_levels();
             auto leaf_level = dag.get_leaf_level();
-            auto grid_p = std::make_shared<ChadGrid<VecT, BoxT>>(node_levels, leaf_level, LEAF_RESOLUTION);
-            grid_p->saveGrid("hashgrid.grid");
+            auto grid_p = std::make_shared<ChadGrid<VecT, BoxT>>(node_levels, leaf_level, root_addr, LEAF_RESOLUTION);
+            if (save_grid) grid_p->saveGrid("hashgrid.grid");
             
             ChadReconstruction<VecT, BoxT> reconstruction { grid_p };
             reconstruction.getMesh(mesh);
@@ -245,8 +244,17 @@ public:
 
         // save to disk
         auto model_p = std::make_shared<lvr2::Model>(mesh_buffer_p);
-        lvr2::ModelFactory::saveModel(model_p, "yeehaw.ply");
-        std::cout << "Saved mesh to yeehaw.ply\n";
+        lvr2::ModelFactory::saveModel(model_p, mesh_name.data());
+        fmt::println("Saved mesh to {}", mesh_name);
+    }
+    void save_chad() {
+        dag.print_stats();
+        for (uint32_t addr_i = 0; addr_i < dag._subtrees.size(); addr_i++) {
+            uint32_t addr = dag._subtrees[addr_i]._root_addr;
+            fmt::println("Reconstructing subtree at address {}", addr);
+            reconstruct(addr, fmt::format("maps/mesh_{}.ply", addr_i), false);
+        }
+        reconstruct(1, "maps/mesh.ply", true);
     }
     void callback_pos(const geometry_msgs::PoseStampedConstPtr& msg) {
         // extract position
@@ -279,24 +287,10 @@ public:
         // insert into tsdf DAG
         fmt::println("Inserting {} points at pos {} {} {}", points.size(), cur_pos.x(), cur_pos.y(), cur_pos.z());
         dag.insert(points, cur_pos, cur_rot);
-        
-        // write raw points to file for debug purposes
-        // fmt::println("writing {} points", points.size());
-        // ALL_POINTS_DEBUG.insert(ALL_POINTS_DEBUG.end(), points.cbegin(), points.cend());
 
         // DEBUG
-        static int i = 0;
-        if (++i >= 80) {
-            // std::ofstream file;
-            // file.open("debugpoints.bin", std::ofstream::binary | std::ofstream::trunc);
-            // size_t n_points = ALL_POINTS_DEBUG.size();
-            // file.write(reinterpret_cast<char*>(&n_points), sizeof(size_t));
-            // for (auto& point: ALL_POINTS_DEBUG) {
-            //     file.write(reinterpret_cast<char*>(&point), sizeof(Eigen::Vector3f));
-            // }
-            // std::cout << "Wrote points to debugpoints.bin\n";
-            dag.print_stats();
-            reconstruct();
+        if (dag._subtrees.size() >= 5) {
+            save_chad();
             exit(0);
         }
     }
@@ -305,7 +299,7 @@ private:
     DAG dag;
     Eigen::Vector3f cur_pos = { 0, 0, 0 };
     Eigen::Quaternionf cur_rot = {};
-    uint32_t queueSize = 100;
+    uint32_t queueSize = 3;
     ros::Subscriber sub_pcl;
     ros::Subscriber sub_pos;
     // std::vector<Eigen::Vector3f> ALL_POINTS_DEBUG;
