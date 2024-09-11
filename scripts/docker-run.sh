@@ -24,7 +24,6 @@ if [ $1 = "none" ]; then
         --publish 7009:7009/udp \
         --ulimit nofile=1024 \
         --volume $(pwd)/$(dirname "$0")/..:/root/repo/:Z \
-        --cap-add=SYS_PTRACE \
         noeticslam:latest
 elif [ $1 = "integrated" ]; then
     # with intel integrated gpu
@@ -39,7 +38,6 @@ elif [ $1 = "integrated" ]; then
         --env DISPLAY=${DISPLAY} \
         --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
         --volume $(pwd)/$(dirname "$0")/..:/root/repo/:Z \
-        --cap-add=SYS_PTRACE \
         noeticslam:latest
 elif [ $1 = "nvidia" ]; then
     # with nvidia gpu
@@ -59,7 +57,6 @@ elif [ $1 = "nvidia" ]; then
         --env NVIDIA_DRIVER_CAPABILITIES=all \
         --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
         --volume $(pwd)/$(dirname "$0")/..:/root/repo/:Z \
-        --cap-add=SYS_PTRACE \
         noeticslam:latest
 elif [ $1 = "amd" ]; then
     # with amd gpu
