@@ -38,7 +38,7 @@
 #include "chad_reconstruction.hpp"
 #include "utils.hpp"
 
-#define MAP_BACKEND_IDX 3
+#define MAP_BACKEND_IDX 1
 
 class TSDFMap {
 public:
@@ -61,7 +61,7 @@ public:
                     cfg.tsdf_voxels_per_side = 16;
                     voxmap_p = new voxblox::TsdfMap{ cfg };
                     voxblox::TsdfIntegratorBase::Config int_cfg;
-                    int_cfg.default_truncation_distance = 0.1;
+                    int_cfg.default_truncation_distance = LEAF_RESOLUTION;
                     integrator_p = new voxblox::FastTsdfIntegrator{ int_cfg, voxmap_p->getTsdfLayerPtr() }; // faster integration
                     // integrator_p = new voxblox::MergedTsdfIntegrator{ int_cfg, voxmap_p->getTsdfLayerPtr() }; // smaller footprint
                     // integrator_p = new voxblox::SimpleTsdfIntegrator{ int_cfg, voxmap_p->getTsdfLayerPtr() }; // ew
@@ -72,6 +72,86 @@ public:
                 break;
             default: break;
         }
+
+        // // chad_tsdf backend
+        // if (true) {
+        //     Eigen::Vector3f position{ 0, 0, 0 };
+        //     Eigen::Quaternionf rotation = Eigen::Quaternionf::Identity();
+        //     dag.insert(points, position, rotation);
+        //     save_chad();
+        //     exit(0);
+        // }
+        // // octomap backend
+        // else if (false) {
+        //     octomap::Pointcloud cloud;
+        //     for (auto& point: points) {
+        //         cloud.push_back({ point.x(), point.y(), point.z() });
+        //     }
+
+        //     auto beg = std::chrono::high_resolution_clock::now();
+        //     octomap::OcTree tree{ LEAF_RESOLUTION };
+        //     tree.insertPointCloud(cloud, { 0, 0, 0 });
+        //     tree.updateInnerOccupancy();
+        //     auto end = std::chrono::high_resolution_clock::now();
+        //     auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
+        //     fmt::println("octomap {}", dur.count());
+
+        //     // fmt::println("{} MiB", (double)tree.memoryFullGrid() / 1024.0 / 1024.0);
+        //     fmt::println("{} MiB", (double)tree.memoryUsage() / 1024.0 / 1024.0);
+
+        //     exit(0);
+        // }
+        // // voxblox backend
+        // else if (false) {
+        //     // set up map
+        //     voxblox::TsdfMap::Config cfg;
+        //     cfg.tsdf_voxel_size = LEAF_RESOLUTION;
+        //     cfg.tsdf_voxels_per_side = 16;
+        //     voxblox::TsdfMap map{ cfg };
+        //     // set up integrator
+        //     voxblox::TsdfIntegratorBase::Config int_cfg;
+        //     int_cfg.default_truncation_distance = 0.1;
+        //     // voxblox::FastTsdfIntegrator integrator{ int_cfg, map.getTsdfLayerPtr() }; // faster integration
+        //     voxblox::MergedTsdfIntegrator integrator{ int_cfg, map.getTsdfLayerPtr() }; // smaller footprint
+        //     // voxblox::SimpleTsdfIntegrator integrator{ int_cfg, map.getTsdfLayerPtr() }; // ew
+        //     // write into voxblox pointcloud
+        //     voxblox::Pointcloud pointcloud;
+        //     voxblox::Colors colors;
+        //     for (auto& point: points) {
+        //         pointcloud.emplace_back(point.x(), point.y(), point.z());
+        //         colors.emplace_back(0, 255, 0);
+        //     }
+        //     // integrate pointcloud
+
+        //     auto beg = std::chrono::high_resolution_clock::now();
+        //     voxblox::Transformation T_G_C;
+        //     integrator.integratePointCloud(T_G_C, pointcloud, colors);
+        //     auto end = std::chrono::high_resolution_clock::now();
+        //     auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
+        //     fmt::println("voxblox ctor {}", dur.count());
+        //     exit(0);
+        // }
+        // // VDBFusion backend
+        // else if (false) {
+        //     // truncation of same size as voxel size
+        //     vdbfusion::VDBVolume volume(LEAF_RESOLUTION, LEAF_RESOLUTION);
+        //     // vdbfusion::VDBFusion fusion(volume);
+        //     Eigen::Vector3d position{ 0, 0, 0 };
+        //     // convert to double prec points
+        //     std::vector<Eigen::Vector3d> pointsd;
+        //     pointsd.reserve(points.size());
+        //     for (auto& point: points) {
+        //         pointsd.emplace_back(point.cast<double>());
+        //     }
+        //     // integrate into tsdf volume
+        //     auto beg = std::chrono::high_resolution_clock::now();
+        //     volume.Integrate(pointsd, position, [](float f){ return f; });
+        //     auto end = std::chrono::high_resolution_clock::now();
+        //     auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
+        //     fmt::println("vdbfusion ctor {}", dur.count());
+        //     // fusion.save("vdbfusion.vdb");
+        //     exit(0);
+        // }
     }
     ~TSDFMap() {
         // TODO: write final timings and memory footprint
@@ -139,16 +219,22 @@ public:
         reconstruct(1, "maps/mesh.ply", true);
     }
     
-    #if MAP_BACKEND_IDX == 0
-    void insert(std::vector<Eigen::Vector3f>& points) {
-    #elif MAP_BACKEND_IDX == 3
-    void insert(std::vector<Eigen::Vector3d>& pointsd) {
+    void insert(
+    #if MAP_BACKEND_IDX == 3
+        std::vector<Eigen::Vector3d>& pointsd
+    #else
+        std::vector<Eigen::Vector3f>& points
     #endif
+    ) {
         #if MAP_BACKEND_IDX == 0
             dag_p->insert(points, cur_pos, cur_rot);
         #elif MAP_BACKEND_IDX == 1
-            ocmap_p->insertPointCloud(points, cur_pos);
-            tree.updateInnerOccupancy();
+            octomap::Pointcloud cloud;
+            for (auto& point: points) {
+                cloud.push_back({ point.x(), point.y(), point.z() });
+            }
+            ocmap_p->insertPointCloud(cloud, { cur_pos.x(), cur_pos.y(), cur_pos.z() });
+            ocmap_p->updateInnerOccupancy();
         #elif MAP_BACKEND_IDX == 2
             voxblox::Pointcloud pointcloud;
             voxblox::Colors colors;
@@ -194,7 +280,6 @@ public:
             auto vec = cur->getVector3fMap();
             points.emplace_back(vec.x(), vec.y(), vec.z());
         }
-        pointcloud.clear();
 
         // insert points
         fmt::println("Inserting {} points", points.size());
@@ -229,7 +314,7 @@ private:
     DAG* dag_p;
     octomap::OcTree* ocmap_p;
     voxblox::TsdfMap* voxmap_p;
-    voxblox::TsdfIntegratorBase* integrator_p;
+    voxblox::FastTsdfIntegrator* integrator_p;
     vdbfusion::VDBVolume* vdbmap_p;
     //
     Eigen::Vector3f cur_pos = { 0, 0, 0 };
