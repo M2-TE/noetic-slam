@@ -154,7 +154,9 @@ public:
         fmt::println("min: {} ms", min.count());
         fmt::println("max: {} ms", max.count());
         fmt::println("avg: {} ms", total.count() / frame_count);
-        // dag_p->print_stats();
+        #if MAP_BACKEND_IDX == 0
+            dag_p->print_stats();
+        #endif
         // save_chad();
     }
     
