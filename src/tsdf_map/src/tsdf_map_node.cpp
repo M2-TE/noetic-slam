@@ -156,7 +156,12 @@ public:
         fmt::println("avg: {} ms", total.count() / frame_count);
         #if MAP_BACKEND_IDX == 0
             dag_p->print_stats();
-            save_chad();
+            auto beg = std::chrono::high_resolution_clock::now();
+            auto count = dag_p->debug_iterate_all_leaves_of_subtree(1);
+            auto end = std::chrono::high_resolution_clock::now();
+            auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+            fmt::println("Root total iteration time: {}, leaf count: {}", dur, count);
+            // save_chad();
         #endif
     }
     
@@ -212,7 +217,7 @@ public:
         for (uint32_t addr_i = 0; addr_i < dag_p->_subtrees.size(); addr_i++) {
             uint32_t addr = dag_p->_subtrees[addr_i]._root_addr;
             fmt::println("Reconstructing subtree at address {}", addr);
-            reconstruct(addr, fmt::format("maps/hsfd23/mesh_{}.ply", addr_i), false);
+            reconstruct(addr, fmt::format("maps/mesh_{}.ply", addr_i), false);
         }
         // reconstruct(1, "maps/mesh.ply", true);
     }
@@ -285,7 +290,8 @@ public:
         insert(points);
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::milliseconds dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
-        fmt::println("insertion time: {}", dur.count());
+        auto dur2 = std::chrono::duration<double, std::milli> (end - beg).count(); // TODO: TEST
+        fmt::println("insertion time: {} {}", dur.count(), dur2);
 
         // measure physical memory footprint
         #if MAP_BACKEND_IDX == 0
@@ -301,12 +307,25 @@ public:
         min = std::min(min, dur);
         max = std::max(max, dur);
 
+        #if MAP_BACKEND_IDX == 0
+        // iterate through leaves and count
+        beg = std::chrono::high_resolution_clock::now();
+        uint32_t leafcount = dag_p->debug_iterate_all_leaves_of_subtree(dag_p->_subtrees.back()._root_addr);
+        end = std::chrono::high_resolution_clock::now();
+        auto dur_iteration = std::chrono::duration<double, std::milli> (end - beg).count();
+        fmt::println("iteration time: {}, leaf count: {}", dur_iteration, leafcount);
+        #endif
+
+
         // write to csv
         std::ofstream file;
         file.open("insertion_times.csv", std::ofstream::app);
         file << frame_count << ',' 
             << mb << ',' 
             << dur.count()
+        #if MAP_BACKEND_IDX == 0
+            << ',' << dur_iteration << ',' << leafcount
+        #endif
             << '\n';
         file.close();
     }
@@ -342,6 +361,10 @@ int main(int argc, char **argv) {
     file << "frame_count" << ',' 
         << "memory" << ',' 
         << "duration"
+        #if MAP_BACKEND_IDX == 0
+        << ',' << "iteration_time" 
+        << ',' << "leaf_count"
+        #endif
         << '\n';
     file.close();
     ros::spin();
