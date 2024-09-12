@@ -290,8 +290,7 @@ public:
         insert(points);
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::milliseconds dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
-        auto dur2 = std::chrono::duration<double, std::milli> (end - beg).count(); // TODO: TEST
-        fmt::println("insertion time: {} {}", dur.count(), dur2);
+        fmt::println("insertion time: {}", dur.count());
 
         // measure physical memory footprint
         #if MAP_BACKEND_IDX == 0
