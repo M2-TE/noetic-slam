@@ -38,7 +38,7 @@
 #include "chad_reconstruction.hpp"
 #include "utils.hpp"
 
-#define MAP_BACKEND_IDX 2
+#define MAP_BACKEND_IDX 0
 
 class TSDFMap {
 public:
@@ -156,8 +156,8 @@ public:
         fmt::println("avg: {} ms", total.count() / frame_count);
         #if MAP_BACKEND_IDX == 0
             dag_p->print_stats();
+            save_chad();
         #endif
-        // save_chad();
     }
     
     void reconstruct(uint32_t root_addr, std::string_view mesh_name, bool save_grid) {
@@ -212,9 +212,9 @@ public:
         for (uint32_t addr_i = 0; addr_i < dag_p->_subtrees.size(); addr_i++) {
             uint32_t addr = dag_p->_subtrees[addr_i]._root_addr;
             fmt::println("Reconstructing subtree at address {}", addr);
-            reconstruct(addr, fmt::format("maps/mesh_{}.ply", addr_i), false);
+            reconstruct(addr, fmt::format("maps/hsfd23/mesh_{}.ply", addr_i), false);
         }
-        reconstruct(1, "maps/mesh.ply", true);
+        // reconstruct(1, "maps/mesh.ply", true);
     }
     
     void insert(
@@ -288,7 +288,11 @@ public:
         fmt::println("insertion time: {}", dur.count());
 
         // measure physical memory footprint
+        #if MAP_BACKEND_IDX == 0
+        double mb = dag_p->get_readonly_size() + (double)baseline_memory;
+        #else
         double mb = (double)read_phys_mem_kb() / 1024.0;
+        #endif
         fmt::println("Memory: {} MiB", mb);
         
         // update trackers

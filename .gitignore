@@ -23,5 +23,6 @@ devel/
 logs/
 log/
 
-# heaptrack outputs
+# measurement outputs
 heaptrack.*.*.gz
+*.csv
