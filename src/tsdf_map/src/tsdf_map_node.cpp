@@ -294,7 +294,7 @@ public:
 
         // measure physical memory footprint
         #if MAP_BACKEND_IDX == 0
-        double mb = dag_p->get_readonly_size() + (double)baseline_memory;
+        double mb = dag_p->get_readonly_size();
         #else
         double mb = (double)read_phys_mem_kb() / 1024.0;
         #endif
