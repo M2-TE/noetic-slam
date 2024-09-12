@@ -161,8 +161,8 @@ public:
             auto end = std::chrono::high_resolution_clock::now();
             auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
             fmt::println("Root total iteration time: {}, leaf count: {}", dur, count);
-            save_points();
-            save_chad();
+            // save_points();
+            // save_chad();
         #endif
     }
     
@@ -213,15 +213,15 @@ public:
         lvr2::ModelFactory::saveModel(model_p, mesh_name.data());
         fmt::println("Saved mesh to {}", mesh_name);
     }
-    void save_points() {
-        std::ofstream file;
-        file.open("maps/points.pts", std::ofstream::trunc);
-        for (auto& point: all_points) {
-            file << point.x() << ',' << point.y() << ',' << point.z() << '\n';
-        }
-        file.close();
-        all_points.clear();
-    }
+    // void save_points() {
+    //     std::ofstream file;
+    //     file.open("maps/points.pts", std::ofstream::trunc);
+    //     for (auto& point: all_points) {
+    //         file << point.x() << ',' << point.y() << ',' << point.z() << '\n';
+    //     }
+    //     file.close();
+    //     all_points.clear();
+    // }
     void save_chad() {
         dag_p->print_stats();
         for (uint32_t addr_i = 0; addr_i < dag_p->_subtrees.size(); addr_i++) {
@@ -294,7 +294,7 @@ public:
             points.emplace_back(vec.x(), vec.y(), vec.z());
         }
         // DEBUG
-        all_points.insert(all_points.end(), points.begin(), points.end());
+        // all_points.insert(all_points.end(), points.begin(), points.end());
 
         // insert points
         fmt::println("Inserting {} points", points.size());
@@ -348,7 +348,7 @@ private:
     voxblox::TsdfMap* voxmap_p;
     voxblox::TsdfIntegratorBase* integrator_p;
     vdbfusion::VDBVolume* vdbmap_p;
-    std::vector<Eigen::Vector3f> all_points; // DEBUG
+    // std::vector<Eigen::Vector3f> all_points; // DEBUG
     //
     Eigen::Vector3f cur_pos = { 0, 0, 0 };
     Eigen::Quaternionf cur_rot = {};
