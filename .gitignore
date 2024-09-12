@@ -26,3 +26,5 @@ log/
 # measurement outputs
 heaptrack.*.*.gz
 *.csv
+*.pts
+*.ply
