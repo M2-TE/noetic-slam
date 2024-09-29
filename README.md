@@ -4,19 +4,14 @@ TSDF Slam using CHAD TSDF as its mapping backend
 
 ## Description
 
-An in-depth paragraph about your project and overview of use.
+Noetic Slam was built to provide a testbed for comparison between CHAD TSDF, Voxblox, VDBFusion and Octomap.
+It runs within a docker container and therefore requires no dependencies, apart from docker itself.
+Scripts are provided to ease usage of pointcloud recording and playback, as well as registration and map writes.
 
 ## Getting Started
 
-### Dependencies
-
-* Describe any prerequisites, libraries, OS version, etc., needed before installing program.
-* ex. Windows 10
-
-### Installing
-
-* How/where to download your program
-* Any modifications needed to be made to files/folders
+### Acquiring pointclouds
+The scripts are mainly tailored towards Ouster scanners, 
 
 ### Executing program
 
@@ -47,10 +42,6 @@ ex. [@DomPizzie](https://twitter.com/dompizzie)
     * See [commit change]() or See [release history]()
 * 0.1
     * Initial Release
-
-## License
-
-This project is licensed under the [NAME HERE] License - see the LICENSE.md file for details
 
 ## Acknowledgments
 
