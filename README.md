@@ -65,7 +65,7 @@ Jan Kuhlmann
 
 ## Acknowledgments
 
-* [DLIO]([https://github.com/matiassingers/awesome-readme](https://github.com/vectr-ucla/direct_lidar_inertial_odometry))
-* [Octomap]([https://gist.github.com/PurpleBooth/109311bb0361f32d87a2](https://github.com/OctoMap/octomap))
+* [DLIO](https://github.com/vectr-ucla/direct_lidar_inertial_odometry)
+* [Octomap](https://github.com/OctoMap/octomap)
 * [Voxblox](https://github.com/ethz-asl/voxblox)
-* [VDBFusion]([https://gist.github.com/zenorocha/4526327](https://github.com/PRBonn/vdbfusion))
+* [VDBFusion](https://github.com/PRBonn/vdbfusion)
