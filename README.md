@@ -11,43 +11,61 @@ Scripts are provided to ease usage of pointcloud recording and playback, as well
 ## Getting Started
 
 ### Acquiring pointclouds
-The scripts are mainly tailored towards Ouster scanners, 
+The scripts are mainly tailored towards Ouster scanners, but should work with other setups that provide pointcloud and IMU topics.
 
-### Executing program
+### 0. Docker container launch
 
-* How to run the program
-* Step-by-step bullets
+Build and launch the docker container. The parameter allows passing through a GPU for rendering.
+
+Pick one:
 ```
-code blocks for commands
+bash scripts/docker-run.sh none
+bash scripts/docker-run.sh integrated
+bash scripts/docker-run.sh nvidia
 ```
 
-## Help
+Once the container is up and running, three separate consoles are needed.
+They are not required to be run within a console attached to the docker container.
 
-Any advise for common problems or issues.
+
+### 1. DLIO launch
+
+[DLIO](https://github.com/vectr-ucla/direct_lidar_inertial_odometry.git) (Direct LiDAR-Inertial Odometry) is used for registration. Topics can be adjusted either in the dockerfile within the project root or in the DLIO launch script itself.
 ```
-command to run if program contains helper info
+bash scripts/dlio-launch.sh
+```
+
+### 2. Mapping node launch
+
+The mapping node will use one of the mapping backends of choice using registered points from DLIO. Adjust MAP_BACKEND_IDX in [tsdf_map_node.cpp](src/tsdf_map/src/tsdf_map_node.cpp) to choose a specific backend:
+* 0: CHAD TSDF
+* 1: Octomap
+* 2: Voxblox
+* 3: VDBFusion
+```
+rosrun tsdf_map tsdf_map_node
+```
+### 3: Pointcloud and IMU playback
+
+Once the DLIO and mapping nodes are running, replay or stream a pointcloud and IMU topic; this example shows three ways using either an Ouster or generic bagfile.
+```
+bash scripts/ouster-replay.sh bags/<bagfile>
+bash scripts/ouster-stream.sh bags/<bagfile>
+rosbag replay bags/<bagfile>
 ```
 
 ## Authors
 
-Contributors names and contact info
-
-ex. Dominique Pizzie  
-ex. [@DomPizzie](https://twitter.com/dompizzie)
+Jan Kuhlmann
 
 ## Version History
 
-* 0.2
-    * Various bug fixes and optimizations
-    * See [commit change]() or See [release history]()
 * 0.1
     * Initial Release
 
 ## Acknowledgments
 
-Inspiration, code snippets, etc.
-* [awesome-readme](https://github.com/matiassingers/awesome-readme)
-* [PurpleBooth](https://gist.github.com/PurpleBooth/109311bb0361f32d87a2)
-* [dbader](https://github.com/dbader/readme-template)
-* [zenorocha](https://gist.github.com/zenorocha/4526327)
-* [fvcproductions](https://gist.github.com/fvcproductions/1bfc2d4aecb01a834b46)
+* [DLIO]([https://github.com/matiassingers/awesome-readme](https://github.com/vectr-ucla/direct_lidar_inertial_odometry))
+* [Octomap]([https://gist.github.com/PurpleBooth/109311bb0361f32d87a2](https://github.com/OctoMap/octomap))
+* [Voxblox](https://github.com/ethz-asl/voxblox)
+* [VDBFusion]([https://gist.github.com/zenorocha/4526327](https://github.com/PRBonn/vdbfusion))
