@@ -29,6 +29,8 @@ RUN apt-get install -y python3-wstool python3-catkin-tools ros-noetic-cmake-modu
 RUN git clone https://github.com/catkin/catkin_simple.git
 RUN cd catkin_simple && bash -c ". /opt/ros/noetic/setup.bash && cmake -B build && cmake --build build && cmake --install build"
 
+VOLUME /pipe
+
 WORKDIR /root/repo/
 ENTRYPOINT [ "/bin/bash", "/root/repo/scripts/.entrypoint.sh" ]
 ENV ROSCONSOLE_FORMAT='[ROS${severity}]: ${message}'
