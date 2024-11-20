@@ -33,7 +33,6 @@ elif [ $1 = "integrated" ]; then
         --name noeticslam \
         --publish 7008:7008/udp \
         --publish 7009:7009/udp \
-        --device=/dev/dri:/dev/dri \
         --ulimit nofile=1024 \
         --env DISPLAY=${DISPLAY} \
         --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
