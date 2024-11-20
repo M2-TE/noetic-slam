@@ -4,6 +4,7 @@ if [ -z $ROS_DISTRO ]; then
 fi
 if [ $ROS_DISTRO = "noetic" ]; then
     source /opt/ros/noetic/setup.bash
+    SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
     source ${SCRIPT_DIR}/../devel/setup.bash
     roslaunch ouster_ros driver.launch \
         sensor_hostname:=${LIDAR_ADDR} \
