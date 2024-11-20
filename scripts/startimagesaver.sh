@@ -1,0 +1,1 @@
+echo "cd imagesaver && bash runimagesaver.bash" > /root/repo/pipe/pipe
