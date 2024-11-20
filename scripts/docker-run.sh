@@ -37,7 +37,7 @@ elif [ $1 = "integrated" ]; then
         --env DISPLAY=${DISPLAY} \
         --volume "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
         --volume $(pwd)/$(dirname "$0")/..:/root/repo/:Z \
-        --volume $(pwd)/$(dirname "$0")/../pipe:/root/repo/pipe \
+        --volume $(pwd)/$(dirname "$0")/../../pipe:/root/repo/pipe \
         noeticslam:latest
 elif [ $1 = "nvidia" ]; then
     # with nvidia gpu
