@@ -29,8 +29,13 @@
 #include <voxblox/core/common.h>
 #include <voxblox/core/tsdf_map.h>
 #include <voxblox/integrator/tsdf_integrator.h>
+#include <voxblox/mesh/mesh_integrator.h>
+#include <voxblox/io/mesh_ply.h>
+#include <pcl/io/ply_io.h>
+#include <pcl/PolygonMesh.h>
 // VDBFusion
 #include <vdbfusion/VDBVolume.h>
+#include </root/repo/build/tsdf_map/_deps/libigl-src/include/igl/write_triangle_mesh.h> // temp fix for docker
 // Other
 #include <Eigen/Eigen>
 #include "dag/dag.hpp"
@@ -68,7 +73,8 @@ public:
                 }
                 break;
             case 3:
-                vdbmap_p = new vdbfusion::VDBVolume{ LEAF_RESOLUTION, LEAF_RESOLUTION * 2 };
+                openvdb::initialize();
+                vdbmap_p = new vdbfusion::VDBVolume{ LEAF_RESOLUTION, LEAF_RESOLUTION * 2, false };
                 break;
             default: break;
         }
@@ -162,7 +168,33 @@ public:
             auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
             fmt::println("Root total iteration time: {}, leaf count: {}", dur, count);
             // save_points();
-            // save_chad();
+            save_chad();
+        #elif MAP_BACKEND_IDX == 1
+        // lets not..
+        #elif MAP_BACKEND_IDX == 2
+        // Create a MeshIntegrator
+        voxblox::MeshIntegratorConfig mesh_config;
+        voxblox::MeshLayer mesh_layer(voxmap_p->block_size());
+        voxblox::MeshIntegrator<voxblox::TsdfVoxel> mesh_integrator(mesh_config, voxmap_p->getTsdfLayer(), &mesh_layer);
+        mesh_integrator.generateMesh(false, false);
+        
+        // Save the mesh to a file
+        std::string filename = "maps/mesh.ply";
+        voxblox::outputMeshLayerAsPly(filename, mesh_layer);
+
+        #elif MAP_BACKEND_IDX == 3
+        // generate mesh as per example in repo
+        auto [vertices, triangles] = vdbmap_p->ExtractTriangleMesh(true);
+        Eigen::MatrixXd V(vertices.size(), 3);
+        for (size_t i = 0; i < vertices.size(); i++) {
+            V.row(i) = Eigen::VectorXd::Map(&vertices[i][0], vertices[i].size());
+        }
+        Eigen::MatrixXi F(triangles.size(), 3);
+        for (size_t i = 0; i < triangles.size(); i++) {
+            F.row(i) = Eigen::VectorXi::Map(&triangles[i][0], triangles[i].size());
+        }
+        std::string filename = "maps/mesh.ply";
+        igl::write_triangle_mesh(filename, V, F, igl::FileEncoding::Binary);
         #endif
     }
     
@@ -213,23 +245,25 @@ public:
         lvr2::ModelFactory::saveModel(model_p, mesh_name.data());
         fmt::println("Saved mesh to {}", mesh_name);
     }
-    // void save_points() {
-    //     std::ofstream file;
-    //     file.open("maps/points.pts", std::ofstream::trunc);
-    //     for (auto& point: all_points) {
-    //         file << point.x() << ',' << point.y() << ',' << point.z() << '\n';
-    //     }
-    //     file.close();
-    //     all_points.clear();
-    // }
+    void save_points() {
+        std::ofstream file;
+        file.open("maps/points.pts", std::ofstream::trunc);
+        for (auto& point: all_points) {
+            file << point.x() << ',' << point.y() << ',' << point.z() << '\n';
+        }
+        file.close();
+        all_points.clear();
+    }
     void save_chad() {
         dag_p->print_stats();
-        for (uint32_t addr_i = 0; addr_i < dag_p->_subtrees.size(); addr_i++) {
-            // uint32_t addr = dag_p->_subtrees[addr_i]._root_addr;
-            // fmt::println("Reconstructing subtree at address {}", addr);
-            // reconstruct(addr, fmt::format("maps/mesh_{}.ply", addr_i), false);
-        }
-        reconstruct(1, "maps/mesh.ply", true);
+        // for (uint32_t addr_i = 0; addr_i < dag_p->_subtrees.size(); addr_i++) {
+        //     uint32_t addr = dag_p->_subtrees[addr_i]._root_addr;
+        //     fmt::println("Reconstructing subtree at address {}", addr);
+        //     reconstruct(addr, fmt::format("maps/mesh_{}.ply", addr_i), false);
+        // }
+        // create global map and reconstruct it
+        dag_p->merge_all_subtrees();
+        // reconstruct(1, "maps/mesh.ply", true);
     }
     
     void insert(
@@ -259,7 +293,7 @@ public:
             integrator_p->integratePointCloud(T_G_C, pointcloud, colors);
         #elif MAP_BACKEND_IDX == 3
             Eigen::Vector3d pos = cur_pos.cast<double>();
-            vdbmap_p->Integrate(pointsd, pos, [](float f){ return f; });
+            vdbmap_p->Integrate(pointsd, pos, [](float /*unused*/) { return 1.0f; });
         #endif
     }
     void callback_pos(const geometry_msgs::PoseStampedConstPtr& msg) {
@@ -295,6 +329,12 @@ public:
         }
         // DEBUG
         // all_points.insert(all_points.end(), points.begin(), points.end());
+        // static Eigen::Vector3f bb_lower = { 0, 0, 0 };
+        // static Eigen::Vector3f bb_upper = { 0, 0, 0 };
+        // for (auto& point: points) {
+        //     bb_lower = bb_lower.cwiseMin(point);
+        //     bb_upper = bb_upper.cwiseMax(point);
+        // }
 
         // insert points
         fmt::println("Inserting {} points", points.size());
@@ -306,11 +346,14 @@ public:
 
         // measure physical memory footprint
         #if MAP_BACKEND_IDX == 0
-        double mb = dag_p->get_readonly_size();
+        double mb = (double)read_phys_mem_kb() / 1024.0;
+        double mb_read = dag_p->get_readonly_size();
+        double mb_hash = dag_p->get_hash_size();
+        fmt::println("proc: {} MiB\nread: {} MiB\nhash: {} MiB", mb, mb_read, mb_hash);
         #else
         double mb = (double)read_phys_mem_kb() / 1024.0;
-        #endif
         fmt::println("Memory: {} MiB", mb);
+        #endif
         
         // update trackers
         frame_count++;
@@ -348,11 +391,11 @@ private:
     voxblox::TsdfMap* voxmap_p;
     voxblox::TsdfIntegratorBase* integrator_p;
     vdbfusion::VDBVolume* vdbmap_p;
-    // std::vector<Eigen::Vector3f> all_points; // DEBUG
+    std::vector<Eigen::Vector3f> all_points; // DEBUG
     //
     Eigen::Vector3f cur_pos = { 0, 0, 0 };
     Eigen::Quaternionf cur_rot = {};
-    uint32_t queueSize = 100;
+    uint32_t queueSize = 10;
     ros::Subscriber sub_pcl;
     ros::Subscriber sub_pos;
     int baseline_memory;

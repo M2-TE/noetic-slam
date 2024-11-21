@@ -28,6 +28,8 @@ RUN apt-get install -y qt5-default libqt5opengl5-dev liblz4-dev libopencv-dev li
 RUN apt-get install -y python3-wstool python3-catkin-tools ros-noetic-cmake-modules protobuf-compiler autoconf
 RUN git clone https://github.com/catkin/catkin_simple.git
 RUN cd catkin_simple && bash -c ". /opt/ros/noetic/setup.bash && cmake -B build && cmake --build build && cmake --install build"
+# VDBFusion:
+RUN apt-get install -y libgflags-dev
 
 WORKDIR /root/repo/
 ENTRYPOINT [ "/bin/bash", "/root/repo/scripts/.entrypoint.sh" ]
@@ -36,5 +38,5 @@ ENV ROS_DISTRO=noetic
 ENV LIDAR_ADDR=192.168.168.128
 ENV PCL_TOPIC=/ouster/points
 ENV IMU_TOPIC=/ouster/imu
-ENV RVIZ_OUSTER=false
+ENV RVIZ_OUSTER=true
 ENV RVIZ_DLIO=false
