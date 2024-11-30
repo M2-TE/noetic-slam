@@ -1,0 +1,5 @@
+entity: channel
+data_type: float
+type: array
+shape: [59463419, 1]
+name: intensities
