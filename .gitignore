@@ -11,6 +11,8 @@
 *.obj
 *.grid
 *.bin
+sampledata/raw/
+sampledata/samplestructure/raw/00000001/
 
 # octomap war crimes
 lib/

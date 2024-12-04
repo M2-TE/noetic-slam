@@ -1,0 +1,7 @@
+entity: scan_project
+type: scan_project
+crs: ""
+coordinate_system: right-handed
+unit: meter
+transformation: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+name: ""
