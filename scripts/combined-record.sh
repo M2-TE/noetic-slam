@@ -19,9 +19,9 @@ if [ $ROS_DISTRO = "noetic" ]; then
         roscore_status=$?
     done
 
-    scripts/startlidardatasaver.sh &
     scripts/ouster-stream.sh &
     scripts/startimagesaver.sh &
+    scripts/startlidardatasaver.sh
 
 else
     docker exec -it noeticslam bash -c "source /opt/ros/noetic/setup.bash && /root/repo/scripts/combined-record.sh"
