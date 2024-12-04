@@ -21,7 +21,7 @@ if [ $ROS_DISTRO = "noetic" ]; then
 
     # TODO: Get those 3 scripts running at same time
     scripts/startlidardatasaver.sh &
-    scripts/ouster-stream.sh 
+    scripts/ouster-stream.sh &
 
     # scripts/startimagesaver.sh &
 
