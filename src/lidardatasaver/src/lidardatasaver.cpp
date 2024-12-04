@@ -1,90 +1,114 @@
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import Image
-import cv2
-from cv_bridge import CvBridge
-import os 
-import time
-import shutil
+#include <ros/ros.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <yaml-cpp/yaml.h>
+#include <fstream>
+#include <filesystem>
+#include <sstream>
 
-# Node for saving images from a camera to a specified folder
-class ImageSaverNode(Node):
-    def __init__(self):
-        super().__init__('image_saver_node')
+namespace fs = std::filesystem;
 
-        # create directory structure for data to be saved in
-        self.createDirStructure()
-
-        # init counter for name of images
-        self.counter = 0
-
-        # listen to input from /image_raw and process it in callback function listener_callback
-        self.subscription = self.create_subscription(
-            Image,
-            '/image_raw',
-            self.listener_callback,
-            10)
-        self.subscription
-        self.bridge = CvBridge()
-
-    def createDirStructure(self):
-        # create new directory for dara to be saved in
-        baseTargetDir = os.path.dirname(os.path.realpath(__file__ + "/../../../../../../../")) + '/noetic-slam/sampledata/raw/'
-
-        # new directory name for files (= last directory name + 1)
-        self.newDir = 0
-        for dir in os.listdir(baseTargetDir):
-            if dir != 'meta.yaml':
-                if int(dir) > self.newDir:
-                    self.newDir = int(dir)
-        self.newDir += 1
-        self.newDir = baseTargetDir + str(self.newDir).zfill(8) + '/'
-
-        # create image target directory
-        cam0Dir = self.newDir + 'cam_00000000/'
-        self.imgTargetDir =  cam0Dir + '00000000/'
-
-        if not os.path.exists(self.imgTargetDir):
-            os.makedirs(self.imgTargetDir)
-
-        # create scan target directory
-        lidar0Dir = self.newDir + 'lidar_00000000/'
-        self.scanTargetDir = lidar0Dir + '00000000/'
-
-        if not os.path.exists(self.scanTargetDir):
-            os.makedirs(self.scanTargetDir)
-
-        # copy meta.yaml to raw dir
-        samplestructureDir = os.path.dirname(os.path.realpath(__file__ + "/../../../../../../../")) + '/noetic-slam/sampledata/samplestructure/'
-        shutil.copy(samplestructureDir + 'raw/meta.yaml', baseTargetDir)
-
-        # TODO: copy/create all meta.yaml
-
-    def listener_callback(self, msg):
-        # write current camera image to specified folder & name
-        cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        image_name = self.imgTargetDir + str(self.counter).zfill(8) + '.png'
-
-        cv2.imwrite(image_name, cv_image) # TODO: In Zeitraum2: Datei-Namen anpassen
-        self.get_logger().info('Image saved to folder ' + self.imgTargetDir)
+class LidarDatasaver {
+public:
+    LidarDatasaver(ros::NodeHandle nh) {
+        std::cout << "********************************************" << std::endl;
+        std::cout << "Lidar datasaver node was started." << std::endl;
+        std::cout << "********************************************" << std::endl;
         
-        # TODO: In Zeitraum 2: Hier können weitere Dateien erzuegt werden
+        setLidarTargetDir();
 
-        # increase counter for next image name
-        self.counter += 1
+        sub_pcl = nh.subscribe("/ouster/points", 10, &LidarDatasaver::callbackPointCloud, this);
+    }
 
-        # delay 1 sec
-        time.sleep(1) # TODO: In Zeitraum 2: an Frequenz von Sensor anpassen
+    // Read point cloud data and save it to seperate files
+    void callbackPointCloud(const sensor_msgs::PointCloud2ConstPtr& msg) {
+        fs::create_directories(getNextDir());
 
-def main(args=None):
-    # start node
-    rclpy.init(args=args)
-    image_saver = ImageSaverNode()
-    rclpy.spin(image_saver)
+        pcl::PointCloud<pcl::PointXYZI> cloud;
+        pcl::fromROSMsg(*msg, cloud);
 
-    # stop node
-    image_saver.destroy_node()
-    rclpy.shutdown()
 
-if __name__ == '__main__':
-    main()
+        // std::ofstream dataFileAmplitude("amplitude.data", std::ios::binary);
+        std::ofstream dataFileIntensities(getNextDir() + "intensities.data", std::ios::binary);
+        
+        for (const auto& point : cloud.points) {
+            float intensities = point.intensity;
+            dataFileIntensities.write(reinterpret_cast<const char*>(&intensities), sizeof(float));
+        }
+
+        dataFileIntensities.close();
+
+
+        createYAML("intensities.yaml", "intensities", "channel", "float", "[59463419, 1]");
+        ROS_INFO("Saved intensities data.");
+
+        nextDirNr++;
+
+        // TODO: weiter dateien erstellen -> welche Werte werden benötigt?
+        // TODO: meta.yaml erstellen
+
+        // TODO: Wie zusamenführen mit Kameradaten?
+    }
+
+private:
+    ros::Subscriber sub_pcl;
+    std::string lidarTargetDir;
+
+    int nextDirNr = 0;
+
+    // TODO: Ordner anpassen
+    // create YAML file
+    void createYAML(const std::string& filename, const std::string& name, const std::string& entity, const std::string& datatype, const std::string& shape) {
+        YAML::Node yamlNode;
+        yamlNode["entity"] = entity;
+        yamlNode["data_type"] = datatype;
+        yamlNode["type"] = "array";
+        yamlNode["shape"] = YAML::Load(shape);
+        yamlNode["name"] = name;
+
+        std::ofstream outFile(getNextDir() + filename);
+        if (outFile.is_open()) {
+            outFile << yamlNode;
+            outFile.close();
+        } else {
+            ROS_ERROR_STREAM("Failed to create " << filename);
+        }
+    }
+
+    void setLidarTargetDir() {
+        std::string baseTargetDir = fs::absolute(fs::path(__FILE__).parent_path().parent_path().parent_path().parent_path()).string() + "/sampledata/raw/";
+        std::cout << "*******Base dir: " << baseTargetDir << "*********" << std::endl;
+       
+        int maxDir = 0;
+        for (const auto& entry : fs::directory_iterator(baseTargetDir)) {
+            if (entry.is_directory() && entry.path().filename() != "meta.yaml") {
+                int dirNumber = std::stoi(entry.path().filename().string());
+                maxDir = std::max(maxDir, dirNumber);
+            }
+        }
+
+
+        std::ostringstream lidarTargetDirName;
+        lidarTargetDirName << baseTargetDir << std::setw(8) << std::setfill('0') << maxDir << "/lidar_00000000/" ;
+        lidarTargetDir = lidarTargetDirName.str();
+        std::cout << "*******Lidar dir: " << lidarTargetDir << "*********" << std::endl;
+       
+    }
+
+    std::string getNextDir() {
+        std::ostringstream nextDirName;
+        nextDirName << lidarTargetDir << std::setw(8) << std::setfill('0') << nextDirNr << "/" ;
+        return nextDirName.str();
+    }
+};
+
+
+int main(int argc, char** argv) {
+    ros::init(argc, argv, "lidardatasaver");
+    ros::NodeHandle nh;
+    LidarDatasaver saver(nh);
+    ros::spin();
+    return 0;
+}
