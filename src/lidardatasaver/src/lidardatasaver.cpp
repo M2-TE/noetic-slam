@@ -19,12 +19,14 @@ public:
         std::cout << "Lidar datasaver node was started." << std::endl;
         std::cout << "********************************************" << std::endl;
         
+        // Set directory for files to be saved in
         setLidarTargetDir();
 
-        // Set first time stamp; new data should be saved every 0.5sek
+        // Set first time stamp - new data should be saved every 0.5sek
         const auto currentTime = std::chrono::system_clock::now();
         nextTimeStamp = (std::round(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count() * 2) / 2.0) * 10 + 5;
 
+        // listen to input from /ouster/points (send via script ouster-stream.sh) and process it in callback function callbackPointCloud
         sub_pcl = nh.subscribe("/ouster/points", 10, &LidarDatasaver::callbackPointCloud, this);
     }
 
@@ -47,6 +49,7 @@ public:
         pcl::PointCloud<pcl::PointXYZI> cloud;
         pcl::fromROSMsg(*msg, cloud);
 
+        // Save intensities
         // Create .data file for intensities
         std::ofstream dataFileIntensities(nextDirName.str() + "intensities.data", std::ios::binary);
         for (const auto& point : cloud.points) {
@@ -89,6 +92,7 @@ private:
         }
     }
 
+    // Create meta.yaml in new directory
     void createMetaYAML() {
         std::ofstream outFile(nextDirName.str() + "meta.yaml");
         if (outFile.is_open()) {
@@ -99,6 +103,7 @@ private:
         }
     }
 
+    // Set directory where lidar data should be saved in
     void setLidarTargetDir() {
         std::string baseTargetDir = fs::absolute(fs::path(__FILE__).parent_path().parent_path().parent_path().parent_path()).string() + "/sampledata/raw/";
     
@@ -109,7 +114,6 @@ private:
                 maxDir = std::max(maxDir, dirNumber);
             }
         }
-
 
         std::ostringstream lidarTargetDirName;
         lidarTargetDirName << baseTargetDir << std::setw(8) << std::setfill('0') << maxDir << "/lidar_00000000/" ;
