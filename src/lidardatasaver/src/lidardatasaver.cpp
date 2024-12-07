@@ -9,6 +9,7 @@
 #include <sstream>
 #include <iostream>
 #include <chrono>
+#include <thread>
 
 namespace fs = std::filesystem;
 
@@ -113,16 +114,15 @@ private:
         std::string baseTargetDir = fs::absolute(fs::path(__FILE__).parent_path().parent_path().parent_path().parent_path()).string() + "/sampledata/raw/";
     
         // Check if a directory was created in the last 5sek
-        std::time_t lastCheckTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()) - 5;
+        auto lastCheckTime = std::chrono::system_clock::now() - std::chrono::seconds(5);
         int i = 0;
         while (i < 20) {
             for (const auto& entry : fs::directory_iterator(baseTargetDir)) {
                 if (entry.is_directory()) {
-                    auto creationTime = fs::last_write_time(entry);
-                    auto creationTimeC = decltype(creationTime)::clock::to_time_t(creationTime);
+                    auto creationTime = std::chrono::time_point_cast<std::chrono::system_clock::duration>(fs::last_write_time(entry) - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
                     
                     // If directory was created (by imagesaver), use that as target dir
-                    if (creationTimeC > lastCheckTime) {
+                    if (creationTime > lastCheckTime) {
                         lidarTargetDir = entry.path().string() + "/lidar_00000000/";
                         return;
                     }
@@ -131,6 +131,7 @@ private:
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             i++;
         }
+        ROS_ERROR_STREAM("Failed to find target directory.");
     }
 };
 
