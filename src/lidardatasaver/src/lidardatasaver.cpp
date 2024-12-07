@@ -49,18 +49,23 @@ public:
         pcl::PointCloud<pcl::PointXYZI> cloud;
         pcl::fromROSMsg(*msg, cloud);
 
-        // Save intensities
-        // Create .data file for intensities
+        // Save data
+        // Create .data file data
         std::ofstream dataFileIntensities(nextDirName.str() + "intensities.data", std::ios::binary);
+        std::ofstream dataFilePoints(nextDirName.str() + "points.data", std::ios::binary);
         for (const auto& point : cloud.points) {
             float intensities = point.intensity;
             dataFileIntensities.write(reinterpret_cast<const char*>(&intensities), sizeof(float));
+
+            float coordinates[3] = {point.x, point.y, point.z};
+            dataFilePoints.write(reinterpret_cast<const char*>(coordinates), 3 * sizeof(float));
         }
         dataFileIntensities.close();
+        dataFilePoints.close();
 
-        // Create yaml for intensities
+        // Create yaml for data
         createYAML("intensities.yaml", "intensities", "channel", "float", "[59463419, 1]");
-        ROS_INFO("Saved intensities data.");
+        createYAML("points.yaml", "points", "channel", "float", "[59463419, 3]");
 
         std::cout << "Saved data to directory "<< nextDirName.str() << std::endl;
 
@@ -107,17 +112,25 @@ private:
     void setLidarTargetDir() {
         std::string baseTargetDir = fs::absolute(fs::path(__FILE__).parent_path().parent_path().parent_path().parent_path()).string() + "/sampledata/raw/";
     
-        int maxDir = 0;
-        for (const auto& entry : fs::directory_iterator(baseTargetDir)) {
-            if (entry.is_directory() && entry.path().filename() != "meta.yaml") {
-                int dirNumber = std::stoi(entry.path().filename().string());
-                maxDir = std::max(maxDir, dirNumber);
+        // Check if a directory was created in the last 5sek
+        std::time_t lastCheckTime = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()) - 5;
+        int i = 0;
+        while (i < 20) {
+            for (const auto& entry : fs::directory_iterator(baseTargetDir)) {
+                if (entry.is_directory()) {
+                    auto creationTime = fs::last_write_time(entry);
+                    auto creationTimeC = decltype(creationTime)::clock::to_time_t(creationTime);
+                    
+                    // If directory was created (by imagesaver), use that as target dir
+                    if (creationTimeC > lastCheckTime) {
+                        lidarTargetDir = entry.path().string() + "/lidar_00000000/";
+                        return;
+                    }
+                }
             }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            i++;
         }
-
-        std::ostringstream lidarTargetDirName;
-        lidarTargetDirName << baseTargetDir << std::setw(8) << std::setfill('0') << maxDir << "/lidar_00000000/" ;
-        lidarTargetDir = lidarTargetDirName.str();
     }
 };
 
