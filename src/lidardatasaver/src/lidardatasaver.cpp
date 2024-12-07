@@ -59,6 +59,7 @@ public:
         createYAML("intensities.yaml", "intensities", "channel", "float", "[59463419, 1]");
         ROS_INFO("Saved intensities data.");
 
+        std::cout << "Saved data to directory "<< nextDirName.str() << std::endl;
 
         // TODO: weiter dateien erstellen -> welche Werte werden benötigt?
     }
