@@ -116,7 +116,7 @@ private:
         // Check if a directory was created in the last 5sek
         auto lastCheckTime = std::chrono::system_clock::now() - std::chrono::seconds(5);
         int i = 0;
-        while (i < 20) {
+        while (i < 200) {
             for (const auto& entry : fs::directory_iterator(baseTargetDir)) {
                 if (entry.is_directory()) {
                     auto creationTime = std::chrono::time_point_cast<std::chrono::system_clock::duration>(fs::last_write_time(entry) - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
@@ -128,7 +128,7 @@ private:
                     }
                 }
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
             i++;
         }
         ROS_ERROR_STREAM("Failed to find target directory.");
