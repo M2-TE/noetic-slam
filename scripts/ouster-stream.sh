@@ -5,7 +5,7 @@ fi
 if [ $ROS_DISTRO = "noetic" ]; then
     source /opt/ros/noetic/setup.bash
     source ${SCRIPT_DIR}/../devel/setup.bash
-    roslaunch ouster_ros driver.launch \
+    roslaunch ouster_ros sensor.launch \
         sensor_hostname:=${LIDAR_ADDR} \
         viz:=${RVIZ_OUSTER} \
         imu_port:=7008 \

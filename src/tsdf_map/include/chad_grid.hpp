@@ -16,15 +16,13 @@
 
 template<typename BaseVecT, typename BoxT>
 struct ChadGrid: public lvr2::GridBase {
-    ChadGrid(std::array<std::vector<uint32_t>*, 63/3 - 1> node_levels, std::vector<LeafCluster::ClusterValue>& leaf_level, double voxel_res): lvr2::GridBase(false) {
+    ChadGrid(std::array<std::vector<uint32_t>*, 63/3 - 1> node_levels, std::vector<LeafCluster::ClusterValue>& leaf_level, uint32_t root_addr, double voxel_res): lvr2::GridBase(false) {
         m_globalIndex = 0;
         m_coordinateScales.x = 1.0;
         m_coordinateScales.y = 1.0;
         m_coordinateScales.z = 1.0;
         m_voxelsize = voxel_res;
         BoxT::m_voxelsize = voxel_res;
-
-        std::cout << "using fabricated signed distances" << std::endl;
 
         // trackers that will be updated during traversal
         static constexpr std::size_t max_depth = 63/3 - 1;
@@ -33,7 +31,7 @@ struct ChadGrid: public lvr2::GridBase {
         path.fill(0);
         nodes.fill(nullptr);
         // initialize
-        nodes[0] = Node::from_addr(*node_levels[0], 1);
+        nodes[0] = Node::from_addr(*node_levels[0], root_addr);
 
         uint_fast32_t depth = 0;
         while(true) {
@@ -87,9 +85,10 @@ struct ChadGrid: public lvr2::GridBase {
                     if (!sd_opt) continue; // skip invalid leaves
                     // signed distance for this leaf
                     float sd = sd_opt.value();
-                    float sd_perfect = leaf_pos.cast<double>().norm() - 5.0;
-                    sd_perfect = std::clamp(sd_perfect, -m_voxelsize, +m_voxelsize);
-                    sd = sd_perfect;
+                    // float sd_perfect = leaf_pos.cast<double>().norm() - 5.0;
+                    // sd_perfect = std::clamp(sd_perfect, -m_voxelsize, +m_voxelsize);
+                    // sd = sd_perfect;
+                    // std::cout << "perfect: " << sd_perfect << " actual: " << sd_opt.value() << '\n';
                     
                     // create query point
                     size_t querypoint_i = m_queryPoints.size();
@@ -97,13 +96,13 @@ struct ChadGrid: public lvr2::GridBase {
                     
                     // 8 cells around the query point
                     std::array<Eigen::Vector3f, 8> cell_offsets = {
-                        Eigen::Vector3f(+0.5, +0.5, +0.5), 
+                        Eigen::Vector3f(+0.5, +0.5, +0.5),
                         Eigen::Vector3f(-0.5, +0.5, +0.5),
-                        Eigen::Vector3f(-0.5, -0.5, +0.5), 
+                        Eigen::Vector3f(-0.5, -0.5, +0.5),
                         Eigen::Vector3f(+0.5, -0.5, +0.5),
-                        Eigen::Vector3f(+0.5, +0.5, -0.5), 
+                        Eigen::Vector3f(+0.5, +0.5, -0.5),
                         Eigen::Vector3f(-0.5, +0.5, -0.5),
-                        Eigen::Vector3f(-0.5, -0.5, -0.5), 
+                        Eigen::Vector3f(-0.5, -0.5, -0.5),
                         Eigen::Vector3f(+0.5, -0.5, -0.5),
                     };
                     for (size_t i = 0; i < 8; i++) {
@@ -147,10 +146,6 @@ struct ChadGrid: public lvr2::GridBase {
         }
         std::cout << "ChadGrid created" << std::endl;
     }
-
-    ChadGrid(std::array<std::vector<uint32_t>*, 63/3 - 1> node_levels, std::vector<uint32_t>& leaf_level): lvr2::GridBase(false) {
-        std::cout << "uint32_t ctor for ChadGrid not yet implemented" << std::endl;
-    }
     ~ChadGrid() {
         lvr2::GridBase::~GridBase();
     }
@@ -181,8 +176,35 @@ struct ChadGrid: public lvr2::GridBase {
     void addLatticePoint(int i, int j, int k, float distance = 0.0) override {
         std::cout << "addLatticePoint called" << std::endl;
     }
-    void saveGrid(string file) override {
-        std::cout << "saveGrid called" << std::endl;
+    void saveGrid(std::string file) override {
+        // store all the points into .grid file
+        std::ofstream output;
+        output.open(file, std::ofstream::trunc | std::ofstream::binary);
+        // store header data
+        float voxel_res = LEAF_RESOLUTION;
+        output.write(reinterpret_cast<char*>(&voxel_res), sizeof(float));
+        size_t query_points_n = getQueryPoints().size();
+        output.write(reinterpret_cast<char*>(&query_points_n), sizeof(size_t));
+        size_t cells_n = getNumberOfCells();
+        output.write(reinterpret_cast<char*>(&cells_n), sizeof(size_t));
+        // store query points (vec3 + float)
+        auto& query_points = getQueryPoints();
+        for (auto cur = query_points.cbegin(); cur != query_points.cend(); cur++) {
+            Eigen::Vector3f pos { cur->m_position.x, cur->m_position.y, cur->m_position.z };
+            float signed_distance = cur->m_distance;
+            output.write(reinterpret_cast<const char*>(&pos), sizeof(Eigen::Vector3f));
+            output.write(reinterpret_cast<const char*>(&signed_distance), sizeof(float));
+        }
+        // store cells (8x uint32_t)
+        for (auto cur = firstCell(); cur != lastCell(); cur++) {
+            auto* cell = cur->second;
+            for (size_t i = 0; i < 8; i++) {
+                uint32_t i_query_point = cell->getVertex(i);
+                output.write(reinterpret_cast<const char*>(&i_query_point), sizeof(uint32_t));
+            }
+        }
+        output.close();
+        std::cout << "Saved grid as " << file << '\n';
     }
 
 private:

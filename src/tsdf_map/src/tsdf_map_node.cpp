@@ -1,4 +1,6 @@
 #include <chrono>
+#include <linux/sysinfo.h>
+#include <thread>
 #include <cstddef>
 #include <fstream>
 #include <random>
@@ -6,6 +8,7 @@
 
 // ros crap
 #include <ros/ros.h>
+#include <ros/callback_queue.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseArray.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -17,114 +20,185 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/ply_io.h>
 //
+#include <fmt/base.h>
+#include <fmt/format.h>
+// Octomap
+#include <octomap/octomap.h>
+#include <octomap/OcTree.h>
+// Voxblox
+#include <voxblox/core/common.h>
+#include <voxblox/core/tsdf_map.h>
+#include <voxblox/integrator/tsdf_integrator.h>
+#include <voxblox/mesh/mesh_integrator.h>
+#include <voxblox/io/mesh_ply.h>
+#include <pcl/io/ply_io.h>
+#include <pcl/PolygonMesh.h>
+// VDBFusion
+#include <vdbfusion/VDBVolume.h>
+#include </root/repo/build/tsdf_map/_deps/libigl-src/include/igl/write_triangle_mesh.h> // temp fix for docker
+// Other
 #include <Eigen/Eigen>
 #include "dag/dag.hpp"
 #include "chad_grid.hpp"
 #include "chad_reconstruction.hpp"
+#include "utils.hpp"
 
-// todo: move headers to the places that need them
-// todo: separate source for vulkan stuff as well
-// todo: use fmt for logging
-
-struct Point {
-    Point(): data{0.f, 0.f, 0.f, 1.f} {}
-
-    PCL_ADD_POINT4D;
-    float intensity; // intensity
-    union {
-        std::uint32_t t; // time since beginning of scan in nanoseconds
-        float time; // time since beginning of scan in seconds
-        double timestamp; // absolute timestamp in seconds
-    };
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-}
-EIGEN_ALIGN16;
-POINT_CLOUD_REGISTER_POINT_STRUCT(Point,
-    (float, x, x)
-    (float, y, y)
-    (float, z, z)
-    (float, intensity, intensity)
-    (std::uint32_t, t, t)
-    (float, time, time)
-    (double, timestamp, timestamp))
-
-bool DEBUG_RECORD_POINTS = false;
+#define MAP_BACKEND_IDX 0
 
 class TSDFMap {
 public:
     TSDFMap(ros::NodeHandle nh) {
-        subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/keyframe", queueSize, &TSDFMap::callback_pcl_deskewed, this);
-        // subPcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDFMap::callback_pcl_deskewed, this);
-        
-        if (true) {
-            // generate random point data
-            std::vector<Eigen::Vector3f> points(100'000);
-            std::random_device rd;
-            std::mt19937 gen(420);
-            std::uniform_real_distribution<double> dis(-1.0f, 1.0f);
+        // sub_pcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/deskewed", queueSize, &TSDFMap::callback_pcl_deskewed, this);
+        sub_pcl = nh.subscribe("/robot/dlio/odom_node/pointcloud/keyframe", queueSize, &TSDFMap::callback_pcl_deskewed, this);
+        sub_pos = nh.subscribe("/robot/dlio/odom_node/pose", queueSize, &TSDFMap::callback_pos, this);
 
-            // insert into tsdf DAG
-            Eigen::Vector3f position { 0, 0, 0 };
-            // Eigen::Vector3f position { 10, 10, 10 };
-            // Eigen::Vector3f position { -10, -10, -10 };
-            for (size_t i = 0; i < 1; i++) {
-                for (auto& point: points) {
-                    Eigen::Vector3d pointd = {
-                        dis(gen),
-                        dis(gen),
-                        dis(gen)
-                    };
-                    pointd.normalize();
-                    pointd *= 5.0;
-                    point = pointd.cast<float>();
-                    point += position;
+        // initialize backend of choice
+        switch (MAP_BACKEND_IDX) {
+            case 0:
+                dag_p = new DAG{};
+                break;
+            case 1:
+                ocmap_p = new octomap::OcTree{ LEAF_RESOLUTION };
+                break;
+            case 2: {
+                    voxblox::TsdfMap::Config cfg;
+                    cfg.tsdf_voxel_size = LEAF_RESOLUTION;
+                    cfg.tsdf_voxels_per_side = 16;
+                    voxmap_p = new voxblox::TsdfMap{ cfg };
+                    voxblox::TsdfIntegratorBase::Config int_cfg;
+                    int_cfg.default_truncation_distance = LEAF_RESOLUTION * 2;
+                    integrator_p = new voxblox::FastTsdfIntegrator{ int_cfg, voxmap_p->getTsdfLayerPtr() }; // faster integration
+                    // integrator_p = new voxblox::MergedTsdfIntegrator{ int_cfg, voxmap_p->getTsdfLayerPtr() }; // smaller footprint
+                    // integrator_p = new voxblox::SimpleTsdfIntegrator{ int_cfg, voxmap_p->getTsdfLayerPtr() }; // ew
                 }
-                dag.insert(points, position, Eigen::Quaternionf::Identity());
-            }
-            dag.print_stats();
-            reconstruct();
-            // std::ofstream output;
-            // output.open("sphere.ascii");
-            // for (auto& point: points) {
-            //     output << point.x() << ' ' << point.y() << ' ' << point.z() << '\n';
-            // }
-            // output.close();
-            exit(0);
+                break;
+            case 3:
+                openvdb::initialize();
+                vdbmap_p = new vdbfusion::VDBVolume{ LEAF_RESOLUTION, LEAF_RESOLUTION * 2, false };
+                break;
+            default: break;
         }
-        else if (true) {
-            
-            std::ifstream file;
-            file.open("debugpoints.bin", std::ofstream::binary);
-            size_t n_points;
-            file.read(reinterpret_cast<char*>(&n_points), sizeof(size_t));
-            std::vector<Eigen::Vector3f> points(n_points);
-            for (auto& point: points) {
-                file.read(reinterpret_cast<char*>(&point), sizeof(Eigen::Vector3f));
-            }
-            Eigen::Vector3f position { 0, 0, 0 };
-            dag.insert(points, position, Eigen::Quaternionf::Identity());
-            dag.print_stats();
-            reconstruct();
-            exit(0);
-        }
+
+        // // chad_tsdf backend
+        // if (true) {
+        //     Eigen::Vector3f position{ 0, 0, 0 };
+        //     Eigen::Quaternionf rotation = Eigen::Quaternionf::Identity();
+        //     dag.insert(points, position, rotation);
+        //     save_chad();
+        //     exit(0);
+        // }
+        // // octomap backend
+        // else if (false) {
+        //     octomap::Pointcloud cloud;
+        //     for (auto& point: points) {
+        //         cloud.push_back({ point.x(), point.y(), point.z() });
+        //     }
+        //     auto beg = std::chrono::high_resolution_clock::now();
+        //     octomap::OcTree tree{ LEAF_RESOLUTION };
+        //     tree.insertPointCloud(cloud, { 0, 0, 0 });
+        //     tree.updateInnerOccupancy();
+        //     auto end = std::chrono::high_resolution_clock::now();
+        //     auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
+        //     fmt::println("octomap {}", dur.count());
+        //     // fmt::println("{} MiB", (double)tree.memoryFullGrid() / 1024.0 / 1024.0);
+        //     fmt::println("{} MiB", (double)tree.memoryUsage() / 1024.0 / 1024.0);
+        //     exit(0);
+        // }
+        // // voxblox backend
+        // else if (false) {
+        //     // set up map
+        //     voxblox::TsdfMap::Config cfg;
+        //     cfg.tsdf_voxel_size = LEAF_RESOLUTION;
+        //     cfg.tsdf_voxels_per_side = 16;
+        //     voxblox::TsdfMap map{ cfg };
+        //     // set up integrator
+        //     voxblox::TsdfIntegratorBase::Config int_cfg;
+        //     int_cfg.default_truncation_distance = 0.1;
+        //     // voxblox::FastTsdfIntegrator integrator{ int_cfg, map.getTsdfLayerPtr() }; // faster integration
+        //     voxblox::MergedTsdfIntegrator integrator{ int_cfg, map.getTsdfLayerPtr() }; // smaller footprint
+        //     // voxblox::SimpleTsdfIntegrator integrator{ int_cfg, map.getTsdfLayerPtr() }; // ew
+        //     // write into voxblox pointcloud
+        //     voxblox::Pointcloud pointcloud;
+        //     voxblox::Colors colors;
+        //     for (auto& point: points) {
+        //         pointcloud.emplace_back(point.x(), point.y(), point.z());
+        //         colors.emplace_back(0, 255, 0);
+        //     }
+        //     // integrate pointcloud
+        //     auto beg = std::chrono::high_resolution_clock::now();
+        //     voxblox::Transformation T_G_C;
+        //     integrator.integratePointCloud(T_G_C, pointcloud, colors);
+        //     auto end = std::chrono::high_resolution_clock::now();
+        //     auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
+        //     fmt::println("voxblox ctor {}", dur.count());
+        //     exit(0);
+        // }
+        // // VDBFusion backend
+        // else if (false) {
+        //     // truncation of same size as voxel size
+        //     vdbfusion::VDBVolume volume(LEAF_RESOLUTION, LEAF_RESOLUTION);
+        //     // vdbfusion::VDBFusion fusion(volume);
+        //     Eigen::Vector3d position{ 0, 0, 0 };
+        //     // convert to double prec points
+        //     std::vector<Eigen::Vector3d> pointsd;
+        //     pointsd.reserve(points.size());
+        //     for (auto& point: points) {
+        //         pointsd.emplace_back(point.cast<double>());
+        //     }
+        //     // integrate into tsdf volume
+        //     auto beg = std::chrono::high_resolution_clock::now();
+        //     volume.Integrate(pointsd, position, [](float f){ return f; });
+        //     auto end = std::chrono::high_resolution_clock::now();
+        //     auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
+        //     fmt::println("vdbfusion ctor {}", dur.count());
+        //     // fusion.save("vdbfusion.vdb");
+        //     exit(0);
+        // }
     }
     ~TSDFMap() {
-        if (DEBUG_RECORD_POINTS) {
-            std::ofstream file;
-            file.open("debugpoints.bin", std::ofstream::binary | std::ofstream::trunc);
-            size_t n_points = ALL_POINTS_DEBUG.size();
-            file.write(reinterpret_cast<char*>(&n_points), sizeof(size_t));
-            for (auto& point: ALL_POINTS_DEBUG) {
-                file.write(reinterpret_cast<char*>(&point), sizeof(Eigen::Vector3f));
-            }
-            std::cout << "Wrote points to debugpoints.bin\n";
-        }
+        // TODO: write final timings and memory footprint
+        fmt::println("min: {} ms", min.count());
+        fmt::println("max: {} ms", max.count());
+        fmt::println("avg: {} ms", total.count() / frame_count);
+        #if MAP_BACKEND_IDX == 0
+            dag_p->print_stats();
+            auto beg = std::chrono::high_resolution_clock::now();
+            auto count = dag_p->debug_iterate_all_leaves_of_subtree(1);
+            auto end = std::chrono::high_resolution_clock::now();
+            auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
+            fmt::println("Root total iteration time: {}, leaf count: {}", dur, count);
+            // save_points();
+            save_chad();
+        #elif MAP_BACKEND_IDX == 1
+        // lets not..
+        #elif MAP_BACKEND_IDX == 2
+        // Create a MeshIntegrator
+        voxblox::MeshIntegratorConfig mesh_config;
+        voxblox::MeshLayer mesh_layer(voxmap_p->block_size());
+        voxblox::MeshIntegrator<voxblox::TsdfVoxel> mesh_integrator(mesh_config, voxmap_p->getTsdfLayer(), &mesh_layer);
+        mesh_integrator.generateMesh(false, false);
         
-        dag.print_stats();
-        // dag.reconstruct();
+        // Save the mesh to a file
+        std::string filename = "maps/mesh.ply";
+        voxblox::outputMeshLayerAsPly(filename, mesh_layer);
+
+        #elif MAP_BACKEND_IDX == 3
+        // generate mesh as per example in repo
+        auto [vertices, triangles] = vdbmap_p->ExtractTriangleMesh(true);
+        Eigen::MatrixXd V(vertices.size(), 3);
+        for (size_t i = 0; i < vertices.size(); i++) {
+            V.row(i) = Eigen::VectorXd::Map(&vertices[i][0], vertices[i].size());
+        }
+        Eigen::MatrixXi F(triangles.size(), 3);
+        for (size_t i = 0; i < triangles.size(); i++) {
+            F.row(i) = Eigen::VectorXi::Map(&triangles[i][0], triangles[i].size());
+        }
+        std::string filename = "maps/mesh.ply";
+        igl::write_triangle_mesh(filename, V, F, igl::FileEncoding::Binary);
+        #endif
     }
     
-    void reconstruct() {
+    void reconstruct(uint32_t root_addr, std::string_view mesh_name, bool save_grid) {
         typedef lvr2::BaseVector<float> VecT;
         typedef lvr2::BilinearFastBox<VecT> BoxT;
         
@@ -135,46 +209,10 @@ public:
         if (decomp_type == "MC") {
         }
         else if (decomp_type == "PMC") {
-            auto node_levels = dag.get_node_levels();
-            auto leaf_level = dag.get_leaf_level();
-            double voxel_res = dag.get_voxel_resolution();
-            auto grid_p = std::make_shared<ChadGrid<VecT, BoxT>>(node_levels, leaf_level, voxel_res);
-            
-            // // store all the points into .grid file
-            // std::ofstream output;
-            // output.open("hashgrid.grid", std::ofstream::trunc | std::ofstream::binary);
-            // // store header data
-            // float voxel_res = leafResolution;
-            // output.write(reinterpret_cast<char*>(&voxel_res), sizeof(float));
-            // size_t n_scan_points = grid_points.size();
-            // output.write(reinterpret_cast<char*>(&n_scan_points), sizeof(size_t));
-            // size_t n_query_points = pGrid->getQueryPoints().size();
-            // output.write(reinterpret_cast<char*>(&n_query_points), sizeof(size_t));
-            // size_t n_cells = pGrid->getNumberOfCells();
-            // output.write(reinterpret_cast<char*>(&n_cells), sizeof(size_t));
-            // // store raw scan points (vec3)
-            // for (auto cur = grid_points.cbegin(); cur != grid_points.cend(); cur++) {
-            //     const Eigen::Vector3f* ptr = &(*cur);
-            //     output.write(reinterpret_cast<const char*>(ptr), sizeof(Eigen::Vector3f));
-            // }
-            // // store query points (vec3 + float)
-            // auto& query_points = pGrid->getQueryPoints();
-            // for (auto cur = query_points.cbegin(); cur != query_points.cend(); cur++) {
-            //     auto _pos = cur->m_position;
-            //     Eigen::Vector3f pos { _pos.x, _pos.y, _pos.z };
-            //     float signed_distance = cur->m_distance;
-            //     output.write(reinterpret_cast<const char*>(&pos), sizeof(Eigen::Vector3f));
-            //     output.write(reinterpret_cast<const char*>(&signed_distance), sizeof(float));
-            // }
-            // // store cells (8x uint32_t)
-            // for (auto cur = pGrid->firstCell(); cur != pGrid->lastCell(); cur++) {
-            //     auto* cell = cur->second;
-            //     for (size_t i = 0; i < 8; i++) {
-            //         uint32_t i_query_point = cell->getVertex(i);
-            //         output.write(reinterpret_cast<const char*>(&i_query_point), sizeof(uint32_t));
-            //     }
-            // }
-            // output.close();
+            auto node_levels = dag_p->get_node_levels();
+            auto leaf_level = dag_p->get_leaf_level();
+            auto grid_p = std::make_shared<ChadGrid<VecT, BoxT>>(node_levels, leaf_level, root_addr, LEAF_RESOLUTION);
+            if (save_grid) grid_p->saveGrid("hashgrid.grid");
             
             ChadReconstruction<VecT, BoxT> reconstruction { grid_p };
             reconstruction.getMesh(mesh);
@@ -204,8 +242,74 @@ public:
 
         // save to disk
         auto model_p = std::make_shared<lvr2::Model>(mesh_buffer_p);
-        lvr2::ModelFactory::saveModel(model_p, "yeehaw.ply");
-        std::cout << "Saved mesh to yeehaw.ply\n";
+        lvr2::ModelFactory::saveModel(model_p, mesh_name.data());
+        fmt::println("Saved mesh to {}", mesh_name);
+    }
+    void save_points() {
+        std::ofstream file;
+        file.open("maps/points.pts", std::ofstream::trunc);
+        for (auto& point: all_points) {
+            file << point.x() << ',' << point.y() << ',' << point.z() << '\n';
+        }
+        file.close();
+        all_points.clear();
+    }
+    void save_chad() {
+        dag_p->print_stats();
+        // for (uint32_t addr_i = 0; addr_i < dag_p->_subtrees.size(); addr_i++) {
+        //     uint32_t addr = dag_p->_subtrees[addr_i]._root_addr;
+        //     fmt::println("Reconstructing subtree at address {}", addr);
+        //     reconstruct(addr, fmt::format("maps/mesh_{}.ply", addr_i), false);
+        // }
+        // create global map and reconstruct it
+        dag_p->merge_all_subtrees();
+        // reconstruct(1, "maps/mesh.ply", true);
+    }
+    
+    void insert(
+    #if MAP_BACKEND_IDX == 3
+        std::vector<Eigen::Vector3d>& pointsd
+    #else
+        std::vector<Eigen::Vector3f>& points
+    #endif
+    ) {
+        #if MAP_BACKEND_IDX == 0
+            dag_p->insert(points, cur_pos, cur_rot);
+        #elif MAP_BACKEND_IDX == 1
+            octomap::Pointcloud cloud;
+            for (auto& point: points) {
+                cloud.push_back({ point.x(), point.y(), point.z() });
+            }
+            ocmap_p->insertPointCloud(cloud, { cur_pos.x(), cur_pos.y(), cur_pos.z() });
+            ocmap_p->updateInnerOccupancy();
+        #elif MAP_BACKEND_IDX == 2
+            voxblox::Pointcloud pointcloud;
+            voxblox::Colors colors;
+            for (auto& point: points) {
+                pointcloud.emplace_back(point.x(), point.y(), point.z());
+                colors.emplace_back(0, 0, 0);
+            }
+            voxblox::Transformation T_G_C { cur_rot, cur_pos };
+            integrator_p->integratePointCloud(T_G_C, pointcloud, colors);
+        #elif MAP_BACKEND_IDX == 3
+            Eigen::Vector3d pos = cur_pos.cast<double>();
+            vdbmap_p->Integrate(pointsd, pos, [](float /*unused*/) { return 1.0f; });
+        #endif
+    }
+    void callback_pos(const geometry_msgs::PoseStampedConstPtr& msg) {
+        // extract position
+        cur_pos = {
+            (float)msg->pose.position.x,
+            (float)msg->pose.position.y,
+            (float)msg->pose.position.z
+        };
+        // extract rotation
+        cur_rot = {
+            (float)msg->pose.orientation.w,
+            (float)msg->pose.orientation.x,
+            (float)msg->pose.orientation.y,
+            (float)msg->pose.orientation.z
+        };
     }
     void callback_pcl_deskewed(const sensor_msgs::PointCloud2ConstPtr& msg) {
         // extract pcl
@@ -213,44 +317,111 @@ public:
         pcl::fromROSMsg(*msg, pointcloud);
 
         // insert raw points into a non-pcl vector
-        std::vector<Eigen::Vector3f> points;
+        #if MAP_BACKEND_IDX == 3
+            std::vector<Eigen::Vector3d> points;
+        #else
+            std::vector<Eigen::Vector3f> points;
+        #endif
         points.reserve(pointcloud.size());
         for (auto cur = pointcloud.begin(); cur != pointcloud.end(); cur++) {
-            points.emplace_back(cur->getVector3fMap());
+            auto vec = cur->getVector3fMap();
+            points.emplace_back(vec.x(), vec.y(), vec.z());
         }
-        pointcloud.clear();
-
-        // insert into tsdf DAG
-        Eigen::Vector3f position = {};
-        Eigen::Quaternionf rotation = {};
-        std::cout << "Inserting " << points.size() << " points.\n";
-        
-        // write raw points to file for debug purposes
-        if (DEBUG_RECORD_POINTS) {
-            ALL_POINTS_DEBUG.insert(ALL_POINTS_DEBUG.end(), points.cbegin(), points.cend());
-        }
-        
-        // dag.insert_scan(position, rotation, points);
-        
         // DEBUG
-        if (false) {
-            dag.print_stats();
-            exit(0);
-        }
+        // all_points.insert(all_points.end(), points.begin(), points.end());
+        // static Eigen::Vector3f bb_lower = { 0, 0, 0 };
+        // static Eigen::Vector3f bb_upper = { 0, 0, 0 };
+        // for (auto& point: points) {
+        //     bb_lower = bb_lower.cwiseMin(point);
+        //     bb_upper = bb_upper.cwiseMax(point);
+        // }
+
+        // insert points
+        fmt::println("Inserting {} points", points.size());
+        auto beg = std::chrono::high_resolution_clock::now();
+        insert(points);
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::milliseconds dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - beg);
+        fmt::println("insertion time: {}", dur.count());
+
+        // measure physical memory footprint
+        #if MAP_BACKEND_IDX == 0
+        double mb = (double)read_phys_mem_kb() / 1024.0;
+        double mb_read = dag_p->get_readonly_size();
+        double mb_hash = dag_p->get_hash_size();
+        fmt::println("proc: {} MiB\nread: {} MiB\nhash: {} MiB", mb, mb_read, mb_hash);
+        #else
+        double mb = (double)read_phys_mem_kb() / 1024.0;
+        fmt::println("Memory: {} MiB", mb);
+        #endif
+        
+        // update trackers
+        frame_count++;
+        total += dur;
+        min = std::min(min, dur);
+        max = std::max(max, dur);
+
+        #if MAP_BACKEND_IDX == 0
+        // iterate through leaves and count
+        beg = std::chrono::high_resolution_clock::now();
+        uint32_t leafcount = dag_p->debug_iterate_all_leaves_of_subtree(dag_p->_subtrees.back()._root_addr);
+        end = std::chrono::high_resolution_clock::now();
+        auto dur_iteration = std::chrono::duration<double, std::milli> (end - beg).count();
+        fmt::println("iteration time: {}, leaf count: {}", dur_iteration, leafcount);
+        #endif
+
+
+        // write to csv
+        std::ofstream file;
+        file.open("insertion_times.csv", std::ofstream::app);
+        file << frame_count << ',' 
+            << mb << ',' 
+            << dur.count()
+        #if MAP_BACKEND_IDX == 0
+            << ',' << dur_iteration << ',' << leafcount
+        #endif
+            << '\n';
+        file.close();
     }
 
 private:
-    DAG dag;
-    uint32_t queueSize = 100;
-    ros::Subscriber subPath;
-    ros::Subscriber subPcl;
-    std::vector<Eigen::Vector3f> ALL_POINTS_DEBUG;
+    // data structures for testing:
+    DAG* dag_p;
+    octomap::OcTree* ocmap_p;
+    voxblox::TsdfMap* voxmap_p;
+    voxblox::TsdfIntegratorBase* integrator_p;
+    vdbfusion::VDBVolume* vdbmap_p;
+    std::vector<Eigen::Vector3f> all_points; // DEBUG
+    //
+    Eigen::Vector3f cur_pos = { 0, 0, 0 };
+    Eigen::Quaternionf cur_rot = {};
+    uint32_t queueSize = 10;
+    ros::Subscriber sub_pcl;
+    ros::Subscriber sub_pos;
+    int baseline_memory;
+    std::chrono::milliseconds min = std::chrono::milliseconds::max();
+    std::chrono::milliseconds max = std::chrono::milliseconds::min();
+    std::chrono::milliseconds total = std::chrono::milliseconds::zero();
+    size_t frame_count = 0;
 };
 
 int main(int argc, char **argv) {
+    fmt::println("Starting tsdf_map_node");
     ros::init(argc, argv, "tsdf_map_node");
     ros::NodeHandle nh;
     TSDFMap node { nh };
+    int baseline_memory = read_phys_mem_kb();
+    std::ofstream file;
+    file.open("insertion_times.csv", std::ofstream::trunc);
+    file << "frame_count" << ',' 
+        << "memory" << ',' 
+        << "duration"
+        #if MAP_BACKEND_IDX == 0
+        << ',' << "iteration_time" 
+        << ',' << "leaf_count"
+        #endif
+        << '\n';
+    file.close();
     ros::spin();
     return 0;
 }

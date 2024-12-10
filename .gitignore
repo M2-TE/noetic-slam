@@ -12,9 +12,19 @@
 *.grid
 *.bin
 
+# octomap war crimes
+lib/
+bin/
+
 # catkin build files
 .catkin_tools
 build/
 devel/
 logs/
 log/
+
+# measurement outputs
+heaptrack.*.*.gz
+*.csv
+*.pts
+*.ply
