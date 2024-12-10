@@ -1,4 +1,8 @@
 .git/
 .vscode/
 bags/
+build/
+log/
 maps/
+scripts/
+src/
