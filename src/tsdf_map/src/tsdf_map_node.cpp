@@ -38,7 +38,7 @@
 #include </root/repo/build/tsdf_map/_deps/libigl-src/include/igl/write_triangle_mesh.h> // temp fix for docker
 // Other
 #include <Eigen/Eigen>
-#include "dag/dag.hpp"
+#include "chad/chad.hpp"
 #include "chad_grid.hpp"
 #include "chad_reconstruction.hpp"
 #include "utils.hpp"
@@ -55,7 +55,7 @@ public:
         // initialize backend of choice
         switch (MAP_BACKEND_IDX) {
             case 0:
-                dag_p = new DAG{};
+                chad_p = new DAG{};
                 break;
             case 1:
                 ocmap_p = new octomap::OcTree{ LEAF_RESOLUTION };
@@ -161,9 +161,9 @@ public:
         fmt::println("max: {} ms", max.count());
         fmt::println("avg: {} ms", total.count() / frame_count);
         #if MAP_BACKEND_IDX == 0
-            dag_p->print_stats();
+            chad_p->print_stats();
             auto beg = std::chrono::high_resolution_clock::now();
-            auto count = dag_p->debug_iterate_all_leaves_of_subtree(1);
+            auto count = chad_p->debug_iterate_all_leaves_of_subtree(1);
             auto end = std::chrono::high_resolution_clock::now();
             auto dur = std::chrono::duration<double, std::milli> (end - beg).count();
             fmt::println("Root total iteration time: {}, leaf count: {}", dur, count);
@@ -209,8 +209,8 @@ public:
         if (decomp_type == "MC") {
         }
         else if (decomp_type == "PMC") {
-            auto node_levels = dag_p->get_node_levels();
-            auto leaf_level = dag_p->get_leaf_level();
+            auto node_levels = chad_p->get_node_levels();
+            auto leaf_level = chad_p->get_leaf_level();
             auto grid_p = std::make_shared<ChadGrid<VecT, BoxT>>(node_levels, leaf_level, root_addr, LEAF_RESOLUTION);
             if (save_grid) grid_p->saveGrid("hashgrid.grid");
             
@@ -255,14 +255,14 @@ public:
         all_points.clear();
     }
     void save_chad() {
-        dag_p->print_stats();
-        // for (uint32_t addr_i = 0; addr_i < dag_p->_subtrees.size(); addr_i++) {
-        //     uint32_t addr = dag_p->_subtrees[addr_i]._root_addr;
+        chad_p->print_stats();
+        // for (uint32_t addr_i = 0; addr_i < chad_p->_subtrees.size(); addr_i++) {
+        //     uint32_t addr = chad_p->_subtrees[addr_i]._root_addr;
         //     fmt::println("Reconstructing subtree at address {}", addr);
         //     reconstruct(addr, fmt::format("maps/mesh_{}.ply", addr_i), false);
         // }
         // create global map and reconstruct it
-        dag_p->merge_all_subtrees();
+        chad_p->merge_all_subtrees();
         // reconstruct(1, "maps/mesh.ply", true);
     }
     
@@ -274,7 +274,7 @@ public:
     #endif
     ) {
         #if MAP_BACKEND_IDX == 0
-            dag_p->insert(points, cur_pos, cur_rot);
+            chad_p->insert(points, cur_pos, cur_rot);
         #elif MAP_BACKEND_IDX == 1
             octomap::Pointcloud cloud;
             for (auto& point: points) {
@@ -347,8 +347,8 @@ public:
         // measure physical memory footprint
         #if MAP_BACKEND_IDX == 0
         double mb = (double)read_phys_mem_kb() / 1024.0;
-        double mb_read = dag_p->get_readonly_size();
-        double mb_hash = dag_p->get_hash_size();
+        double mb_read = chad_p->get_readonly_size();
+        double mb_hash = chad_p->get_hash_size();
         fmt::println("proc: {} MiB\nread: {} MiB\nhash: {} MiB", mb, mb_read, mb_hash);
         #else
         double mb = (double)read_phys_mem_kb() / 1024.0;
@@ -364,7 +364,7 @@ public:
         #if MAP_BACKEND_IDX == 0
         // iterate through leaves and count
         beg = std::chrono::high_resolution_clock::now();
-        uint32_t leafcount = dag_p->debug_iterate_all_leaves_of_subtree(dag_p->_subtrees.back()._root_addr);
+        uint32_t leafcount = chad_p->debug_iterate_all_leaves_of_subtree(chad_p->_subtrees.back()._root_addr);
         end = std::chrono::high_resolution_clock::now();
         auto dur_iteration = std::chrono::duration<double, std::milli> (end - beg).count();
         fmt::println("iteration time: {}, leaf count: {}", dur_iteration, leafcount);
@@ -386,7 +386,7 @@ public:
 
 private:
     // data structures for testing:
-    DAG* dag_p;
+    Chad* chad_p;
     octomap::OcTree* ocmap_p;
     voxblox::TsdfMap* voxmap_p;
     voxblox::TsdfIntegratorBase* integrator_p;
