@@ -43,7 +43,7 @@ set(CHAD_NORM_MIN_NEIGH 6)
 set(CHAD_NORM_RADIUS_MOD 1.5)
 set(CHAD_LEAF_RESOLUTION 0.1)
 set(CHAD_LEAF_BITS 8)
-FetchContent_Declare(chad_tsdf GIT_REPOSITORY "https://github.com/M2-TE/chad_tsdf.git" GIT_TAG "v0.1.0" GIT_SHALLOW ON)
+FetchContent_Declare(chad_tsdf GIT_REPOSITORY "https://github.com/M2-TE/chad_tsdf.git" GIT_TAG "v0.1.1" GIT_SHALLOW ON)
 FetchContent_MakeAvailable(chad_tsdf)
 target_link_libraries(tsdf_map_node PRIVATE chad_tsdf)
 # parallel hashmap
