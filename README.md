@@ -1,6 +1,6 @@
 # Unmaintained
 
-The up-to-date version sits [here](https://github.com/M2-TE/chad_bench), which uses ros2 humble instead of ros1 noetic and can run outside of docker containers.
+The up-to-date version sits at [https://github.com/M2-TE/chad_bench](https://github.com/M2-TE/chad_bench), which uses ros2 humble instead of ros1 noetic and can run outside of docker containers.
 
 # Noetic Slam
 
