@@ -23,19 +23,19 @@
 #include <fmt/base.h>
 #include <fmt/format.h>
 // Octomap
-#include <octomap/octomap.h>
-#include <octomap/OcTree.h>
+// #include <octomap/octomap.h>
+// #include <octomap/OcTree.h>
 // Voxblox
-#include <voxblox/core/common.h>
-#include <voxblox/core/tsdf_map.h>
-#include <voxblox/integrator/tsdf_integrator.h>
-#include <voxblox/mesh/mesh_integrator.h>
-#include <voxblox/io/mesh_ply.h>
-#include <pcl/io/ply_io.h>
-#include <pcl/PolygonMesh.h>
+// #include <voxblox/core/common.h>
+// #include <voxblox/core/tsdf_map.h>
+// #include <voxblox/integrator/tsdf_integrator.h>
+// #include <voxblox/mesh/mesh_integrator.h>
+// #include <voxblox/io/mesh_ply.h>
+// #include <pcl/io/ply_io.h>
+// #include <pcl/PolygonMesh.h>
 // VDBFusion
-#include <vdbfusion/VDBVolume.h>
-#include </root/repo/build/tsdf_map/_deps/libigl-src/include/igl/write_triangle_mesh.h> // temp fix for docker
+// #include <vdbfusion/VDBVolume.h>
+// #include </root/repo/build/tsdf_map/_deps/libigl-src/include/igl/write_triangle_mesh.h> // temp fix for docker
 // Other
 #include <Eigen/Eigen>
 #include "chad/chad.hpp"
@@ -55,27 +55,27 @@ public:
         // initialize backend of choice
         switch (MAP_BACKEND_IDX) {
             case 0:
-                chad_p = new DAG{};
+                chad_p = new Chad{};
                 break;
             case 1:
-                ocmap_p = new octomap::OcTree{ LEAF_RESOLUTION };
-                break;
+                // ocmap_p = new octomap::OcTree{ LEAF_RESOLUTION };
+                // break;
             case 2: {
-                    voxblox::TsdfMap::Config cfg;
-                    cfg.tsdf_voxel_size = LEAF_RESOLUTION;
-                    cfg.tsdf_voxels_per_side = 16;
-                    voxmap_p = new voxblox::TsdfMap{ cfg };
-                    voxblox::TsdfIntegratorBase::Config int_cfg;
-                    int_cfg.default_truncation_distance = LEAF_RESOLUTION * 2;
-                    integrator_p = new voxblox::FastTsdfIntegrator{ int_cfg, voxmap_p->getTsdfLayerPtr() }; // faster integration
-                    // integrator_p = new voxblox::MergedTsdfIntegrator{ int_cfg, voxmap_p->getTsdfLayerPtr() }; // smaller footprint
-                    // integrator_p = new voxblox::SimpleTsdfIntegrator{ int_cfg, voxmap_p->getTsdfLayerPtr() }; // ew
+                    // voxblox::TsdfMap::Config cfg;
+                    // cfg.tsdf_voxel_size = LEAF_RESOLUTION;
+                    // cfg.tsdf_voxels_per_side = 16;
+                    // voxmap_p = new voxblox::TsdfMap{ cfg };
+                    // voxblox::TsdfIntegratorBase::Config int_cfg;
+                    // int_cfg.default_truncation_distance = LEAF_RESOLUTION * 2;
+                    // integrator_p = new voxblox::FastTsdfIntegrator{ int_cfg, voxmap_p->getTsdfLayerPtr() }; // faster integration
+                    // // integrator_p = new voxblox::MergedTsdfIntegrator{ int_cfg, voxmap_p->getTsdfLayerPtr() }; // smaller footprint
+                    // // integrator_p = new voxblox::SimpleTsdfIntegrator{ int_cfg, voxmap_p->getTsdfLayerPtr() }; // ew
                 }
                 break;
             case 3:
-                openvdb::initialize();
-                vdbmap_p = new vdbfusion::VDBVolume{ LEAF_RESOLUTION, LEAF_RESOLUTION * 2, false };
-                break;
+                // openvdb::initialize();
+                // vdbmap_p = new vdbfusion::VDBVolume{ LEAF_RESOLUTION, LEAF_RESOLUTION * 2, false };
+                // break;
             default: break;
         }
 
@@ -170,31 +170,31 @@ public:
             // save_points();
             save_chad();
         #elif MAP_BACKEND_IDX == 1
-        // lets not..
+        // // lets not..
         #elif MAP_BACKEND_IDX == 2
-        // Create a MeshIntegrator
-        voxblox::MeshIntegratorConfig mesh_config;
-        voxblox::MeshLayer mesh_layer(voxmap_p->block_size());
-        voxblox::MeshIntegrator<voxblox::TsdfVoxel> mesh_integrator(mesh_config, voxmap_p->getTsdfLayer(), &mesh_layer);
-        mesh_integrator.generateMesh(false, false);
+        // // Create a MeshIntegrator
+        // voxblox::MeshIntegratorConfig mesh_config;
+        // voxblox::MeshLayer mesh_layer(voxmap_p->block_size());
+        // voxblox::MeshIntegrator<voxblox::TsdfVoxel> mesh_integrator(mesh_config, voxmap_p->getTsdfLayer(), &mesh_layer);
+        // mesh_integrator.generateMesh(false, false);
         
-        // Save the mesh to a file
-        std::string filename = "maps/mesh.ply";
-        voxblox::outputMeshLayerAsPly(filename, mesh_layer);
+        // // Save the mesh to a file
+        // std::string filename = "maps/mesh.ply";
+        // voxblox::outputMeshLayerAsPly(filename, mesh_layer);
 
         #elif MAP_BACKEND_IDX == 3
-        // generate mesh as per example in repo
-        auto [vertices, triangles] = vdbmap_p->ExtractTriangleMesh(true);
-        Eigen::MatrixXd V(vertices.size(), 3);
-        for (size_t i = 0; i < vertices.size(); i++) {
-            V.row(i) = Eigen::VectorXd::Map(&vertices[i][0], vertices[i].size());
-        }
-        Eigen::MatrixXi F(triangles.size(), 3);
-        for (size_t i = 0; i < triangles.size(); i++) {
-            F.row(i) = Eigen::VectorXi::Map(&triangles[i][0], triangles[i].size());
-        }
-        std::string filename = "maps/mesh.ply";
-        igl::write_triangle_mesh(filename, V, F, igl::FileEncoding::Binary);
+        // // generate mesh as per example in repo
+        // auto [vertices, triangles] = vdbmap_p->ExtractTriangleMesh(true);
+        // Eigen::MatrixXd V(vertices.size(), 3);
+        // for (size_t i = 0; i < vertices.size(); i++) {
+        //     V.row(i) = Eigen::VectorXd::Map(&vertices[i][0], vertices[i].size());
+        // }
+        // Eigen::MatrixXi F(triangles.size(), 3);
+        // for (size_t i = 0; i < triangles.size(); i++) {
+        //     F.row(i) = Eigen::VectorXi::Map(&triangles[i][0], triangles[i].size());
+        // }
+        // std::string filename = "maps/mesh.ply";
+        // igl::write_triangle_mesh(filename, V, F, igl::FileEncoding::Binary);
         #endif
     }
     
@@ -276,24 +276,24 @@ public:
         #if MAP_BACKEND_IDX == 0
             chad_p->insert(points, cur_pos, cur_rot);
         #elif MAP_BACKEND_IDX == 1
-            octomap::Pointcloud cloud;
-            for (auto& point: points) {
-                cloud.push_back({ point.x(), point.y(), point.z() });
-            }
-            ocmap_p->insertPointCloud(cloud, { cur_pos.x(), cur_pos.y(), cur_pos.z() });
-            ocmap_p->updateInnerOccupancy();
+            // octomap::Pointcloud cloud;
+            // for (auto& point: points) {
+            //     cloud.push_back({ point.x(), point.y(), point.z() });
+            // }
+            // ocmap_p->insertPointCloud(cloud, { cur_pos.x(), cur_pos.y(), cur_pos.z() });
+            // ocmap_p->updateInnerOccupancy();
         #elif MAP_BACKEND_IDX == 2
-            voxblox::Pointcloud pointcloud;
-            voxblox::Colors colors;
-            for (auto& point: points) {
-                pointcloud.emplace_back(point.x(), point.y(), point.z());
-                colors.emplace_back(0, 0, 0);
-            }
-            voxblox::Transformation T_G_C { cur_rot, cur_pos };
-            integrator_p->integratePointCloud(T_G_C, pointcloud, colors);
+            // voxblox::Pointcloud pointcloud;
+            // voxblox::Colors colors;
+            // for (auto& point: points) {
+            //     pointcloud.emplace_back(point.x(), point.y(), point.z());
+            //     colors.emplace_back(0, 0, 0);
+            // }
+            // voxblox::Transformation T_G_C { cur_rot, cur_pos };
+            // integrator_p->integratePointCloud(T_G_C, pointcloud, colors);
         #elif MAP_BACKEND_IDX == 3
-            Eigen::Vector3d pos = cur_pos.cast<double>();
-            vdbmap_p->Integrate(pointsd, pos, [](float /*unused*/) { return 1.0f; });
+            // Eigen::Vector3d pos = cur_pos.cast<double>();
+            // vdbmap_p->Integrate(pointsd, pos, [](float /*unused*/) { return 1.0f; });
         #endif
     }
     void callback_pos(const geometry_msgs::PoseStampedConstPtr& msg) {
@@ -387,10 +387,10 @@ public:
 private:
     // data structures for testing:
     Chad* chad_p;
-    octomap::OcTree* ocmap_p;
-    voxblox::TsdfMap* voxmap_p;
-    voxblox::TsdfIntegratorBase* integrator_p;
-    vdbfusion::VDBVolume* vdbmap_p;
+    // octomap::OcTree* ocmap_p;
+    // voxblox::TsdfMap* voxmap_p;
+    // voxblox::TsdfIntegratorBase* integrator_p;
+    // vdbfusion::VDBVolume* vdbmap_p;
     std::vector<Eigen::Vector3f> all_points; // DEBUG
     //
     Eigen::Vector3f cur_pos = { 0, 0, 0 };

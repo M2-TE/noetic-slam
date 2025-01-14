@@ -11,8 +11,8 @@
 #include <lvr2/reconstruction/FastReconstruction.hpp>
 #include <lvr2/algorithm/NormalAlgorithms.hpp>
 #include <morton-nd/mortonND_BMI2.h>
-#include "dag/leaf_cluster.hpp"
-#include "dag/node.hpp"
+#include "chad/leaf_cluster.hpp"
+#include "chad/node.hpp"
 
 template<typename BaseVecT, typename BoxT>
 struct ChadGrid: public lvr2::GridBase {

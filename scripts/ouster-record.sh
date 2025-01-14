@@ -17,5 +17,5 @@ if [ $ROS_DISTRO = "noetic" ]; then
         imu_port:=7008 \
         lidar_port:=7009
 else
-    docker exec -it noeticslam bash -c "/root/repo/scripts/ouster-record.sh"
+    docker exec -it noeticslam bash -c "/root/repo/scripts/ouster-record.sh $1"
 fi
