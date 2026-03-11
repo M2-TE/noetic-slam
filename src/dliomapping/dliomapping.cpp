@@ -50,12 +50,22 @@ public:
         std::cout << "Starting recording at timestamp: " << timeString << '\n';
 
     }
+    ~Dliomapping_Node() {
+        std::string path = "/root/repo/maps/" + timeString + "_" + std::to_string(iPly++) + ".ply";
+        std::cout << "saving temporary map to " << path << "..." << std::endl;
+        int res = pcl::io::savePLYFile(path, rawGlobalMap);
+        // int res = pcl::io::savePCDFile(path, rawGlobalMap);
+        rawGlobalMap = {};
+        iClouds = 0;
+        if (res) std::cout << "failed saving ply file: " << res << std::endl;
+    }
 
 public:
     void callback_pcl_deskewed(const sensor_msgs::PointCloud2ConstPtr& msg) {
         // extract pcl
         pcl::PointCloud<Point> pointcloud = {};
         pcl::fromROSMsg(*msg, pointcloud);
+        std::cout << "Received pointcloud " << iClouds << std::endl;
 
         rawGlobalMap += pointcloud;
         iClouds++;
@@ -77,7 +87,7 @@ private:
 
     // temporary stuff for saving raw maps:
     pcl::PointCloud<Point> rawGlobalMap;
-    size_t nMaxCloudsPerPly = 100;
+    size_t nMaxCloudsPerPly = 1000;
     size_t iClouds = 0;
     size_t iPly = 0;
 };

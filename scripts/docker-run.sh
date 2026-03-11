@@ -12,7 +12,7 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 docker build -t noeticslam:latest $SCRIPT_DIR/..
 
 if [ -z "$1" ]; then
-    echo "usage: scripts/docker-run [none, integrated, nivida, amd]"
+    echo "usage: docker-run [none, integrated, nivida, amd]"
     exit -1
 fi
 

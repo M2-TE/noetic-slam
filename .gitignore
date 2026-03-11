@@ -1,6 +1,8 @@
 # vscode settings
 .vscode/
 
+bags/
+
 # input/output files
 *.bag
 *.bag.active
